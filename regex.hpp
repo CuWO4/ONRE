@@ -7,6 +7,8 @@
 
 namespace onre {
 
+namespace impl {
+
 struct RE {};
 struct EmptySet : RE {};
 struct Epsilon : RE {};
@@ -443,12 +445,68 @@ template<typename RE> using AllStateEdgePair = typename AllStatesAndEdgesGenerat
 template<typename RE> using AllStatesList = typename AllStatesAndEdgesGenerator<RE>::States;
 template<typename RE> using AllEdgesList  = typename AllStatesAndEdgesGenerator<RE>::Edges;
 
-template<FixedString Pattern>
+static constexpr size_t ALPHABET_SIZE = TypeListLength<Alphabet>::value;
+static constexpr int char_to_idx(char c) {
+  if (c >= '0' && c <= '9') return c - '0';                 // 0..9
+  if (c >= 'a' && c <= 'z') return 10 + (c - 'a');          // 10..35
+  if (c >= 'A' && c <= 'Z') return 36 + (c - 'A');          // 36..61
+  return -1;
+}
+
+template<typename EdgesList>
+struct BuildTable {
+  template<std::size_t N>
+  static consteval std::array<std::array<int, ALPHABET_SIZE>, N> make() {
+    std::array<std::array<int, ALPHABET_SIZE>, N> table{};
+    for (auto &row : table) row.fill(-1);
+    return table;
+  }
+};
+template<typename... Edges>
+struct BuildTable<TypeList<Edges...>> {
+  template<std::size_t N>
+  static consteval std::array<std::array<int, ALPHABET_SIZE>, N> make() {
+    std::array<std::array<int, ALPHABET_SIZE>, N> table{};
+    for (auto &row : table) row.fill(-1);
+    ((table[Edges::from][char_to_idx(Edges::ch)] = Edges::to), ...);
+    return table;
+  }
+};
+
+template<typename StatesList>
+struct BuildAccepts;
+template<typename... Ss>
+struct BuildAccepts<TypeList<Ss...>> {
+  static consteval std::array<bool, sizeof...(Ss)> make() {
+    return std::array<bool, sizeof...(Ss)>{ Ss::accepting... };
+  }
+};
+
+} /* namespace impl */
+
+template<impl::FixedString Pattern>
 class Regex {
 public:
   static bool match(std::string_view str) {
-    /* TODO */
+    std::size_t cur = 0;
+    for (char ch : str) {
+      int idx = impl::char_to_idx(ch);
+      if (idx < 0) return false;
+      int nxt = trans[cur][static_cast<std::size_t>(idx)];
+      if (nxt < 0) return false;
+      cur = static_cast<std::size_t>(nxt);
+    }
+    return accepts[cur];
   }
+
+private:
+  using Re = typename impl::RegexScan<Pattern>::type;
+  using Pair = impl::AllStateEdgePair<Re>;
+  using StatesList = typename Pair::States;
+  using EdgesList  = typename Pair::Edges;
+  static constexpr std::size_t nr_states = impl::TypeListLength<StatesList>::value;
+  static constexpr auto trans = impl::BuildTable<EdgesList>::template make<nr_states>();
+  static constexpr auto accepts = impl::BuildAccepts<StatesList>::make();
 };
 
 namespace logger {
@@ -457,48 +515,48 @@ namespace logger {
   struct ToString;
 
   template <>
-  struct ToString<EmptySet> {
+  struct ToString<impl::EmptySet> {
     static std::string to_string() {
       return "(/)";
     }
   };
 
   template <>
-  struct ToString<Epsilon> {
+  struct ToString<impl::Epsilon> {
     static std::string to_string() {
       return "";
     }
   };
 
   template <char C>
-  struct ToString<Char<C>> {
+  struct ToString<impl::Char<C>> {
     static std::string to_string() {
       return std::string(1, C);
     }
   };
 
   template <typename R, typename S>
-  struct ToString<Or<R, S>> {
+  struct ToString<impl::Or<R, S>> {
     static std::string to_string() {
       return ToString<R>::to_string() + '|' + ToString<S>::to_string();
     }
   };
 
   template <typename R, typename S>
-  struct ToString<Concat<R, S>> {
+  struct ToString<impl::Concat<R, S>> {
     static std::string to_string() {
-      auto left_str = is_less<R, Concat<R, S>>::value
+      auto left_str = impl::is_less<R, impl::Concat<R, S>>::value
         ? '(' + ToString<R>::to_string() + ")" : ToString<R>::to_string();
-      auto right_str = is_less<S, Concat<R, S>>::value
+      auto right_str = impl::is_less<S, impl::Concat<R, S>>::value
         ? '(' + ToString<S>::to_string() + ")" : ToString<S>::to_string();
       return  left_str + right_str;
     }
   };
 
   template <typename R>
-  struct ToString<Closure<R>> {
+  struct ToString<impl::Closure<R>> {
     static std::string to_string() {
-      return is_less<R, Closure<R>>::value
+      return impl::is_less<R, impl::Closure<R>>::value
         ? '(' + ToString<R>::to_string() + ")*"
         : ToString<R>::to_string();
     }
@@ -515,23 +573,23 @@ namespace logger {
   };
 
   template<size_t idx, typename RE, typename... Remains>
-  struct TypeListPrinterImpl<onre::TypeList<State<RE>, Remains...>, idx> {
+  struct TypeListPrinterImpl<impl::TypeList<impl::State<RE>, Remains...>, idx> {
     static void print() {
       printf("(%lu) %s\n", idx, ToString<RE>::to_string().c_str());
-      TypeListPrinterImpl<onre::TypeList<Remains...>, idx + 1>::print();
+      TypeListPrinterImpl<impl::TypeList<Remains...>, idx + 1>::print();
     }
   };
 
   template<size_t idx, size_t From, char C, size_t To, typename... Remains>
-  struct TypeListPrinterImpl<onre::TypeList<onre::Edge<From, C, To>, Remains...>, idx> {
+  struct TypeListPrinterImpl<impl::TypeList<impl::Edge<From, C, To>, Remains...>, idx> {
     static void print() {
       printf("(%lu) %lu --%c-> %lu\n", idx, From, C, To);
-      TypeListPrinterImpl<onre::TypeList<Remains...>, idx + 1>::print();
+      TypeListPrinterImpl<impl::TypeList<Remains...>, idx + 1>::print();
     }
   };
 
   template <size_t idx>
-  struct TypeListPrinterImpl<onre::TypeList<>, idx> {
+  struct TypeListPrinterImpl<impl::TypeList<>, idx> {
     static void print() {}
   };
 
