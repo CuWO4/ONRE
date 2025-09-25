@@ -1,0 +1,6 @@
+.*/
+debug/
+tmp/
+*.txt
+*.exe
+*.log
