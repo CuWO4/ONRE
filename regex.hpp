@@ -3,16 +3,17 @@
 #include <type_traits>
 #include <string_view>
 #include <algorithm>
+#include <cstdio>
 
 namespace onre {
 
 struct RE {};
 struct EmptySet : RE {};
 struct Epsilon : RE {};
-template<char C> struct Char : RE {};
-template<typename R, typename S> struct Or : RE {};
-template<typename R, typename S> struct Concat : RE {};
-template<typename R> struct Closure : RE {};
+template<char C> struct Char : RE { static constexpr char c = C; };
+template<typename R, typename S> struct Or : RE { using left = R; using right = S; };
+template<typename R, typename S> struct Concat : RE {using left = R; using right = S; };
+template<typename R> struct Closure : RE { using inner = R; };
 
 template<typename R>
 struct Nullable {};
@@ -68,13 +69,18 @@ template<typename R> struct Simplify<Or<EmptySet, R>> { using type = typename Si
 template<typename R> struct Simplify<Or<R, EmptySet>> { using type = typename Simplify<R>::type; };
 /* R|R <=> R */
 template<typename T> struct Simplify<Or<T, T>> { using type = typename Simplify<T>::type; };
+template<> struct Simplify<Or<EmptySet, EmptySet>> { using type = EmptySet; };
 
 /* 0R <=> R0 <=> 0 */
 template<typename R> struct Simplify<Concat<EmptySet, R>> { using type = EmptySet; };
 template<typename L> struct Simplify<Concat<L, EmptySet>> { using type = EmptySet; };
+template<> struct Simplify<Concat<EmptySet, EmptySet>> { using type = EmptySet; };
 /* eR <=> Re <=> R */
 template<typename R> struct Simplify<Concat<Epsilon, R>> { using type = typename Simplify<R>::type; };
 template<typename L> struct Simplify<Concat<L, Epsilon>> { using type = typename Simplify<L>::type; };
+template<> struct Simplify<Concat<Epsilon, EmptySet>> { using type = EmptySet; };
+template<> struct Simplify<Concat<EmptySet, Epsilon>> { using type = EmptySet; };
+template<> struct Simplify<Concat<Epsilon, Epsilon>> { using type = Epsilon; };
 
 /* R** <=> R* */
 template<typename R> struct Simplify<Closure<Closure<R>>> { using type = typename Simplify<Closure<R>>::type; };
@@ -82,15 +88,54 @@ template<typename R> struct Simplify<Closure<Closure<R>>> { using type = typenam
 /* (e|R)* <=> (R|e)* <=> R* */
 template<typename R> struct Simplify<Closure<Or<Epsilon, R>>> { using type = typename Simplify<Closure<R>>::type; };
 template<typename R> struct Simplify<Closure<Or<R, Epsilon>>> { using type = typename Simplify<Closure<R>>::type; };
-/* R|SR <=> SR|R <=> (e|S)R */
-template<typename R, typename S> struct Simplify<Or<R, Concat<S, R>>> { using type = typename Simplify<Concat<Or<Epsilon, S>, R>>::type; };
-template<typename R, typename S> struct Simplify<Or<Concat<S, R>, R>> { using type = typename Simplify<Concat<Or<Epsilon, S>, R>>::type; };
+template<> struct Simplify<Closure<Or<Epsilon, Epsilon>>> { using type = Epsilon; };
 /* e|RR* <=> RR*|e <=> R* */
 template<typename R> struct Simplify<Or<Epsilon, Concat<R, Closure<R>>>> { using type = typename Simplify<Closure<R>>::type; };
 template<typename R> struct Simplify<Or<Concat<R, Closure<R>>, Epsilon>> { using type = typename Simplify<Closure<R>>::type; };
 
+/* standard ordering */
+template<typename A, typename B>
+struct is_less : std::false_type {};
+
+/* Or < Concat < Closure < EmptySet < Epsilon < Char */
+template <typename R1, typename S1, typename R2, typename S2> struct is_less<Or<R1, S1>, Concat<R2, S2>> : std::true_type {};
+template <typename R1, typename S1, typename R2> struct is_less<Or<R1, S1>, Closure<R2>> : std::true_type {};
+template <typename R, typename S> struct is_less<Or<R, S>, EmptySet> : std::true_type {};
+template <typename R, typename S> struct is_less<Or<R, S>, Epsilon> : std::true_type {};
+template <typename R, typename S, char C> struct is_less<Or<R, S>, Char<C>> : std::true_type {};
+template <typename R1, typename S1, typename R2> struct is_less<Concat<R1, S1>, Closure<R2>> : std::true_type {};
+template <typename R, typename S> struct is_less<Concat<R, S>, EmptySet> : std::true_type {};
+template <typename R, typename S> struct is_less<Concat<R, S>, Epsilon> : std::true_type {};
+template <typename R, typename S, char C> struct is_less<Concat<R, S>, Char<C>> : std::true_type {};
+template <typename R> struct is_less<Closure<R>, EmptySet> : std::true_type {};
+template <typename R> struct is_less<Closure<R>, Epsilon> : std::true_type {};
+template <typename R, char C> struct is_less<Closure<R>, Char<C>> : std::true_type {};
+template <> struct is_less<EmptySet, Epsilon> : std::true_type {};
+template <char C> struct is_less<EmptySet, Char<C>> : std::true_type {};
+template <char C> struct is_less<Epsilon, Char<C>> : std::true_type {};
+
+template <char C1, char C2>
+struct is_less<Char<C1>, Char<C2>> { static constexpr bool value = C1 < C2; };
+template<typename R1, typename S1, typename R2, typename S2>
+struct is_less<Or<R1, S1>, Or<R2, S2>> { static constexpr bool value = is_less<R1, R2>::value || (!is_less<R1, R2>::value && is_less<S1, S2>::value); };
+template<typename R1, typename S1, typename R2, typename S2>
+struct is_less<Concat<R1, S1>, Concat<R2, S2>> { static constexpr bool value = is_less<R1, R2>::value || (!is_less<R1, R2>::value && is_less<S1, S2>::value); };
+template<typename R1, typename R2>
+struct is_less<Closure<R1>, Closure<R2>> { static constexpr bool value = is_less<R1, R2>::value; };
+
+template<typename R, typename S, typename T> struct Simplify<Or<Or<R, S>, T>> { using type = typename Simplify<Or<R, Or<S, T>>>::type; };
+template<typename R, typename S> struct Simplify<Or<Or<R, S>, Or<R, S>>> { using type = typename Simplify<Or<R, S>>::type; };
+template<typename R, typename S> struct Simplify<Or<Or<R, S>, EmptySet>> { using type = typename Simplify<Or<R, S>>::type; };
+template<typename R, typename S, typename T> struct Simplify<Concat<Concat<R, S>, T>> { using type = typename Simplify<Concat<R, Concat<S, T>>>::type; };
+
 /* recursive */
-template<typename L, typename R> struct Simplify<Or<L, R>> { using type = Or<typename Simplify<L>::type, typename Simplify<R>::type>; };
+template<typename L, typename R> struct Simplify<Or<L, R>> {
+  using type = std::conditional_t<
+    is_less<L, R>::value,
+    Or<typename Simplify<L>::type, typename Simplify<R>::type>,
+    Or<typename Simplify<R>::type, typename Simplify<L>::type>
+  >;
+};
 template<typename L, typename R> struct Simplify<Concat<L, R>> { using type = Concat<typename Simplify<L>::type, typename Simplify<R>::type>; };
 template<typename R> struct Simplify<Closure<R>> { using type = Closure<typename Simplify<R>::type>; };
 
@@ -255,7 +300,148 @@ struct State {
   static constexpr bool accepting = Nullable<R>::value;
 };
 
-// TODO: AllStatesGenerator<RE> => TypeList<State>
+template<typename List> struct TypeListLength;
+template<typename... Ts> struct TypeListLength<TypeList<Ts...>> : std::integral_constant<std::size_t, sizeof...(Ts)> {};
+
+using Alphabet = TypeList<
+  Char<'0'>, Char<'1'>, Char<'2'>, Char<'3'>, Char<'4'>, Char<'5'>, Char<'6'>, Char<'7'>, Char<'8'>, Char<'9'>,
+  Char<'a'>, Char<'b'>, Char<'c'>, Char<'d'>, Char<'e'>, Char<'f'>, Char<'g'>, Char<'h'>, Char<'i'>, Char<'j'>,
+  Char<'k'>, Char<'l'>, Char<'m'>, Char<'n'>, Char<'o'>, Char<'p'>, Char<'q'>, Char<'r'>, Char<'s'>, Char<'t'>,
+  Char<'u'>, Char<'v'>, Char<'w'>, Char<'x'>, Char<'y'>, Char<'z'>,
+  Char<'A'>, Char<'B'>, Char<'C'>, Char<'D'>, Char<'E'>, Char<'F'>, Char<'G'>, Char<'H'>, Char<'I'>, Char<'J'>,
+  Char<'K'>, Char<'L'>, Char<'M'>, Char<'N'>, Char<'O'>, Char<'P'>, Char<'Q'>, Char<'R'>, Char<'S'>, Char<'T'>,
+  Char<'U'>, Char<'V'>, Char<'W'>, Char<'X'>, Char<'Y'>, Char<'Z'>
+>;
+
+template<std::size_t From, char C, std::size_t To>
+struct Edge { static constexpr std::size_t from = From; static constexpr char ch = C; static constexpr std::size_t to = To; };
+
+template<typename StatesList, typename EdgesList>
+struct StateEdgePair {
+  using States = StatesList;
+  using Edges = EdgesList;
+};
+
+/* find index of T in TypeList<Ls...> */
+template<typename List, typename T, std::size_t I = 0> struct IndexOf;
+template<typename Head, typename... Tail, typename T, std::size_t I>
+struct IndexOf<TypeList<Head, Tail...>, T, I> : IndexOf<TypeList<Tail...>, T, I + 1> {};
+template<typename Head, typename... Tail, std::size_t I>
+struct IndexOf<TypeList<Head, Tail...>, Head, I> : std::integral_constant<std::size_t, I> {};
+template<typename T, std::size_t I>
+struct IndexOf<TypeList<>, T, I> { static_assert(sizeof(T) == 0, "IndexOf: type not found in TypeList"); };
+
+
+/* Append derivative for a single character C, given current accumulator Pair<States,Edges> and a source StateT */
+template<typename PairAcc, typename StateT, char C>
+struct AppendDerivativeChar {
+private:
+  using current_states = typename PairAcc::States;
+  using current_edges  = typename PairAcc::Edges;
+  using RE_t = typename StateT::re;
+  using Der_t = typename Derivative<RE_t, C>::type;
+
+  /* If derivative is EmptySet -> no change */
+  static constexpr bool is_empty = std::is_same<Der_t, EmptySet>::value;
+public:
+  using type = std::conditional_t<
+    is_empty,
+    PairAcc,
+    StateEdgePair<
+      typename PushBackUnique<current_states, State<Der_t>>::type,
+      typename PushBackUnique<
+        current_edges,
+        Edge<
+          IndexOf<typename PushBackUnique<current_states, State<Der_t>>::type, StateT>::value,
+          C,
+          IndexOf<typename PushBackUnique<current_states, State<Der_t>>::type, State<Der_t>>::value
+        >
+      >::type
+    >
+  >;
+};
+
+template<typename PairAcc, typename StateT, typename Alphabet>
+struct AppendDerivativesForStatePair;
+template<typename PairAcc, typename StateT>
+struct AppendDerivativesForStatePair<PairAcc, StateT, TypeList<>> {
+  using type = PairAcc;
+};
+template<typename PairAcc, typename StateT, typename Head, typename... Tail>
+struct AppendDerivativesForStatePair<PairAcc, StateT, TypeList<Head, Tail...>> {
+  using after_processing = typename AppendDerivativeChar<PairAcc, StateT, Head::c>::type;
+  using type = typename AppendDerivativesForStatePair<after_processing, StateT, TypeList<Tail...>>::type;
+};
+
+/* ExpandOnce on a list of states: produce Pair<NewStates, NewEdges> */
+template<typename StateEdgePair>
+struct ExpandOnce {
+private:
+  /* fold over each state: for each state, append derivatives across alphabet */
+  template<typename PairSoFar, typename StateT>
+  struct DoState {
+    using type = typename AppendDerivativesForStatePair<PairSoFar, StateT, Alphabet>::type;
+  };
+
+  /* compile-time fold: iterate through States... */
+  template<typename Acc, typename... Remaining> struct Fold;
+  template<typename Acc, typename HeadState, typename... Rest>
+  struct Fold<Acc, HeadState, Rest...> {
+    using after = typename DoState<Acc, HeadState>::type;
+    using type = typename Fold<after, Rest...>::type;
+  };
+  template<typename Acc>
+  struct Fold<Acc> { using type = Acc; };
+
+  /* unpacking List */
+  template<typename Acc, typename StateList> struct FoldHelper;
+  template<typename Acc, typename... States>
+  struct FoldHelper<Acc, TypeList<States...>> {
+      using type = typename Fold<Acc, States...>::type;
+  };
+
+public:
+  using type = typename FoldHelper<StateEdgePair, typename StateEdgePair::States>::type;
+};
+
+/* ExpandUntilStable: iterate ExpandOncePair until states length doesn't increase */
+template<typename PairAcc, std::size_t PrevLen>
+struct ExpandUntilStablePairImpl;
+
+template<typename PairAcc, std::size_t PrevLen>
+struct ExpandUntilStablePairImpl {
+private:
+  using NextPair = typename ExpandOnce<PairAcc>::type;
+  static constexpr std::size_t next_len = TypeListLength<typename NextPair::States>::value;
+
+public:
+  using type = typename std::conditional_t<
+    next_len == PrevLen,
+    std::type_identity<NextPair>,
+    ExpandUntilStablePairImpl<NextPair, next_len>
+  >::type;
+};
+
+template<typename PairAcc, std::size_t PrevLen = TypeListLength<typename PairAcc::States>::value>
+struct ExpandUntilStablePair {
+  using type = typename ExpandUntilStablePairImpl<PairAcc, PrevLen>::type;
+};
+
+template<typename RE>
+struct AllStatesAndEdgesGenerator {
+private:
+  using initial_states = TypeList<State<RE>>;
+  using initial_pair = StateEdgePair<initial_states, TypeList<>>;
+public:
+  using type = typename ExpandUntilStablePair<initial_pair, TypeListLength<initial_states>::value>::type;
+  using States = typename type::States;
+  using Edges  = typename type::Edges;
+};
+
+/* aliases */
+template<typename RE> using AllStateEdgePair = typename AllStatesAndEdgesGenerator<RE>::type;
+template<typename RE> using AllStatesList = typename AllStatesAndEdgesGenerator<RE>::States;
+template<typename RE> using AllEdgesList  = typename AllStatesAndEdgesGenerator<RE>::Edges;
 
 template<FixedString Pattern>
 class Regex {
@@ -264,5 +450,91 @@ public:
     /* TODO */
   }
 };
+
+namespace logger {
+
+  template <typename RE>
+  struct ToString;
+
+  template <>
+  struct ToString<EmptySet> {
+    static std::string to_string() {
+      return "(/)";
+    }
+  };
+
+  template <>
+  struct ToString<Epsilon> {
+    static std::string to_string() {
+      return "";
+    }
+  };
+
+  template <char C>
+  struct ToString<Char<C>> {
+    static std::string to_string() {
+      return std::string(1, C);
+    }
+  };
+
+  template <typename R, typename S>
+  struct ToString<Or<R, S>> {
+    static std::string to_string() {
+      return ToString<R>::to_string() + '|' + ToString<S>::to_string();
+    }
+  };
+
+  template <typename R, typename S>
+  struct ToString<Concat<R, S>> {
+    static std::string to_string() {
+      auto left_str = is_less<R, Concat<R, S>>::value
+        ? '(' + ToString<R>::to_string() + ")" : ToString<R>::to_string();
+      auto right_str = is_less<S, Concat<R, S>>::value
+        ? '(' + ToString<S>::to_string() + ")" : ToString<S>::to_string();
+      return  left_str + right_str;
+    }
+  };
+
+  template <typename R>
+  struct ToString<Closure<R>> {
+    static std::string to_string() {
+      return is_less<R, Closure<R>>::value
+        ? '(' + ToString<R>::to_string() + ")*"
+        : ToString<R>::to_string();
+    }
+  };
+
+  template <typename TypeList, size_t idx>
+  struct TypeListPrinterImpl;
+
+  template <typename TypeList>
+  struct TypeListPrinter {
+    static void print() {
+      TypeListPrinterImpl<TypeList, 0>::print();
+    }
+  };
+
+  template<size_t idx, typename RE, typename... Remains>
+  struct TypeListPrinterImpl<onre::TypeList<State<RE>, Remains...>, idx> {
+    static void print() {
+      printf("(%lu) %s\n", idx, ToString<RE>::to_string().c_str());
+      TypeListPrinterImpl<onre::TypeList<Remains...>, idx + 1>::print();
+    }
+  };
+
+  template<size_t idx, size_t From, char C, size_t To, typename... Remains>
+  struct TypeListPrinterImpl<onre::TypeList<onre::Edge<From, C, To>, Remains...>, idx> {
+    static void print() {
+      printf("(%lu) %lu --%c-> %lu\n", idx, From, C, To);
+      TypeListPrinterImpl<onre::TypeList<Remains...>, idx + 1>::print();
+    }
+  };
+
+  template <size_t idx>
+  struct TypeListPrinterImpl<onre::TypeList<>, idx> {
+    static void print() {}
+  };
+
+} /* namespace logger */
 
 } /* namespace onre */
