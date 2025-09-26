@@ -23,6 +23,7 @@ do { \
 } while(false);
 
 int main() {
+  std::cout << "\n=== Basic Tests ===\n";
   TEST_AND_LOG("a", "a", true);
   TEST_AND_LOG("a", "b", false);
   TEST_AND_LOG("a|b", "a", true);
@@ -42,6 +43,24 @@ int main() {
   TEST_AND_LOG("(a|b)*|c", "abbac", false);
   TEST_AND_LOG("(a|b)*|c", "c", true);
   TEST_AND_LOG("(a|b)*|c", "d", false);
+  TEST_AND_LOG("a+", "a", true);
+  TEST_AND_LOG("a+", "aa", true);
+  TEST_AND_LOG("a+", "", false);
+  TEST_AND_LOG("a+", "b", false);
+  TEST_AND_LOG("(ab)+", "ab", true);
+  TEST_AND_LOG("(ab)+", "abab", true);
+  TEST_AND_LOG("(ab)+", "a", false);
+  TEST_AND_LOG("a+b", "aaab", true);
+  TEST_AND_LOG("a+b", "b", false);
+  TEST_AND_LOG("a?", "", true);
+  TEST_AND_LOG("a?", "a", true);
+  TEST_AND_LOG("a?", "aa", false);
+  TEST_AND_LOG("a?b", "b", true);
+  TEST_AND_LOG("a?b", "ab", true);
+  TEST_AND_LOG("a?b", "aab", false);
+  TEST_AND_LOG("(ab)?c", "c", true);
+  TEST_AND_LOG("(ab)?c", "abc", true);
+  TEST_AND_LOG("(ab)?c", "ac", false);
 
   std::cout << "\n=== Boundary Tests ===\n";
   TEST_AND_LOG("", "", true);
@@ -67,6 +86,7 @@ int main() {
     long_alternating += "ab";
   }
   TEST_AND_LOG("(ab)*", long_alternating, true);
+  TEST_AND_LOG("(a?b)+", long_alternating, true);
 
   std::cout << "\n=== Backtracking Killer Tests ===\n";
 
@@ -116,6 +136,17 @@ int main() {
   TEST_AND_LOG("(a(b)*)*", "a", true);
   TEST_AND_LOG("(a(b)*)*", "abb", true);
   TEST_AND_LOG("(a(b)*)*", "b", false);
+  TEST_AND_LOG("a*b+", "b", true);
+  TEST_AND_LOG("a*b+", "ab", true);
+  TEST_AND_LOG("a*b+", "aaabbb", true);
+  TEST_AND_LOG("a*b+", "a", false);
+  TEST_AND_LOG("(a|b)+c*", "abc", true);
+  TEST_AND_LOG("(a|b)+c*", "a", true);
+  TEST_AND_LOG("(a|b)+c*", "c", false);
+  TEST_AND_LOG("a+b?c*", "aa", true);
+  TEST_AND_LOG("a+b?c*", "aab", true);
+  TEST_AND_LOG("a+b?c*", "aabc", true);
+  TEST_AND_LOG("a+b?c*", "bc", false);
 
   std::cout << "\n=== Ambiguous and Tricky Parsing Tests ===\n";
   TEST_AND_LOG("a|b|c", "b", true);
@@ -161,6 +192,18 @@ int main() {
   std::string long_for_complex = "start" + std::string(100000, 'x') + "end";
   TEST_AND_LOG("start(x)*end", long_for_complex, true);
   TEST_AND_LOG("start(y)*end", long_for_complex, false);
+
+  std::string long_with_optional = "prefix" + std::string(100000, 'x') + "suffix";
+  TEST_AND_LOG("prefix(x)+(y)?suffix", long_with_optional, true);
+  TEST_AND_LOG("prefix(x)+(y)?suffix", "prefixxsuffix", true);
+  TEST_AND_LOG("prefix(x)+(y)?suffix", "prefixsuffix", false);
+
+  std::string long_mixed;
+  for (int i = 0; i < 100000; i++) {
+      long_mixed += (i % 2 == 0) ? 'a' : 'b';
+  }
+  TEST_AND_LOG("(a+b)+", long_mixed, true);
+  TEST_AND_LOG("(a?b?)+", long_mixed, true);
 
   std::string long_ab_sequence;
   for (int i = 0; i < 50000; i++) {
