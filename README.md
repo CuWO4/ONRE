@@ -15,7 +15,7 @@ A single-header, zero-overhead **O(n)** regular expression engine.
 - Regular expressions written as constant strings are compiled into automata at compile time, with **no runtime overhead**;
 - Single header file, just `#include` and use;
 - Built on **Brzozowski derivatives**, realized with type-level functional metaprogramming — very cool!
-- Supports customizable alphabets (default: `[a-zA-Z0-9]`);
+- Supports all visible ASCII characters as alphabet;
 - Supports standard regular expressions (concatenation, alternation, Kleene star, parentheses), `+` and `?` sugar, full-match `.`, character classes like `[a-z012]`, and character escapes;
 - Not supported: zero-width assertions, capturing groups, extended quantifiers, partial matches, or back references.
 
@@ -93,22 +93,9 @@ sys     0m2.264s
 #include "regex.hpp"
 
 void f() {
-  bool result = onre::Regex<"(ab)*|c*|b">::match("abab"); // true
-}
-```
-
-You can customize the alphabet by defining `ONRE_ALPHABET` before including the header. The default is `[a-zA-Z0-9]`. Example:
-
-```cpp
-#define ONRE_ALPHABET "abc@."
-#include "regex.hpp"
-
-void f() {
   bool result = onre::Regex<"((ab)*|c*|b)(@\\.)?">::match("abab"); // true
 }
 ```
-
-The smaller the alphabet, the faster the compilation.
 
 ## Theoretical Foundation
 
