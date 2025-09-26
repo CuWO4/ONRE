@@ -25,6 +25,15 @@ struct PushBackUnique<TypeList<Ts...>, T> {
   >;
 };
 
+/* find index of T in TypeList<Ls...> */
+template<typename List, typename T, std::size_t I = 0> struct IndexOf;
+template<typename Head, typename... Tail, typename T, std::size_t I>
+struct IndexOf<TypeList<Head, Tail...>, T, I> : IndexOf<TypeList<Tail...>, T, I + 1> {};
+template<typename Head, typename... Tail, std::size_t I>
+struct IndexOf<TypeList<Head, Tail...>, Head, I> : std::integral_constant<std::size_t, I> {};
+template<typename T, std::size_t I>
+struct IndexOf<TypeList<>, T, I> { static_assert(sizeof(T) == 0, "IndexOf: type not found in TypeList"); };
+
 template<size_t N>
 struct FixedString {
   consteval FixedString(const char (&str)[N]) {
@@ -490,15 +499,29 @@ struct StateEdgePair {
   using Edges = EdgesList;
 };
 
-/* find index of T in TypeList<Ls...> */
-template<typename List, typename T, std::size_t I = 0> struct IndexOf;
-template<typename Head, typename... Tail, typename T, std::size_t I>
-struct IndexOf<TypeList<Head, Tail...>, T, I> : IndexOf<TypeList<Tail...>, T, I + 1> {};
-template<typename Head, typename... Tail, std::size_t I>
-struct IndexOf<TypeList<Head, Tail...>, Head, I> : std::integral_constant<std::size_t, I> {};
-template<typename T, std::size_t I>
-struct IndexOf<TypeList<>, T, I> { static_assert(sizeof(T) == 0, "IndexOf: type not found in TypeList"); };
-
+/* get TypeList<Char...> of possible used character in RE */
+template <typename RE, typename Acc>
+struct PossibleUsedChars;
+template <typename Acc> struct PossibleUsedChars<EmptySet, Acc> { using type = Acc; };
+template <typename Acc> struct PossibleUsedChars<Epsilon, Acc> { using type = Acc; };
+template <char C, typename Acc> 
+struct PossibleUsedChars<Char<C>, Acc> { 
+  using type = typename PushBackUnique<Acc, Char<C>>::type; 
+};
+template <typename R, typename S, typename Acc>
+struct PossibleUsedChars<Or<R, S>, Acc> { 
+  using TmpAcc = typename PossibleUsedChars<R, Acc>::type;
+  using type = typename PossibleUsedChars<S, TmpAcc>::type;
+};
+template <typename R, typename S, typename Acc>
+struct PossibleUsedChars<Concat<R, S>, Acc> { 
+  using TmpAcc = typename PossibleUsedChars<R, Acc>::type;
+  using type = typename PossibleUsedChars<S, TmpAcc>::type;
+};
+template <typename R, typename Acc>
+struct PossibleUsedChars<Closure<R>, Acc> { 
+  using type = typename PossibleUsedChars<R, Acc>::type;
+};
 
 /* Append derivative for a single character C, given current accumulator Pair<States,Edges> and a source StateT */
 template<typename PairAcc, typename StateT, char C>
@@ -548,7 +571,8 @@ private:
   /* fold over each state: for each state, append derivatives across alphabet */
   template<typename PairSoFar, typename StateT>
   struct DoState {
-    using type = typename AppendDerivativesForStatePair<PairSoFar, StateT, Alphabet>::type;
+    using PossibleChars = typename PossibleUsedChars<typename StateT::re, TypeList<>>::type;
+    using type = typename AppendDerivativesForStatePair<PairSoFar, StateT, PossibleChars>::type;
   };
 
   /* compile-time fold: iterate through States... */
