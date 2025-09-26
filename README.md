@@ -11,7 +11,7 @@
 - 单头文件, 仅需 `include` 即可使用;
 - 使用 Brzozowski 导数进行基于类型体操的函数式元编程, 很酷!
 - 支持自定义可用字符集, 默认为 `[a-zA-Z0-9]`;
-- 支持标准正则表达式(即连接, 并, 闭包, 括号), 支持 `+`, `?` 语法糖, 支持字符类 (形如 `[a-z012]`); 
+- 支持标准正则表达式(即连接, 并, 闭包, 括号), 支持 `+`, `?` 语法糖, 支持全匹配 `.`, 支持字符类 (形如 `[a-z012]`), 支持字符转义; 
 - 不支持零宽断言; 不支持捕获组; 不支持量词扩展; 不支持部分匹配; 不支持反向引用.
 
 ## 用法
@@ -27,11 +27,11 @@ void f() {
 可通过在 `#include` 前定义宏 `ONRE_ALPHABET` 自定义字符集, 默认为 `[a-zA-Z0-9]`. 例如:
 
 ```cpp
-#define ONRE_ALPHABET "abc"
+#define ONRE_ALPHABET "abc@."
 #include "regex.hpp"
 
 void f() {
-  bool result = onre::Regex<"(ab)*|c*|b">::match("abab"); // true
+  bool result = onre::Regex<"((ab)*|c*|b)(@\\.)?">::match("abab"); // true
 }
 ```
 
@@ -132,6 +132,12 @@ $$q_0 = R$$
 $$Q_\text{accept} = \lbrace R \in RE: \epsilon \in L(R)\rbrace$$
 
 . 我们递归地对正则表达式求导, 直至没有新正则表达式生成, 即完成构建.
+
+## 测试
+
+```sh
+make test -j10
+```
 
 ## 依赖
 
