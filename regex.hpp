@@ -5,9 +5,41 @@
 #include <algorithm>
 #include <cstdio>
 
+#ifndef ONRE_ALPHABET
+  #define ONRE_ALPHABET "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+#endif
 namespace onre {
-
 namespace impl {
+
+template<typename... Ts> struct TypeList {};
+template<typename List, typename T> struct Contains;
+template<typename T, typename... Ts> struct Contains<TypeList<Ts...>, T> : std::disjunction<std::is_same<T, Ts>...> {};
+template<typename List, typename T>
+struct PushBackUnique;
+template<typename... Ts, typename T>
+struct PushBackUnique<TypeList<Ts...>, T> {
+  using type = std::conditional_t<
+    Contains<TypeList<Ts...>, T>::value,
+    TypeList<Ts...>,
+    TypeList<Ts..., T>
+  >;
+};
+
+template<size_t N>
+struct FixedString {
+  consteval FixedString(const char (&str)[N]) {
+    std::copy_n(str, N, data.begin());
+  }
+  FixedString(const FixedString&) = delete;
+
+  std::array<char, N> data{};
+
+  static constexpr size_t length = N - 1;
+  constexpr const char* c_str() const { return data.data(); }
+  constexpr char operator[](size_t i) const { return data[i]; }
+};
+template<size_t N>
+FixedString(const char (&str)[N]) -> FixedString<N>;
 
 struct RE {};
 struct EmptySet : RE {};
@@ -16,6 +48,39 @@ template<char C> struct Char : RE { static constexpr char c = C; };
 template<typename R, typename S> struct Or : RE { using left = R; using right = S; };
 template<typename R, typename S> struct Concat : RE {using left = R; using right = S; };
 template<typename R> struct Closure : RE { using inner = R; };
+
+/* generate Alphabet & is_valid_char */
+template<FixedString S, size_t I, typename Acc>
+struct BuildAlphabet {
+  using NextAcc = typename PushBackUnique<Acc, Char<S.data[I]>>::type;
+  struct impl_run_on { using type = typename BuildAlphabet<S, I + 1, NextAcc>::type; };
+  struct impl_stop { using type = NextAcc; };
+  using type = typename std::conditional_t<I + 1 < S.length, impl_run_on, impl_stop>::type;
+};
+
+static constexpr size_t NR_ASCII_CHAR = 128;
+
+template <size_t N>
+static consteval std::array<bool, NR_ASCII_CHAR> make_valid_char_table(FixedString<N> s) {
+  std::array<bool, NR_ASCII_CHAR> t{};
+  for (size_t i = 0; i < s.length; ++i) {
+    unsigned char uc = static_cast<unsigned char>(s.data[i]);
+    if (uc == 0) continue;
+    if (uc < NR_ASCII_CHAR) t[uc] = true;
+  }
+  return t;
+}
+
+constexpr std::array<bool, NR_ASCII_CHAR> valid_char_table = make_valid_char_table(FixedString(ONRE_ALPHABET));
+
+using Alphabet = typename BuildAlphabet<FixedString(ONRE_ALPHABET), 0, TypeList<>>::type;
+
+constexpr bool is_valid_char(char ch) {
+  return (ch >= 'a' && ch <= 'z')
+    || (ch >= 'A' && ch <= 'Z')
+    || (ch >= '0' && ch <= '9')
+    || valid_char_table[static_cast<unsigned char>(ch)];
+}
 
 template<typename R>
 struct Nullable {};
@@ -143,22 +208,6 @@ template<typename L, typename R> struct Simplify<Or<L, R>> {
 template<typename L, typename R> struct Simplify<Concat<L, R>> { using type = Concat<typename Simplify<L>::type, typename Simplify<R>::type>; };
 template<typename R> struct Simplify<Closure<R>> { using type = Closure<typename Simplify<R>::type>; };
 
-template<size_t N>
-struct FixedString {
-  consteval FixedString(const char (&str)[N]) {
-    std::copy_n(str, N, data.begin());
-  }
-  FixedString(const FixedString&) = delete;
-
-  std::array<char, N> data{};
-
-  static constexpr size_t length = N - 1;
-  constexpr const char* c_str() const { return data.data(); }
-  constexpr char operator[](size_t i) const { return data[i]; }
-};
-template<size_t N>
-FixedString(const char (&str)[N]) -> FixedString<N>;
-
 /*
   Grammar:
     Regex       := Term ('|' Regex)?
@@ -178,12 +227,6 @@ template<FixedString Pattern, size_t Pos> struct ParseFactor;
 template<FixedString Pattern, size_t Pos> struct ParseAtom;
 template<FixedString Pattern, size_t Pos> struct ParseCharSet;
 template<FixedString Pattern, size_t Pos> struct ParseCharSetAtom;
-
-constexpr bool is_valid_char(char c) {
-  return (c >= '0' && c <= '9')
-    || (c >= 'a' && c <= 'z')
-    || (c >= 'A' && c <= 'Z');
-}
 
 template<char Start, char End>
 struct CharOrSequential {
@@ -373,20 +416,6 @@ struct RegexScan {
   static_assert(Parse::next == Pattern.length, "RegexScan: pattern not fully consumed or contains unexpected trailing characters");
 };
 
-template<typename... Ts> struct TypeList {};
-template<typename List, typename T> struct Contains;
-template<typename T, typename... Ts> struct Contains<TypeList<Ts...>, T> : std::disjunction<std::is_same<T, Ts>...> {};
-template<typename List, typename T>
-struct PushBackUnique;
-template<typename... Ts, typename T>
-struct PushBackUnique<TypeList<Ts...>, T> {
-  using type = std::conditional_t<
-    Contains<TypeList<Ts...>, T>::value,
-    TypeList<Ts...>,
-    TypeList<Ts..., T>
-  >;
-};
-
 template<typename R>
 struct State {
   using re = R;
@@ -395,16 +424,6 @@ struct State {
 
 template<typename List> struct TypeListLength;
 template<typename... Ts> struct TypeListLength<TypeList<Ts...>> : std::integral_constant<std::size_t, sizeof...(Ts)> {};
-
-using Alphabet = TypeList<
-  Char<'0'>, Char<'1'>, Char<'2'>, Char<'3'>, Char<'4'>, Char<'5'>, Char<'6'>, Char<'7'>, Char<'8'>, Char<'9'>,
-  Char<'a'>, Char<'b'>, Char<'c'>, Char<'d'>, Char<'e'>, Char<'f'>, Char<'g'>, Char<'h'>, Char<'i'>, Char<'j'>,
-  Char<'k'>, Char<'l'>, Char<'m'>, Char<'n'>, Char<'o'>, Char<'p'>, Char<'q'>, Char<'r'>, Char<'s'>, Char<'t'>,
-  Char<'u'>, Char<'v'>, Char<'w'>, Char<'x'>, Char<'y'>, Char<'z'>,
-  Char<'A'>, Char<'B'>, Char<'C'>, Char<'D'>, Char<'E'>, Char<'F'>, Char<'G'>, Char<'H'>, Char<'I'>, Char<'J'>,
-  Char<'K'>, Char<'L'>, Char<'M'>, Char<'N'>, Char<'O'>, Char<'P'>, Char<'Q'>, Char<'R'>, Char<'S'>, Char<'T'>,
-  Char<'U'>, Char<'V'>, Char<'W'>, Char<'X'>, Char<'Y'>, Char<'Z'>
->;
 
 template<std::size_t From, char C, std::size_t To>
 struct Edge { static constexpr std::size_t from = From; static constexpr char ch = C; static constexpr std::size_t to = To; };
@@ -536,8 +555,6 @@ template<typename RE> using AllStateEdgePair = typename AllStatesAndEdgesGenerat
 template<typename RE> using AllStatesList = typename AllStatesAndEdgesGenerator<RE>::States;
 template<typename RE> using AllEdgesList  = typename AllStatesAndEdgesGenerator<RE>::Edges;
 
-static constexpr size_t NR_ASCII_CHAR = 128;
-
 template<typename EdgesList>
 struct BuildTable {
   template<std::size_t N>
@@ -659,6 +676,14 @@ namespace logger {
   struct TypeListPrinterImpl<impl::TypeList<impl::State<RE>, Remains...>, idx> {
     static void print() {
       printf("(%lu) %s\n", idx, ToString<RE>::to_string().c_str());
+      TypeListPrinterImpl<impl::TypeList<Remains...>, idx + 1>::print();
+    }
+  };
+
+  template<size_t idx, char C, typename... Remains>
+  struct TypeListPrinterImpl<impl::TypeList<impl::Char<C>, Remains...>, idx> {
+    static void print() {
+      printf("(%lu) %c\n", idx, C);
       TypeListPrinterImpl<impl::TypeList<Remains...>, idx + 1>::print();
     }
   };
