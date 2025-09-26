@@ -10,7 +10,8 @@
 - 在编译期将常量字符串正则表达式构建为自动机, 无运行时开销;
 - 单头文件, 仅需 `include` 即可使用;
 - 使用 Brzozowski 导数进行基于类型体操的函数式元编程, 很酷!
-- 只支持标准正则表达式(即连接, 并, 闭包, 括号), 字符集为 `[0-9a-zA-Z]`. 不支持零宽断言; 不支持捕获组; 不支持量词扩展; 不支持部分匹配; 不支持反向引用.
+- 支持标准正则表达式(即连接, 并, 闭包, 括号), 支持 `+`, `?` 语法糖, 支持字符类 (形如 `[a-z012]`). 字符集为 `[0-9a-zA-Z]`. 
+- 不支持零宽断言; 不支持捕获组; 不支持量词扩展; 不支持部分匹配; 不支持反向引用.
 
 ## 用法
 
@@ -25,52 +26,37 @@ void f() {
 ## 效果
 
 ```log
-pattern: a                        str: a                        str_len: 1       result: true  expected: true  time: 0us
-pattern: a                        str: b                        str_len: 1       result: false expected: false time: 0us
-pattern: a|b                      str: a                        str_len: 1       result: true  expected: true  time: 0us
-pattern: a|b                      str: b                        str_len: 1       result: true  expected: true  time: 0us
-pattern: a|b                      str: c                        str_len: 1       result: false expected: false time: 0us
-pattern: a*                       str:                          str_len: 0       result: true  expected: true  time: 0us
-pattern: a*                       str: a                        str_len: 1       result: true  expected: true  time: 0us
-pattern: a*                       str: aa                       str_len: 2       result: true  expected: true  time: 0us
-pattern: a*                       str: b                        str_len: 1       result: false expected: false time: 0us
-pattern: ab                       str: ab                       str_len: 2       result: true  expected: true  time: 0us
-pattern: ab                       str: a                        str_len: 1       result: false expected: false time: 0us
-pattern: (ab)*                    str: abab                     str_len: 4       result: true  expected: true  time: 0us
-pattern: (ab)*                    str: aba                      str_len: 3       result: false expected: false time: 0us
-pattern: a*b                      str: aaab                     str_len: 4       result: true  expected: true  time: 0us
-pattern: a*b                      str: b                        str_len: 1       result: true  expected: true  time: 0us
-pattern: a*b                      str: aaac                     str_len: 4       result: false expected: false time: 0us
-pattern: (a|b)*|c                 str: abbac                    str_len: 5       result: false expected: false time: 0us
-pattern: (a|b)*|c                 str: c                        str_len: 1       result: true  expected: true  time: 0us
-pattern: (a|b)*|c                 str: d                        str_len: 1       result: false expected: false time: 0us
-
-=== Boundary Tests ===
-pattern:                          str:                          str_len: 0       result: true  expected: true  time: 0us
-pattern:                          str: a                        str_len: 1       result: false expected: false time: 0us
-pattern: a                        str:                          str_len: 0       result: false expected: false time: 0us
-pattern: a*                       str:                          str_len: 0       result: true  expected: true  time: 0us
-pattern: (a|)                     str: a                        str_len: 1       result: true  expected: true  time: 0us
-pattern: (a|)                     str:                          str_len: 0       result: true  expected: true  time: 0us
-
 === Long String Tests (O(n) performance) ===
-pattern: a*                       str: aaaaaaaaaaaaaaaaaaaa...  str_len: 100000  result: true  expected: true  time: 223us
-pattern: a*b                      str: aaaaaaaaaaaaaaaaaaaa...  str_len: 100001  result: true  expected: true  time: 223us
-pattern: (ab)*                    str: abababababababababab...  str_len: 100000  result: true  expected: true  time: 223us
+pattern: a*                                      str: aaaaaaaaaaaaaaaaaaaa...  str_len: 100000  result: true  expected: true  time: 149us
+pattern: a*b                                     str: aaaaaaaaaaaaaaaaaaaa...  str_len: 100001  result: true  expected: true  time: 148us
+pattern: (ab)*                                   str: abababababababababab...  str_len: 100000  result: true  expected: true  time: 153us
+pattern: (a?b)+                                  str: abababababababababab...  str_len: 100000  result: true  expected: true  time: 144us
+pattern: [a-z]+                                  str: mmmmmmmmmmmmmmmmmmmm...  str_len: 100000  result: true  expected: true  time: 144us
+pattern: [a-z0-9]+                               str: a1c3e5g7i9k1m3o5q7s9...  str_len: 100000  result: true  expected: true  time: 145us
 
 === Backtracking Killer Tests ===
-pattern: (a|b)*c                  str: aaaaaaaaaaaaaaaaaaaa...  str_len: 10000   result: false expected: false time: 22us
-pattern: (a|b)*a(a|b)*a           str: bbbbbbbbbbbbbbbbbbbb...  str_len: 10001   result: false expected: false time: 22us
-pattern: (a*)*                    str: aaaaaaaaaaaaaaaaaaaa...  str_len: 10000   result: true  expected: true  time: 22us
-pattern: (a*(b*)*)*               str: bbbbbbbbbbbbbbbbbbbb...  str_len: 10000   result: true  expected: true  time: 22us
-pattern: (a|b)*a(a|b)*b           str: aaaaaaaaaaaaaaaaaaaa...  str_len: 20001   result: false expected: false time: 28us
+pattern: (a|b)*c                                 str: aaaaaaaaaaaaaaaaaaaa...  str_len: 10000   result: false expected: false time: 14us
+pattern: (a|b)*a(a|b)*a                          str: bbbbbbbbbbbbbbbbbbbb...  str_len: 10001   result: false expected: false time: 14us
+pattern: (a*)*                                   str: aaaaaaaaaaaaaaaaaaaa...  str_len: 10000   result: true  expected: true  time: 15us
+pattern: (a*(b*)*)*                              str: bbbbbbbbbbbbbbbbbbbb...  str_len: 10000   result: true  expected: true  time: 15us
+pattern: (a|b)*a(a|b)*b                          str: aaaaaaaaaaaaaaaaaaaa...  str_len: 20001   result: false expected: false time: 16us
+pattern: ([a-z])*z                               str: xxxxxxxxxxxxxxxxxxxx...  str_len: 10000   result: false expected: false time: 14us
 
-=== Mixed Character Tests ===
-pattern: (a|b|c|d|e)*             str: abcdefghijklmnopqrst...  str_len: 10000   result: false expected: false time: 0us
-
-=== Non-matching Long String Tests ===
-pattern: (a|b|c|d|e)*             str: 11111111111111111111...  str_len: 10000   result: false expected: false time: 0us
-pattern: a*                       str: aaaaaaaaaaaaaaaaaaaa...  str_len: 10000   result: false expected: false time: 11us
+=== Long String Complex Pattern Tests ===
+pattern: (a|b)*                                  str: abababababababababab...  str_len: 100000  result: true  expected: true  time: 150us
+pattern: (a*b*)*                                 str: abababababababababab...  str_len: 100000  result: true  expected: true  time: 150us
+pattern: a*ba*                                   str: aaaaaaaaaaaaaaaaaaaa...  str_len: 100001  result: true  expected: true  time: 144us
+pattern: a*ca*                                   str: aaaaaaaaaaaaaaaaaaaa...  str_len: 100001  result: false expected: false time: 72us
+pattern: start(x)*end                            str: startxxxxxxxxxxxxxxx...  str_len: 100008  result: true  expected: true  time: 144us
+pattern: start(y)*end                            str: startxxxxxxxxxxxxxxx...  str_len: 100008  result: false expected: false time: 0us
+pattern: prefix(x)+(y)?suffix                    str: prefixxxxxxxxxxxxxxx...  str_len: 100012  result: true  expected: true  time: 156us
+pattern: prefix(x)+(y)?suffix                    str: prefixxsuffix            str_len: 13      result: true  expected: true  time: 0us
+pattern: prefix(x)+(y)?suffix                    str: prefixsuffix             str_len: 12      result: false expected: false time: 0us
+pattern: (a+b)+                                  str: abababababababababab...  str_len: 100000  result: true  expected: true  time: 144us
+pattern: (a?b?)+                                 str: abababababababababab...  str_len: 100000  result: true  expected: true  time: 150us
+pattern: (ab)*                                   str: abababababababababab...  str_len: 100000  result: true  expected: true  time: 144us
+pattern: (a|b)*                                  str: abababababababababab...  str_len: 100000  result: true  expected: true  time: 150us
+pattern: (aa)*                                   str: abababababababababab...  str_len: 100000  result: false expected: false time: 0us
 ```
 
 可以看到, 在超长串和回溯地狱用例下, 引擎仍然十分稳定地取得了 O(n) 的结果, 同样的用例对于回溯引擎则几乎必然崩溃 (例如著名的 [Cloudflare 事件](https://www.reddit.com/r/sysadmin/comments/c8eymj/cloudflare_outage_caused_by_deploying_bad_regular/)).
