@@ -73,6 +73,20 @@ pattern: ((((0*1)0)((10*....*1)0)((10*1)0)*       pattern_len: 321   str: 001101
 pattern: ((((0*1)0)((10*....*1)0)((10*1)0)*       pattern_len: 321   str: 001110                    str_len: 6        result: false  expected: false  time: 0us
 pattern: ((((0*1)0)((10*....*1)0)((10*1)0)*       pattern_len: 321   str: 001111                    str_len: 6        result: false  expected: false  time: 0us
 pattern: ((((0*1)0)((10*....*1)0)((10*1)0)*       pattern_len: 321   str: 010000                    str_len: 6        result: false  expected: false  time: 0us
+pattern: ((((0*1)0)((10*....*1)0)((10*1)0)*       pattern_len: 321   str: 010001                    str_len: 6        result: true   expected: true   time: 0us
+pattern: ((((0*1)0)((10*....*1)0)((10*1)0)*       pattern_len: 321   str: 010010                    str_len: 6        result: false  expected: false  time: 0us
+pattern: ((((0*1)0)((10*....*1)0)((10*1)0)*       pattern_len: 321   str: 010011                    str_len: 6        result: false  expected: false  time: 0us
+pattern: ((((0*1)0)((10*....*1)0)((10*1)0)*       pattern_len: 321   str: 010100                    str_len: 6        result: false  expected: false  time: 0us
+pattern: ((((0*1)0)((10*....*1)0)((10*1)0)*       pattern_len: 321   str: 11010111....01100111      str_len: 31       result: false  expected: false  time: 0us
+pattern: ((((0*1)0)((10*....*1)0)((10*1)0)*       pattern_len: 321   str: 11001001....11000110      str_len: 30       result: false  expected: false  time: 0us
+pattern: ((((0*1)0)((10*....*1)0)((10*1)0)*       pattern_len: 321   str: 11001000....01101001      str_len: 31       result: true   expected: true   time: 0us
+pattern: ((((0*1)0)((10*....*1)0)((10*1)0)*       pattern_len: 321   str: 11001100....01110011      str_len: 31       result: false  expected: false  time: 0us
+pattern: ((((0*1)0)((10*....*1)0)((10*1)0)*       pattern_len: 321   str: 11101001....01010001      str_len: 31       result: false  expected: false  time: 0us
+pattern: ((((0*1)0)((10*....*1)0)((10*1)0)*       pattern_len: 321   str: 11001010....11111111      str_len: 29       result: false  expected: false  time: 0us
+pattern: ((((0*1)0)((10*....*1)0)((10*1)0)*       pattern_len: 321   str: 10101011....01001010      str_len: 30       result: false  expected: false  time: 0us
+pattern: ((((0*1)0)((10*....*1)0)((10*1)0)*       pattern_len: 321   str: 11000100....11101100      str_len: 31       result: true   expected: true   time: 0us
+pattern: ((((0*1)0)((10*....*1)0)((10*1)0)*       pattern_len: 321   str: 10001110....00101001      str_len: 30       result: false  expected: false  time: 0us
+pattern: ((((0*1)0)((10*....*1)0)((10*1)0)*       pattern_len: 321   str: 10001101....11001101      str_len: 31       result: false  expected: false  time: 0us
 ```
 
 As shown, for extremely long strings, catastrophic backtracking cases, oversized or highly complex patterns, the engine consistently achieves **O(n)** performance. In contrast, backtracking-based engines will almost certainly choke on such inputs (see the well-known [Cloudflare incident](https://www.reddit.com/r/sysadmin/comments/c8eymj/cloudflare_outage_caused_by_deploying_bad_regular/)).
