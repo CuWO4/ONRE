@@ -445,19 +445,13 @@ template<typename RE> using AllStateEdgePair = typename AllStatesAndEdgesGenerat
 template<typename RE> using AllStatesList = typename AllStatesAndEdgesGenerator<RE>::States;
 template<typename RE> using AllEdgesList  = typename AllStatesAndEdgesGenerator<RE>::Edges;
 
-static constexpr size_t ALPHABET_SIZE = TypeListLength<Alphabet>::value;
-static constexpr int char_to_idx(char c) {
-  if (c >= '0' && c <= '9') return c - '0';                 // 0..9
-  if (c >= 'a' && c <= 'z') return 10 + (c - 'a');          // 10..35
-  if (c >= 'A' && c <= 'Z') return 36 + (c - 'A');          // 36..61
-  return -1;
-}
+static constexpr size_t NR_ASCII_CHAR = 128;
 
 template<typename EdgesList>
 struct BuildTable {
   template<std::size_t N>
-  static consteval std::array<std::array<int, ALPHABET_SIZE>, N> make() {
-    std::array<std::array<int, ALPHABET_SIZE>, N> table{};
+  static consteval std::array<std::array<int, NR_ASCII_CHAR>, N> make() {
+    std::array<std::array<int, NR_ASCII_CHAR>, N> table{};
     for (auto &row : table) row.fill(-1);
     return table;
   }
@@ -465,10 +459,10 @@ struct BuildTable {
 template<typename... Edges>
 struct BuildTable<TypeList<Edges...>> {
   template<std::size_t N>
-  static consteval std::array<std::array<int, ALPHABET_SIZE>, N> make() {
-    std::array<std::array<int, ALPHABET_SIZE>, N> table{};
+  static consteval std::array<std::array<int, NR_ASCII_CHAR>, N> make() {
+    std::array<std::array<int, NR_ASCII_CHAR>, N> table{};
     for (auto &row : table) row.fill(-1);
-    ((table[Edges::from][char_to_idx(Edges::ch)] = Edges::to), ...);
+    ((table[Edges::from][Edges::ch] = Edges::to), ...);
     return table;
   }
 };
@@ -490,9 +484,7 @@ public:
   static bool match(std::string_view str) {
     std::size_t cur = 0;
     for (char ch : str) {
-      int idx = impl::char_to_idx(ch);
-      if (idx < 0) return false;
-      int nxt = trans[cur][static_cast<std::size_t>(idx)];
+      int nxt = trans[cur][static_cast<std::size_t>(ch)];
       if (nxt < 0) return false;
       cur = static_cast<std::size_t>(nxt);
     }
