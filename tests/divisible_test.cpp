@@ -1,5 +1,16 @@
 #include "test_head.h"
 
+#include <cstdlib>
+
+std::string binary_represent(uint64_t x) {
+  std::string s;
+  while (x) {
+    s.append(x % 2 ? "1" : "0");
+    x /= 2;
+  }
+  return std::string { s.rbegin(), s.rend() };
+}
+
 #define PATTERN "((((0*1)0)((10*1)0)*((10*1)1)|(0*1)1)((00|1)((10*1)0)*((10*1)1)|01)*((00|1)((10*1)0)*0)|((0*1)0)((10*1)0)*0)(0((00|1)((10*1)0)*((10*1)1)|01)*((00|1)((10*1)0)*0)|1)*(0((00|1)((10*1)0)*((10*1)1)|01)*((00|1)((10*1)0)*))|(((0*1)0)((10*1)0)*((10*1)1)|(0*1)1)((00|1)((10*1)0)*((10*1)1)|01)*((00|1)((10*1)0)*)|((0*1)0)((10*1)0)*"
 
 void divisible_test() {
@@ -25,47 +36,9 @@ void divisible_test() {
   TEST_AND_LOG(PATTERN, "010010", false);
   TEST_AND_LOG(PATTERN, "010011", false);
   TEST_AND_LOG(PATTERN, "010100", false);
-  TEST_AND_LOG(PATTERN, "010101", false);
-  TEST_AND_LOG(PATTERN, "010110", true);
-  TEST_AND_LOG(PATTERN, "010111", false);
-  TEST_AND_LOG(PATTERN, "011000", false);
-  TEST_AND_LOG(PATTERN, "011001", false);
-  TEST_AND_LOG(PATTERN, "011010", false);
-  TEST_AND_LOG(PATTERN, "011011", true);
-  TEST_AND_LOG(PATTERN, "011100", false);
-  TEST_AND_LOG(PATTERN, "011101", false);
-  TEST_AND_LOG(PATTERN, "011110", false);
-  TEST_AND_LOG(PATTERN, "011111", false);
-  TEST_AND_LOG(PATTERN, "100000", true);
-  TEST_AND_LOG(PATTERN, "100001", false);
-  TEST_AND_LOG(PATTERN, "100010", false);
-  TEST_AND_LOG(PATTERN, "100011", false);
-  TEST_AND_LOG(PATTERN, "100100", false);
-  TEST_AND_LOG(PATTERN, "100101", true);
-  TEST_AND_LOG(PATTERN, "100110", false);
-  TEST_AND_LOG(PATTERN, "100111", false);
-  TEST_AND_LOG(PATTERN, "101000", false);
-  TEST_AND_LOG(PATTERN, "101001", false);
-  TEST_AND_LOG(PATTERN, "101010", true);
-  TEST_AND_LOG(PATTERN, "101011", false);
-  TEST_AND_LOG(PATTERN, "101100", false);
-  TEST_AND_LOG(PATTERN, "101101", false);
-  TEST_AND_LOG(PATTERN, "101110", false);
-  TEST_AND_LOG(PATTERN, "101111", true);
-  TEST_AND_LOG(PATTERN, "110000", false);
-  TEST_AND_LOG(PATTERN, "110001", false);
-  TEST_AND_LOG(PATTERN, "110010", false);
-  TEST_AND_LOG(PATTERN, "110011", false);
-  TEST_AND_LOG(PATTERN, "110100", true);
-  TEST_AND_LOG(PATTERN, "110101", false);
-  TEST_AND_LOG(PATTERN, "110110", false);
-  TEST_AND_LOG(PATTERN, "110111", false);
-  TEST_AND_LOG(PATTERN, "111000", false);
-  TEST_AND_LOG(PATTERN, "111001", true);
-  TEST_AND_LOG(PATTERN, "111010", false);
-  TEST_AND_LOG(PATTERN, "111011", false);
-  TEST_AND_LOG(PATTERN, "111100", false);
-  TEST_AND_LOG(PATTERN, "111101", false);
-  TEST_AND_LOG(PATTERN, "111110", true);
-  TEST_AND_LOG(PATTERN, "111111", false);
+
+  for (int _ = 0; _ < 10; _++) {
+    uint32_t rand_number = rand();
+    TEST_AND_LOG(PATTERN, binary_represent(rand_number), rand_number % 5 == 2);
+  }
 }
