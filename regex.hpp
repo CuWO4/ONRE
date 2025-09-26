@@ -164,6 +164,24 @@ template<> struct Simplify<Concat<Epsilon, EmptySet>> { using type = EmptySet; }
 template<> struct Simplify<Concat<EmptySet, Epsilon>> { using type = EmptySet; };
 template<> struct Simplify<Concat<Epsilon, Epsilon>> { using type = Epsilon; };
 
+/* R(S|T) <=> RS|RT */
+template<typename R, typename S, typename T>
+struct Simplify<Concat<R, Or<S, T>>> {
+  using type = typename Simplify<Or<Concat<R, S>, Concat<R, T>>>::type;
+};
+template<typename S, typename T>
+struct Simplify<Concat<EmptySet, Or<S, T>>> {
+  using type = EmptySet;
+};
+template<typename S, typename T>
+struct Simplify<Concat<Epsilon, Or<S, T>>> {
+  using type = typename Simplify<Or<S, T>>::type;
+};
+
+// /* 0* <=> e* <=> e */
+template<> struct Simplify<Closure<EmptySet>> { using type = Epsilon; };
+template<> struct Simplify<Closure<Epsilon>> { using type = Epsilon; };
+
 /* R** <=> R* */
 template<typename R> struct Simplify<Closure<Closure<R>>> { using type = typename Simplify<Closure<R>>::type; };
 
@@ -174,6 +192,11 @@ template<> struct Simplify<Closure<Or<Epsilon, Epsilon>>> { using type = Epsilon
 /* e|RR* <=> RR*|e <=> R* */
 template<typename R> struct Simplify<Or<Epsilon, Concat<R, Closure<R>>>> { using type = typename Simplify<Closure<R>>::type; };
 template<typename R> struct Simplify<Or<Concat<R, Closure<R>>, Epsilon>> { using type = typename Simplify<Closure<R>>::type; };
+/* RR*|R* <=> R*R|R <=> R*|RR* <=> R*|R*R <=> RR* */
+template<typename R> struct Simplify<Or<Concat<R, Closure<R>>, Closure<R>>> { using type = typename Simplify<Concat<R, Closure<R>>>::type; };
+template<typename R> struct Simplify<Or<Concat<Closure<R>, R>, Closure<R>>> { using type = typename Simplify<Concat<R, Closure<R>>>::type; };
+template<typename R> struct Simplify<Or<Closure<R>, Concat<R, Closure<R>>>> { using type = typename Simplify<Concat<R, Closure<R>>>::type; };
+template<typename R> struct Simplify<Or<Closure<R>, Concat<Closure<R>, R>>> { using type = typename Simplify<Concat<R, Closure<R>>>::type; };
 
 /* standard ordering */
 template<typename A, typename B>
@@ -211,6 +234,7 @@ template<typename R, typename S> struct Simplify<Or<Or<R, S>, EmptySet>> { using
 template<typename R, typename S, typename T> struct Simplify<Concat<Concat<R, S>, T>> { using type = typename Simplify<Concat<R, Concat<S, T>>>::type; };
 template<typename R, typename S> struct Simplify<Concat<Concat<R, S>, EmptySet>> { using type = EmptySet; };
 template<typename R, typename S> struct Simplify<Concat<Concat<R, S>, Epsilon>> { using type = typename Simplify<Concat<R, S>>::type; };
+template<typename R> struct Simplify<Concat<Closure<R>, R>> { using type = typename Simplify<Concat<R, Closure<R>>>::type; };
 
 /* recursive */
 template<typename L, typename R> struct Simplify<Or<L, R>> {
