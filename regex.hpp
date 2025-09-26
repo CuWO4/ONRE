@@ -161,12 +161,13 @@ FixedString(const char (&str)[N]) -> FixedString<N>;
 
 /*
   Grammar:
-    Regex   := Term ('|' Regex)?
-    Term    := Factor Term | (empty)
-    Factor  := Atom ('*')? | Atom ('+')? | Atom ('?')?
-    Atom    := '(' Regex ')' | '[' CharSet ']' | CHAR
-    CharSet := CHAR CharSet | CHAR '-' CHAR | CHAR
-    CHAR    := [0-9a-zA-Z]
+    Regex       := Term ('|' Regex)?
+    Term        := Factor Term | (empty)
+    Factor      := Atom ('*')? | Atom ('+')? | Atom ('?')?
+    Atom        := '(' Regex ')' | '[' CharSet ']' | CHAR
+    CharSet     := CharSetAtom CharSet | CharSetAtom
+    CharSetAtom := CHAR | CHAR '-' CHAR
+    CHAR        := [0-9a-zA-Z]
     Empty input -> Epsilon
 */
 
@@ -175,6 +176,8 @@ template<FixedString Pattern, size_t Pos> struct ParseRegex;
 template<FixedString Pattern, size_t Pos> struct ParseTerm;
 template<FixedString Pattern, size_t Pos> struct ParseFactor;
 template<FixedString Pattern, size_t Pos> struct ParseAtom;
+template<FixedString Pattern, size_t Pos> struct ParseCharSet;
+template<FixedString Pattern, size_t Pos> struct ParseCharSetAtom;
 
 constexpr bool is_valid_char(char c) {
   return (c >= '0' && c <= '9')
@@ -182,18 +185,88 @@ constexpr bool is_valid_char(char c) {
     || (c >= 'A' && c <= 'Z');
 }
 
-/* ParseAtom: '(' Regex ')'  |  CHAR */
+template<char Start, char End>
+struct CharOrSequential {
+  static_assert(Start <= End, "CharOrSequential: invalid range");
+  using type = Or<Char<Start>, typename CharOrSequential<Start + 1, End>::type>;
+};
+
+template<char C>
+struct CharOrSequential<C, C> {
+  using type = Char<C>;
+};
+
+/* ParseCharSetAtom := CHAR | CHAR '-' CHAR */
+template<FixedString Pattern, size_t Pos>
+struct ParseCharSetAtom {
+  static_assert(Pos < Pattern.length, "ParseCharSetAtom: unexpected pattern ending");
+  static_assert(is_valid_char(Pattern[Pos]), "ParseCharSetAtom: unknown character");
+
+  struct impl_seq {
+    static_assert(Pos + 2 < Pattern.length && is_valid_char(Pattern[Pos + 2]), "ParseCharSetAtom: `-` has no ending");
+    using type = typename CharOrSequential<Pattern[Pos], Pattern[Pos + 2]>::type;
+    static constexpr size_t next = Pos + 3;
+  };
+
+  struct impl_char {
+    using type = Char<Pattern[Pos]>;
+    static constexpr size_t next = Pos + 1;
+  };
+
+  static constexpr bool has_hyphen = Pos + 1 < Pattern.length && Pattern[Pos + 1] == '-';
+  using chosen = std::conditional_t<has_hyphen, impl_seq, impl_char>;
+  using type = typename Simplify<typename chosen::type>::type;
+  static constexpr size_t next = chosen::next;
+};
+
+/* ParseCharSet: CharSetAtom CharSet | CharSetAtom */
+template<FixedString Pattern, size_t Pos>
+struct ParseCharSet {
+  using CharSetAtom = ParseCharSetAtom<Pattern, Pos>;
+  static_assert(CharSetAtom::next <= Pattern.length, "ParseCharSet: char set atom parsing overflow");
+
+  struct impl_run_on {
+    using Next = ParseCharSet<Pattern, CharSetAtom::next>;
+    static_assert(Next::next <= Pattern.length, "ParseCharSet: next parsing overflow");
+    using type = Or<typename CharSetAtom::type, typename Next::type>;
+    static constexpr size_t next = Next::next;
+  };
+
+  struct impl_stop {
+    using type = typename CharSetAtom::type;
+    static constexpr size_t next = CharSetAtom::next;
+  };
+
+  static constexpr bool run_on = CharSetAtom::next < Pattern.length && is_valid_char(Pattern[CharSetAtom::next]);
+  using chosen = std::conditional_t<run_on, impl_run_on, impl_stop>;
+  using type = typename Simplify<typename chosen::type>::type;
+  static constexpr size_t next = chosen::next;
+};
+
+/* ParseAtom: '(' Regex ')' | '[' CharSet ']' |  CHAR */
 template<FixedString Pattern, size_t Pos>
 struct ParseAtom {
-  static_assert(Pos < Pattern.length && (Pattern[Pos] == '(' || is_valid_char(Pattern[Pos])), "ParseAtom: Failed to parse");
+  static_assert(Pos < Pattern.length && (Pattern[Pos] == '(' || Pattern[Pos] == '[' || is_valid_char(Pattern[Pos])),
+    "ParseAtom: unknown character");
 
   /* case '(' Regex ')' */
   struct impl_paren {
     using Regex = ParseRegex<Pattern, Pos + 1>;
     static_assert(Regex::next <= Pattern.length, "ParseAtom: regex parse overflow");
-    static_assert(Regex::next < Pattern.length && Pattern[Regex::next] == ')', "ParseAtom impl_paren: missing closing ')' in pattern");
+    static_assert(Regex::next < Pattern.length && Pattern[Regex::next] == ')',
+      "ParseAtom impl_paren: missing closing ')' in pattern");
     using type = typename Regex::type;
     static constexpr size_t next = Regex::next + 1;
+  };
+
+  /* case '[' CharSet ']'*/
+  struct impl_square {
+    using CharSet = ParseCharSet<Pattern, Pos + 1>;
+    static_assert(CharSet::next <= Pattern.length, "ParseAtom: char set parse overflow");
+    static_assert(CharSet::next < Pattern.length && Pattern[CharSet::next] == ']',
+      "ParseAtom impl_paren: missing closing ']' in pattern");
+    using type = typename CharSet::type;
+    static constexpr size_t next = CharSet::next + 1;
   };
 
   /* case CHAR */
@@ -205,7 +278,11 @@ struct ParseAtom {
   using chosen = std::conditional_t<
     Pattern[Pos] == '(',
     impl_paren,
-    impl_char
+    std::conditional_t<
+      Pattern[Pos] == '[',
+      impl_square,
+      impl_char
+    >
   >;
   using type = typename Simplify<typename chosen::type>::type;
   static constexpr size_t next = chosen::next;
