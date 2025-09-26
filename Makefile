@@ -12,9 +12,9 @@ TMPDIR := tmp
 DEBUGDIR := debug
 
 # sources, objects and dependencies #
-SRCS := $(wildcard *.$(EXTERN))
-OBJS := $(patsubst %.$(EXTERN), $(TMPDIR)/%.o, $(SRCS))
-DEPS := $(patsubst %.$(EXTERN), $(TMPDIR)/%.d, $(SRCS))
+SRCS := $(wildcard tests/*.$(EXTERN))
+OBJS := $(patsubst tests/%.$(EXTERN), $(TMPDIR)/%.o, $(SRCS))
+DEPS := $(patsubst tests/%.$(EXTERN), $(TMPDIR)/%.d, $(SRCS))
 
 # link #
 $(DEBUGDIR)/$(TARGET) : $(OBJS) | $(DEBUGDIR)
@@ -23,7 +23,7 @@ $(DEBUGDIR)/$(TARGET) : $(OBJS) | $(DEBUGDIR)
 	@ echo completed!
 
 # compile #
-$(TMPDIR)/%.o : %.$(EXTERN) | $(TMPDIR)
+$(TMPDIR)/%.o : tests/%.$(EXTERN) | $(TMPDIR)
 	@ echo compiling $<...
 	$(COMPILER) $< -o $@ -c $(COMPILE_OPTION) $(COMPILE_OPTION_DES)
 
@@ -37,9 +37,9 @@ $(DEBUGDIR) :
 # files dependecies #
 -include $(DEPS)
 
-# run command #
-.PHONY : run
-run : $(DEBUGDIR)/$(TARGET)
+# test command #
+.PHONY : test
+test : $(DEBUGDIR)/$(TARGET)
 	./$(DEBUGDIR)/$(TARGET)
 
 # clean command #
