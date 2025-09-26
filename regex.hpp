@@ -65,7 +65,7 @@ constexpr bool is_visible_char(char ch) {
 
 constexpr std::array<bool, nr_ascii_char> make_valid_table() {
   std::array<bool, nr_ascii_char> table {};
-  for (int i = 0; i < nr_ascii_char; i++) {
+  for (int32_t i = 0; i < nr_ascii_char; i++) {
     table[i] = is_visible_char(i) && i != '|' && i != '*' && i != '+'
       && i != '?' && i != '(' && i != ')' && i != '[' && i != ']'
       && i != '.';
@@ -644,19 +644,17 @@ template<typename RE> using AllEdgesList  = typename AllStatesAndEdgesGenerator<
 template<typename EdgesList>
 struct BuildTable {
   template<std::size_t N>
-  static consteval std::array<std::array<int, nr_ascii_char>, N> make() {
-    std::array<std::array<int, nr_ascii_char>, N> table{};
-    for (auto &row : table) row.fill(-1);
-    return table;
+  static consteval void make() {
+    static_assert(false, "impossible: should never fall through");
   }
 };
 template<typename... Edges>
 struct BuildTable<TypeList<Edges...>> {
   template<std::size_t N>
-  static consteval std::array<std::array<int, nr_ascii_char>, N> make() {
-    std::array<std::array<int, nr_ascii_char>, N> table{};
+  static consteval std::array<std::array<int32_t, nr_ascii_char>, N> make() {
+    std::array<std::array<int32_t, nr_ascii_char>, N> table{};
     for (auto &row : table) row.fill(-1);
-    ((table[Edges::from][Edges::ch] = Edges::to), ...);
+    ((table[Edges::from][static_cast<std::size_t>(Edges::ch)] = Edges::to), ...);
     return table;
   }
 };
@@ -676,13 +674,14 @@ template<impl::FixedString Pattern>
 class Regex {
 public:
   static bool match(std::string_view str) {
-    std::size_t cur = 0;
-    for (char ch : str) {
-      int nxt = trans[cur][static_cast<std::size_t>(ch)];
+    std::size_t state = 0;
+    for (const char& ch : str) {
+      if (!impl::is_visible_char(ch)) [[unlikely]] return false;
+      int32_t nxt = trans[state][static_cast<std::size_t>(ch)];
       if (nxt < 0) return false;
-      cur = static_cast<std::size_t>(nxt);
+      state = static_cast<std::size_t>(nxt);
     }
-    return accepts[cur];
+    return accepts[state];
   }
 
 private:
@@ -744,7 +743,7 @@ namespace logger {
     static std::string to_string() {
       return impl::is_less<R, impl::Closure<R>>::value
         ? '(' + ToString<R>::to_string() + ")*"
-        : ToString<R>::to_string();
+        : ToString<R>::to_string() + '*';
     }
   };
 
