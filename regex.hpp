@@ -213,10 +213,10 @@ template<typename R> struct Simplify<Closure<R>> { using type = Closure<typename
     Regex       := Term ('|' Regex)?
     Term        := Factor Term | (empty)
     Factor      := Atom ('*')? | Atom ('+')? | Atom ('?')?
-    Atom        := '(' Regex ')' | '[' CharSet ']' | CHAR
+    Atom        := '(' Regex ')' | '[' CharSet ']' | CHAR | '.'
     CharSet     := CharSetAtom CharSet | CharSetAtom
     CharSetAtom := CHAR | CHAR '-' CHAR
-    CHAR        := [0-9a-zA-Z]
+    CHAR        := ('\')? [0-9a-zA-Z]
     Empty input -> Epsilon
 */
 
@@ -227,6 +227,7 @@ template<FixedString Pattern, size_t Pos> struct ParseFactor;
 template<FixedString Pattern, size_t Pos> struct ParseAtom;
 template<FixedString Pattern, size_t Pos> struct ParseCharSet;
 template<FixedString Pattern, size_t Pos> struct ParseCharSetAtom;
+template<FixedString Pattern, size_t Pos> struct ParseCHAR;
 
 template<char Start, char End>
 struct CharOrSequential {
@@ -237,6 +238,32 @@ struct CharOrSequential {
 template<char C>
 struct CharOrSequential<C, C> {
   using type = Char<C>;
+};
+
+/* ParseCHAR : ('\')? [0-9a-zA-Z] */
+template <FixedString Pattern, size_t Pos>
+struct ParseCHAR {
+  static_assert(
+    Pos < Pattern.length && (Pattern[Pos] == '\\' || is_valid_char(Pattern[Pos])), 
+    "ParseCHAR: unknown character"
+  );
+
+  struct impl_escape {
+    static_assert(Pos + 1 < Pattern.length, "ParseAtom: cannot find escape character");
+    static_assert(is_valid_char(Pattern[Pos + 1]), "ParseAtom: unknown character");
+    using type = Char<Pattern[Pos + 1]>;
+    static constexpr size_t next = Pos + 2;
+  };
+
+  struct impl_simple {
+    using type = Char<Pattern[Pos]>;
+    static constexpr size_t next = Pos + 1;
+  };
+
+  static constexpr bool is_escape = Pattern[Pos] == '\\';
+  using chosen = std::conditional_t<is_escape, impl_escape, impl_simple>;
+  using type = typename chosen::type;
+  static constexpr size_t next = chosen::next;
 };
 
 /* ParseCharSetAtom := CHAR | CHAR '-' CHAR */
@@ -286,11 +313,28 @@ struct ParseCharSet {
   static constexpr size_t next = chosen::next;
 };
 
-/* ParseAtom: '(' Regex ')' | '[' CharSet ']' |  CHAR */
+template<typename Alphabet>
+struct FullMatch;
+
+template<char C, typename... Remains>
+struct FullMatch<TypeList<Char<C>, Remains...>> {
+  using type = Or<Char<C>, typename FullMatch<TypeList<Remains...>>::type>;
+};
+
+template<char C>
+struct FullMatch<TypeList<Char<C>>> {
+  using type = Char<C>;
+};
+
+/* ParseAtom: '(' Regex ')' | '[' CharSet ']' |  CHAR | '.' */
 template<FixedString Pattern, size_t Pos>
 struct ParseAtom {
-  static_assert(Pos < Pattern.length && (Pattern[Pos] == '(' || Pattern[Pos] == '[' || is_valid_char(Pattern[Pos])),
-    "ParseAtom: unknown character");
+  static_assert(
+    Pos < Pattern.length && (
+      Pattern[Pos] == '(' || Pattern[Pos] == '[' || Pattern[Pos] == '.' 
+      || Pattern[Pos] == '\\' || is_valid_char(Pattern[Pos])
+    ), "ParseAtom: unknown character"
+  );
 
   /* case '(' Regex ')' */
   struct impl_paren {
@@ -314,7 +358,15 @@ struct ParseAtom {
 
   /* case CHAR */
   struct impl_char {
-    using type = Char<Pattern[Pos]>;
+    using CHAR = ParseCHAR<Pattern, Pos>;
+    static_assert(CHAR::next <= Pattern.length, "ParseAtom: char parse overflow");
+    using type = typename CHAR::type;
+    static constexpr size_t next = CHAR::next;
+  };
+
+  /* case '.' */
+  struct impl_full_match {
+    using type = typename FullMatch<Alphabet>::type;
     static constexpr size_t next = Pos + 1;
   };
 
@@ -324,7 +376,11 @@ struct ParseAtom {
     std::conditional_t<
       Pattern[Pos] == '[',
       impl_square,
-      impl_char
+      std::conditional_t<
+        Pattern[Pos] == '.',
+        impl_full_match,
+        impl_char
+      >
     >
   >;
   using type = typename Simplify<typename chosen::type>::type;
