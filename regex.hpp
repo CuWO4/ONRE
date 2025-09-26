@@ -5,9 +5,6 @@
 #include <algorithm>
 #include <cstdio>
 
-#ifndef ONRE_ALPHABET
-  #define ONRE_ALPHABET "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-#endif
 namespace onre {
 namespace impl {
 
@@ -58,38 +55,47 @@ template<typename R, typename S> struct Or : RE { using left = R; using right = 
 template<typename R, typename S> struct Concat : RE {using left = R; using right = S; };
 template<typename R> struct Closure : RE { using inner = R; };
 
-/* generate Alphabet & is_valid_char */
-template<FixedString S, size_t I, typename Acc>
-struct BuildAlphabet {
-  using NextAcc = typename PushBackUnique<Acc, Char<S.data[I]>>::type;
-  struct impl_run_on { using type = typename BuildAlphabet<S, I + 1, NextAcc>::type; };
-  struct impl_stop { using type = NextAcc; };
-  using type = typename std::conditional_t<I + 1 < S.length, impl_run_on, impl_stop>::type;
-};
+constexpr size_t nr_ascii_char = 128;
+constexpr char visible_ascii_start = ' ';
+constexpr char visible_ascii_end = '~';
 
-static constexpr size_t NR_ASCII_CHAR = 128;
-
-template <size_t N>
-static consteval std::array<bool, NR_ASCII_CHAR> make_valid_char_table(FixedString<N> s) {
-  std::array<bool, NR_ASCII_CHAR> t{};
-  for (size_t i = 0; i < s.length; ++i) {
-    unsigned char uc = static_cast<unsigned char>(s.data[i]);
-    if (uc == 0) continue;
-    if (uc < NR_ASCII_CHAR) t[uc] = true;
-  }
-  return t;
+constexpr bool is_visible_char(char ch) {
+  return ch >= visible_ascii_start && ch <= visible_ascii_end; // ASCII visible characters
 }
 
-constexpr std::array<bool, NR_ASCII_CHAR> valid_char_table = make_valid_char_table(FixedString(ONRE_ALPHABET));
+constexpr std::array<bool, nr_ascii_char> make_valid_table() {
+  std::array<bool, nr_ascii_char> table {};
+  for (int i = 0; i < nr_ascii_char; i++) {
+    table[i] = is_visible_char(i) && i != '|' && i != '*' && i != '+'
+      && i != '?' && i != '(' && i != ')' && i != '[' && i != ']'
+      && i != '.';
+  }
+  return table;
+}
 
-using Alphabet = typename BuildAlphabet<FixedString(ONRE_ALPHABET), 0, TypeList<>>::type;
+constexpr auto valid_table = make_valid_table();
 
 constexpr bool is_valid_char(char ch) {
-  return (ch >= 'a' && ch <= 'z')
-    || (ch >= 'A' && ch <= 'Z')
-    || (ch >= '0' && ch <= '9')
-    || valid_char_table[static_cast<unsigned char>(ch)];
+  return valid_table[static_cast<unsigned char>(ch)];
 }
+
+constexpr bool is_in_class_char(char ch) {
+  return is_visible_char(ch) && ch != ']';
+}
+
+template <char Start, char End, typename Acc>
+struct AlphabetGenerator {
+  static_assert(Start <= End, "invalid char range");
+  using TmpAcc = typename PushBackUnique<Acc, Char<Start>>::type;
+  using type = typename AlphabetGenerator<Start + 1, End, TmpAcc>::type;
+};
+
+template <char C, typename Acc>
+struct AlphabetGenerator<C, C, Acc> {
+  using type = typename PushBackUnique<Acc, Char<C>>::type;
+};
+
+using Alphabet = typename AlphabetGenerator<visible_ascii_start, visible_ascii_end, TypeList<>>::type;
 
 template<typename R>
 struct Nullable {};
@@ -224,8 +230,8 @@ template<typename R> struct Simplify<Closure<R>> { using type = Closure<typename
     Factor      := Atom ('*')? | Atom ('+')? | Atom ('?')?
     Atom        := '(' Regex ')' | '[' CharSet ']' | CHAR | '.'
     CharSet     := CharSetAtom CharSet | CharSetAtom
-    CharSetAtom := CHAR | CHAR '-' CHAR
-    CHAR        := ('\')? [0-9a-zA-Z]
+    CharSetAtom := [IN CLASS CHAR] | [IN CLASS CHAR] '-' [IN CLASS CHAR]
+    CHAR        := [VALID CHAR] | '\' [VISIBLE CHAR]
     Empty input -> Epsilon
 */
 
@@ -249,7 +255,7 @@ struct CharOrSequential<C, C> {
   using type = Char<C>;
 };
 
-/* ParseCHAR : ('\')? [0-9a-zA-Z] */
+/* ParseCHAR : [VALID CHAR] | '\' [VISIBLE CHAR] */
 template <FixedString Pattern, size_t Pos>
 struct ParseCHAR {
   static_assert(
@@ -259,7 +265,7 @@ struct ParseCHAR {
 
   struct impl_escape {
     static_assert(Pos + 1 < Pattern.length, "ParseAtom: cannot find escape character");
-    static_assert(is_valid_char(Pattern[Pos + 1]), "ParseAtom: unknown character");
+    static_assert(is_visible_char(Pattern[Pos + 1]), "ParseAtom: unknown character");
     using type = Char<Pattern[Pos + 1]>;
     static constexpr size_t next = Pos + 2;
   };
@@ -275,14 +281,14 @@ struct ParseCHAR {
   static constexpr size_t next = chosen::next;
 };
 
-/* ParseCharSetAtom := CHAR | CHAR '-' CHAR */
+/* ParseCharSetAtom: [IN CLASS CHAR] | [IN CLASS CHAR] '-' [IN CLASS CHAR] */
 template<FixedString Pattern, size_t Pos>
 struct ParseCharSetAtom {
   static_assert(Pos < Pattern.length, "ParseCharSetAtom: unexpected pattern ending");
-  static_assert(is_valid_char(Pattern[Pos]), "ParseCharSetAtom: unknown character");
+  static_assert(is_in_class_char(Pattern[Pos]), "ParseCharSetAtom: unknown character");
 
   struct impl_seq {
-    static_assert(Pos + 2 < Pattern.length && is_valid_char(Pattern[Pos + 2]), "ParseCharSetAtom: `-` has no ending");
+    static_assert(Pos + 2 < Pattern.length && is_in_class_char(Pattern[Pos + 2]), "ParseCharSetAtom: `-` has no ending");
     using type = typename CharOrSequential<Pattern[Pos], Pattern[Pos + 2]>::type;
     static constexpr size_t next = Pos + 3;
   };
@@ -316,7 +322,7 @@ struct ParseCharSet {
     static constexpr size_t next = CharSetAtom::next;
   };
 
-  static constexpr bool run_on = CharSetAtom::next < Pattern.length && is_valid_char(Pattern[CharSetAtom::next]);
+  static constexpr bool run_on = CharSetAtom::next < Pattern.length && is_in_class_char(Pattern[CharSetAtom::next]);
   using chosen = std::conditional_t<run_on, impl_run_on, impl_stop>;
   using type = typename Simplify<typename chosen::type>::type;
   static constexpr size_t next = chosen::next;
@@ -341,7 +347,7 @@ struct ParseAtom {
   static_assert(
     Pos < Pattern.length && (
       Pattern[Pos] == '(' || Pattern[Pos] == '[' || Pattern[Pos] == '.' 
-      || Pattern[Pos] == '\\' || is_valid_char(Pattern[Pos])
+      || Pattern[Pos] == '\\' || is_visible_char(Pattern[Pos])
     ), "ParseAtom: unknown character"
   );
 
@@ -638,8 +644,8 @@ template<typename RE> using AllEdgesList  = typename AllStatesAndEdgesGenerator<
 template<typename EdgesList>
 struct BuildTable {
   template<std::size_t N>
-  static consteval std::array<std::array<int, NR_ASCII_CHAR>, N> make() {
-    std::array<std::array<int, NR_ASCII_CHAR>, N> table{};
+  static consteval std::array<std::array<int, nr_ascii_char>, N> make() {
+    std::array<std::array<int, nr_ascii_char>, N> table{};
     for (auto &row : table) row.fill(-1);
     return table;
   }
@@ -647,8 +653,8 @@ struct BuildTable {
 template<typename... Edges>
 struct BuildTable<TypeList<Edges...>> {
   template<std::size_t N>
-  static consteval std::array<std::array<int, NR_ASCII_CHAR>, N> make() {
-    std::array<std::array<int, NR_ASCII_CHAR>, N> table{};
+  static consteval std::array<std::array<int, nr_ascii_char>, N> make() {
+    std::array<std::array<int, nr_ascii_char>, N> table{};
     for (auto &row : table) row.fill(-1);
     ((table[Edges::from][Edges::ch] = Edges::to), ...);
     return table;
