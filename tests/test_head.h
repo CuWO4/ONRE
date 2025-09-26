@@ -1,7 +1,6 @@
 #ifndef TEST_HEAD_H_
 #define TEST_HEAD_H_
 
-#define ONRE_ALPHABET "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@."
 #include "../regex.hpp"
 #include <iostream>
 #include <iomanip>
