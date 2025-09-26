@@ -129,6 +129,8 @@ template<typename R, typename S, typename T> struct Simplify<Or<Or<R, S>, T>> { 
 template<typename R, typename S> struct Simplify<Or<Or<R, S>, Or<R, S>>> { using type = typename Simplify<Or<R, S>>::type; };
 template<typename R, typename S> struct Simplify<Or<Or<R, S>, EmptySet>> { using type = typename Simplify<Or<R, S>>::type; };
 template<typename R, typename S, typename T> struct Simplify<Concat<Concat<R, S>, T>> { using type = typename Simplify<Concat<R, Concat<S, T>>>::type; };
+template<typename R, typename S> struct Simplify<Concat<Concat<R, S>, EmptySet>> { using type = EmptySet; };
+template<typename R, typename S> struct Simplify<Concat<Concat<R, S>, Epsilon>> { using type = typename Simplify<Concat<R, S>>::type; };
 
 /* recursive */
 template<typename L, typename R> struct Simplify<Or<L, R>> {
@@ -161,8 +163,9 @@ FixedString(const char (&str)[N]) -> FixedString<N>;
   Grammar:
     Regex   := Term ('|' Regex)?
     Term    := Factor Term | (empty)
-    Factor  := Atom ('*')?
-    Atom    := '(' Regex ')' | CHAR
+    Factor  := Atom ('*')? | Atom ('+')? | Atom ('?')?
+    Atom    := '(' Regex ')' | '[' CharSet ']' | CHAR
+    CharSet := CHAR CharSet | CHAR '-' CHAR | CHAR
     CHAR    := [0-9a-zA-Z]
     Empty input -> Epsilon
 */
@@ -208,7 +211,7 @@ struct ParseAtom {
   static constexpr size_t next = chosen::next;
 };
 
-/* ParseFactor := Atom ('*')? */
+/* ParseFactor: Atom ('*')? | Atom ('+')? | Atom ('?')? */
 template<FixedString Pattern, size_t Pos>
 struct ParseFactor {
   using Atom = ParseAtom<Pattern, Pos>;
@@ -216,12 +219,23 @@ struct ParseFactor {
   static_assert(Atom::next <= Pattern.length, "ParseFactor: atom parse overflow");
 
   static constexpr bool has_star = (Atom::next < Pattern.length && Pattern[Atom::next] == '*');
+  static constexpr bool has_plus = (Atom::next < Pattern.length && Pattern[Atom::next] == '+');
+  static constexpr bool has_question = (Atom::next < Pattern.length && Pattern[Atom::next] == '?');
+
   using type = typename Simplify<std::conditional_t<
     has_star,
     Closure<typename Atom::type>,
-    typename Atom::type
+    std::conditional_t<
+      has_plus,
+      Concat<typename Atom::type, Closure<typename Atom::type>>,
+      std::conditional_t<
+        has_question,
+        Or<Epsilon, typename Atom::type>,
+        typename Atom::type
+      >
+    >
   >>::type;
-  static constexpr size_t next = has_star ? (Atom::next + 1) : Atom::next;
+  static constexpr size_t next = (has_star || has_plus || has_question) ? (Atom::next + 1) : Atom::next;
 };
 
 /* ParseTerm := Factor Term | (empty -> Epsilon) */
