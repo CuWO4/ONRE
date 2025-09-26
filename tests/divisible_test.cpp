@@ -1,0 +1,71 @@
+#include "test_head.h"
+
+#define PATTERN "((((0*1)0)((10*1)0)*((10*1)1)|(0*1)1)((00|1)((10*1)0)*((10*1)1)|01)*((00|1)((10*1)0)*0)|((0*1)0)((10*1)0)*0)(0((00|1)((10*1)0)*((10*1)1)|01)*((00|1)((10*1)0)*0)|1)*(0((00|1)((10*1)0)*((10*1)1)|01)*((00|1)((10*1)0)*))|(((0*1)0)((10*1)0)*((10*1)1)|(0*1)1)((00|1)((10*1)0)*((10*1)1)|01)*((00|1)((10*1)0)*)|((0*1)0)((10*1)0)*"
+
+void divisible_test() {
+  std::cout << "\n=== Divisible Test (match all binary number mod 5 remain 2) ===\n";
+  TEST_AND_LOG(PATTERN, "000000", false);
+  TEST_AND_LOG(PATTERN, "000001", false);
+  TEST_AND_LOG(PATTERN, "000010", true);
+  TEST_AND_LOG(PATTERN, "000011", false);
+  TEST_AND_LOG(PATTERN, "000100", false);
+  TEST_AND_LOG(PATTERN, "000101", false);
+  TEST_AND_LOG(PATTERN, "000110", false);
+  TEST_AND_LOG(PATTERN, "000111", true);
+  TEST_AND_LOG(PATTERN, "001000", false);
+  TEST_AND_LOG(PATTERN, "001001", false);
+  TEST_AND_LOG(PATTERN, "001010", false);
+  TEST_AND_LOG(PATTERN, "001011", false);
+  TEST_AND_LOG(PATTERN, "001100", true);
+  TEST_AND_LOG(PATTERN, "001101", false);
+  TEST_AND_LOG(PATTERN, "001110", false);
+  TEST_AND_LOG(PATTERN, "001111", false);
+  TEST_AND_LOG(PATTERN, "010000", false);
+  TEST_AND_LOG(PATTERN, "010001", true);
+  TEST_AND_LOG(PATTERN, "010010", false);
+  TEST_AND_LOG(PATTERN, "010011", false);
+  TEST_AND_LOG(PATTERN, "010100", false);
+  TEST_AND_LOG(PATTERN, "010101", false);
+  TEST_AND_LOG(PATTERN, "010110", true);
+  TEST_AND_LOG(PATTERN, "010111", false);
+  TEST_AND_LOG(PATTERN, "011000", false);
+  TEST_AND_LOG(PATTERN, "011001", false);
+  TEST_AND_LOG(PATTERN, "011010", false);
+  TEST_AND_LOG(PATTERN, "011011", true);
+  TEST_AND_LOG(PATTERN, "011100", false);
+  TEST_AND_LOG(PATTERN, "011101", false);
+  TEST_AND_LOG(PATTERN, "011110", false);
+  TEST_AND_LOG(PATTERN, "011111", false);
+  TEST_AND_LOG(PATTERN, "100000", true);
+  TEST_AND_LOG(PATTERN, "100001", false);
+  TEST_AND_LOG(PATTERN, "100010", false);
+  TEST_AND_LOG(PATTERN, "100011", false);
+  TEST_AND_LOG(PATTERN, "100100", false);
+  TEST_AND_LOG(PATTERN, "100101", true);
+  TEST_AND_LOG(PATTERN, "100110", false);
+  TEST_AND_LOG(PATTERN, "100111", false);
+  TEST_AND_LOG(PATTERN, "101000", false);
+  TEST_AND_LOG(PATTERN, "101001", false);
+  TEST_AND_LOG(PATTERN, "101010", true);
+  TEST_AND_LOG(PATTERN, "101011", false);
+  TEST_AND_LOG(PATTERN, "101100", false);
+  TEST_AND_LOG(PATTERN, "101101", false);
+  TEST_AND_LOG(PATTERN, "101110", false);
+  TEST_AND_LOG(PATTERN, "101111", true);
+  TEST_AND_LOG(PATTERN, "110000", false);
+  TEST_AND_LOG(PATTERN, "110001", false);
+  TEST_AND_LOG(PATTERN, "110010", false);
+  TEST_AND_LOG(PATTERN, "110011", false);
+  TEST_AND_LOG(PATTERN, "110100", true);
+  TEST_AND_LOG(PATTERN, "110101", false);
+  TEST_AND_LOG(PATTERN, "110110", false);
+  TEST_AND_LOG(PATTERN, "110111", false);
+  TEST_AND_LOG(PATTERN, "111000", false);
+  TEST_AND_LOG(PATTERN, "111001", true);
+  TEST_AND_LOG(PATTERN, "111010", false);
+  TEST_AND_LOG(PATTERN, "111011", false);
+  TEST_AND_LOG(PATTERN, "111100", false);
+  TEST_AND_LOG(PATTERN, "111101", false);
+  TEST_AND_LOG(PATTERN, "111110", true);
+  TEST_AND_LOG(PATTERN, "111111", false);
+}

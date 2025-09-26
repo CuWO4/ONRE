@@ -13,6 +13,7 @@ int main() {
   long_string_complex_test();
   character_class_test();
   extended_alphabet_and_escape_test();
+  divisible_test();
 
   return 0;
 }
