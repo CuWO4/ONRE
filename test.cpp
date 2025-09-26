@@ -1,3 +1,4 @@
+#define ONRE_ALPHABET "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@."
 #include "regex.hpp"
 #include <iostream>
 #include <iomanip>
@@ -64,7 +65,6 @@ int main() {
   TEST_AND_LOG("a", "", false);
   TEST_AND_LOG("(a|)", "", true);
   TEST_AND_LOG("(a|)", "a", true);
-  // Charclass with optional/empty
   TEST_AND_LOG("[a]*", "", true);
   TEST_AND_LOG("[a]", "", false);
 
@@ -217,7 +217,6 @@ int main() {
   TEST_AND_LOG("(aa)*", long_ab_sequence, false);
 
   std::cout << "\n=== Character-class-heavy and Nested Tests ===\n";
-  // Character-class combined with groups and quantifiers
   TEST_AND_LOG("([a-c][0-2])+", "a0b1", true);
   TEST_AND_LOG("([a-c][0-2])+", "a9", false);
   TEST_AND_LOG("([a-z]+[0-9]*)", "abc123", true);
@@ -225,6 +224,10 @@ int main() {
   TEST_AND_LOG("([a-z]+[0-9]*)", "123", false);
   TEST_AND_LOG("([ab]|[cd])*e", "ababcd", false);
   TEST_AND_LOG("([ab]|[cd])*e", "ababce", true);
+
+  std::cout << "\n=== Extended Alphabet Tests ===\n";
+  TEST_AND_LOG("([a-e]+)@([a-e]+).([a-e]+)", "abcc@de.ab", true);
+  TEST_AND_LOG("([a-e]+)@([a-e]+).([a-e]+)", "abcc@de", false);
 
   return 0;
 }
