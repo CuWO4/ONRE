@@ -283,7 +283,7 @@ struct CharOrSequential<C, C> {
 template <FixedString Pattern, size_t Pos>
 struct ParseCHAR {
   static_assert(
-    Pos < Pattern.length && (Pattern[Pos] == '\\' || is_valid_char(Pattern[Pos])), 
+    Pos < Pattern.length && (Pattern[Pos] == '\\' || is_valid_char(Pattern[Pos])),
     "ParseCHAR: unknown character"
   );
 
@@ -370,7 +370,7 @@ template<FixedString Pattern, size_t Pos>
 struct ParseAtom {
   static_assert(
     Pos < Pattern.length && (
-      Pattern[Pos] == '(' || Pattern[Pos] == '[' || Pattern[Pos] == '.' 
+      Pattern[Pos] == '(' || Pattern[Pos] == '[' || Pattern[Pos] == '.'
       || Pattern[Pos] == '\\' || is_visible_char(Pattern[Pos])
     ), "ParseAtom: unknown character"
   );
@@ -531,26 +531,32 @@ struct StateEdgePair {
 
 /* get TypeList<Char...> of possible used character in RE */
 template <typename RE, typename Acc>
-struct PossibleUsedChars;
-template <typename Acc> struct PossibleUsedChars<EmptySet, Acc> { using type = Acc; };
-template <typename Acc> struct PossibleUsedChars<Epsilon, Acc> { using type = Acc; };
-template <char C, typename Acc> 
-struct PossibleUsedChars<Char<C>, Acc> { 
-  using type = typename PushBackUnique<Acc, Char<C>>::type; 
+struct First;
+template <typename Acc> struct First<EmptySet, Acc> { using type = Acc; };
+template <typename Acc> struct First<Epsilon, Acc> { using type = Acc; };
+template <char C, typename Acc>
+struct First<Char<C>, Acc> {
+  using type = typename PushBackUnique<Acc, Char<C>>::type;
 };
 template <typename R, typename S, typename Acc>
-struct PossibleUsedChars<Or<R, S>, Acc> { 
-  using TmpAcc = typename PossibleUsedChars<R, Acc>::type;
-  using type = typename PossibleUsedChars<S, TmpAcc>::type;
+struct First<Or<R, S>, Acc> {
+  using TmpAcc = typename First<R, Acc>::type;
+  using type = typename First<S, TmpAcc>::type;
 };
 template <typename R, typename S, typename Acc>
-struct PossibleUsedChars<Concat<R, S>, Acc> { 
-  using TmpAcc = typename PossibleUsedChars<R, Acc>::type;
-  using type = typename PossibleUsedChars<S, TmpAcc>::type;
+struct First<Concat<R, S>, Acc> {
+  struct impl_r_nullable {
+    using TmpAcc = typename First<R, Acc>::type;
+    using type = typename First<S, TmpAcc>::type;
+  };
+  struct impl_r_non_nullable {
+    using type = typename First<R, Acc>::type;
+  };
+  using type = typename std::conditional_t<Nullable<R>::value, impl_r_nullable, impl_r_non_nullable>::type;
 };
 template <typename R, typename Acc>
-struct PossibleUsedChars<Closure<R>, Acc> { 
-  using type = typename PossibleUsedChars<R, Acc>::type;
+struct First<Closure<R>, Acc> {
+  using type = typename First<R, Acc>::type;
 };
 
 /* Append derivative for a single character C, given current accumulator Pair<States,Edges> and a source StateT */
@@ -601,7 +607,7 @@ private:
   /* fold over each state: for each state, append derivatives across alphabet */
   template<typename PairSoFar, typename StateT>
   struct DoState {
-    using PossibleChars = typename PossibleUsedChars<typename StateT::re, TypeList<>>::type;
+    using PossibleChars = typename First<typename StateT::re, TypeList<>>::type;
     using type = typename AppendDerivativesForStatePair<PairSoFar, StateT, PossibleChars>::type;
   };
 
