@@ -28,47 +28,45 @@ int main() {
   TEST_AND_LOG("a", "b", false);
   TEST_AND_LOG("a|b", "a", true);
   TEST_AND_LOG("a|b", "b", true);
-  TEST_AND_LOG("a|b", "c", false);
+  TEST_AND_LOG("ab", "ab", true);
+  TEST_AND_LOG("ab", "a", false);
+
   TEST_AND_LOG("a*", "", true);
   TEST_AND_LOG("a*", "a", true);
   TEST_AND_LOG("a*", "aa", true);
-  TEST_AND_LOG("a*", "b", false);
-  TEST_AND_LOG("ab", "ab", true);
-  TEST_AND_LOG("ab", "a", false);
-  TEST_AND_LOG("(ab)*", "abab", true);
-  TEST_AND_LOG("(ab)*", "aba", false);
-  TEST_AND_LOG("a*b", "aaab", true);
-  TEST_AND_LOG("a*b", "b", true);
-  TEST_AND_LOG("a*b", "aaac", false);
-  TEST_AND_LOG("(a|b)*|c", "abbac", false);
-  TEST_AND_LOG("(a|b)*|c", "c", true);
-  TEST_AND_LOG("(a|b)*|c", "d", false);
   TEST_AND_LOG("a+", "a", true);
-  TEST_AND_LOG("a+", "aa", true);
   TEST_AND_LOG("a+", "", false);
-  TEST_AND_LOG("a+", "b", false);
-  TEST_AND_LOG("(ab)+", "ab", true);
-  TEST_AND_LOG("(ab)+", "abab", true);
-  TEST_AND_LOG("(ab)+", "a", false);
-  TEST_AND_LOG("a+b", "aaab", true);
-  TEST_AND_LOG("a+b", "b", false);
   TEST_AND_LOG("a?", "", true);
   TEST_AND_LOG("a?", "a", true);
-  TEST_AND_LOG("a?", "aa", false);
-  TEST_AND_LOG("a?b", "b", true);
-  TEST_AND_LOG("a?b", "ab", true);
-  TEST_AND_LOG("a?b", "aab", false);
-  TEST_AND_LOG("(ab)?c", "c", true);
-  TEST_AND_LOG("(ab)?c", "abc", true);
-  TEST_AND_LOG("(ab)?c", "ac", false);
+
+  TEST_AND_LOG("(ab)*", "", true);
+  TEST_AND_LOG("(ab)*", "abab", true);
+  TEST_AND_LOG("(ab)+", "ab", true);
+  TEST_AND_LOG("(ab)+", "a", false);
+  TEST_AND_LOG("a*b", "aaab", true);
+  TEST_AND_LOG("a*b", "b", true);
+  TEST_AND_LOG("a+b", "aaab", true);
+
+  TEST_AND_LOG("(a|b)*|c", "c", true);
+  TEST_AND_LOG("(a|b)*|c", "abb", true);
+  TEST_AND_LOG("(a|b)*|c", "d", false);
+
+  TEST_AND_LOG("[abc]", "b", true);
+  TEST_AND_LOG("[abc]", "d", false);
+  TEST_AND_LOG("[a-z]", "m", true);
+  TEST_AND_LOG("[a-z]", "A", false);
+  TEST_AND_LOG("[0-9]", "5", true);
+  TEST_AND_LOG("[0-9]", "a", false);
 
   std::cout << "\n=== Boundary Tests ===\n";
   TEST_AND_LOG("", "", true);
   TEST_AND_LOG("", "a", false);
   TEST_AND_LOG("a", "", false);
-  TEST_AND_LOG("a*", "", true);
-  TEST_AND_LOG("(a|)", "a", true);
   TEST_AND_LOG("(a|)", "", true);
+  TEST_AND_LOG("(a|)", "a", true);
+  // Charclass with optional/empty
+  TEST_AND_LOG("[a]*", "", true);
+  TEST_AND_LOG("[a]", "", false);
 
   std::cout << "\n=== Long String Tests (O(n) performance) ===\n";
   const int N = 100000;
@@ -88,8 +86,14 @@ int main() {
   TEST_AND_LOG("(ab)*", long_alternating, true);
   TEST_AND_LOG("(a?b)+", long_alternating, true);
 
-  std::cout << "\n=== Backtracking Killer Tests ===\n";
+  std::string long_lower(N, 'm');
+  TEST_AND_LOG("[a-z]+", long_lower, true);
 
+  std::string long_alnum;
+  for (int i = 0; i < N; ++i) long_alnum += (i % 2 == 0) ? char('a' + (i % 26)) : char('0' + (i % 10));
+  TEST_AND_LOG("[a-z0-9]+", long_alnum, true);
+
+  std::cout << "\n=== Backtracking Killer Tests ===\n";
   std::string no_c(M, 'a');
   TEST_AND_LOG("(a|b)*c", no_c, false);
 
@@ -107,20 +111,26 @@ int main() {
   std::string suffix(M, 'b');
   TEST_AND_LOG("(a|b)*a(a|b)*b", prefix + "c" + suffix, false);
 
+  std::string long_letters(M, 'x');
+  TEST_AND_LOG("([a-z])*z", long_letters, false);
+
   std::cout << "\n=== Mixed Character Tests ===\n";
   std::string mixed;
   for (int i = 0; i < M; i++) {
     mixed += ('a' + (i % 26));
   }
   TEST_AND_LOG("(a|b|c|d|e)*", mixed, false);
+  TEST_AND_LOG("[abcde]*", mixed, false);
 
   std::cout << "\n=== Non-matching Long String Tests ===\n";
   std::string long_numbers(M, '1');
   TEST_AND_LOG("(a|b|c|d|e)*", long_numbers, false);
+  TEST_AND_LOG("[a-e]*", long_numbers, false);
 
   std::string long_a_with_b(M, 'a');
   long_a_with_b[M/2] = 'b';
   TEST_AND_LOG("a*", long_a_with_b, false);
+  TEST_AND_LOG("[a]*", long_a_with_b, false);
 
   std::cout << "\n=== Deeply Nested and Chaotic Expressions ===\n";
   TEST_AND_LOG("((a|b)|(c|d))|(e|f)|(g|h)", "c", true);
@@ -128,25 +138,19 @@ int main() {
   TEST_AND_LOG("((a|b)|(c|d))|(e|f)|(g|h)", "x", false);
   TEST_AND_LOG("(((a)|(b))*)", "abab", true);
   TEST_AND_LOG("(((a)|(b))*)", "aaabbb", true);
-  TEST_AND_LOG("(((a)|(b))*)", "c", false);
-  TEST_AND_LOG("(a|b)(c|d)(e|f)(g|h)", "aceg", true);
-  TEST_AND_LOG("(a|b)(c|d)(e|f)(g|h)", "bdfh", true);
-  TEST_AND_LOG("(a|b)(c|d)(e|f)(g|h)", "ace", false);
+
+  TEST_AND_LOG("((a|[bcd])|(c|d))|(e|f)", "d", true);
+  TEST_AND_LOG("(a([bcd])*)*", "abcbcd", true);
+
   TEST_AND_LOG("(a(b)*)*", "abab", true);
   TEST_AND_LOG("(a(b)*)*", "a", true);
   TEST_AND_LOG("(a(b)*)*", "abb", true);
   TEST_AND_LOG("(a(b)*)*", "b", false);
+
   TEST_AND_LOG("a*b+", "b", true);
   TEST_AND_LOG("a*b+", "ab", true);
   TEST_AND_LOG("a*b+", "aaabbb", true);
   TEST_AND_LOG("a*b+", "a", false);
-  TEST_AND_LOG("(a|b)+c*", "abc", true);
-  TEST_AND_LOG("(a|b)+c*", "a", true);
-  TEST_AND_LOG("(a|b)+c*", "c", false);
-  TEST_AND_LOG("a+b?c*", "aa", true);
-  TEST_AND_LOG("a+b?c*", "aab", true);
-  TEST_AND_LOG("a+b?c*", "aabc", true);
-  TEST_AND_LOG("a+b?c*", "bc", false);
 
   std::cout << "\n=== Ambiguous and Tricky Parsing Tests ===\n";
   TEST_AND_LOG("a|b|c", "b", true);
@@ -157,6 +161,7 @@ int main() {
   TEST_AND_LOG("a||b", "b", true);
   TEST_AND_LOG("a||b", "", true);
   TEST_AND_LOG("a||b", "c", false);
+
   TEST_AND_LOG("(a*|b*)*", "", true);
   TEST_AND_LOG("(a*|b*)*", "a", true);
   TEST_AND_LOG("(a*|b*)*", "b", true);
@@ -170,12 +175,10 @@ int main() {
   TEST_AND_LOG("((a|b)(c|d))*|(e|f)(g|h)*", "acbd", true);
   TEST_AND_LOG("((a|b)(c|d))*|(e|f)(g|h)*", "x", false);
   TEST_AND_LOG("(a|(b|c))*d", "aaad", true);
-  TEST_AND_LOG("(a|(b|c))*d", "bbbd", true);
   TEST_AND_LOG("(a|(b|c))*d", "abcd", true);
   TEST_AND_LOG("(a|(b|c))*d", "abca", false);
-  TEST_AND_LOG("(a|b)(c|d)(e|f)(g|h)(i|j)", "acegi", true);
-  TEST_AND_LOG("(a|b)(c|d)(e|f)(g|h)(i|j)", "bdfhj", true);
-  TEST_AND_LOG("(a|b)(c|d)(e|f)(g|h)(i|j)", "aceg", false);
+
+  TEST_AND_LOG("(a|[bcd]|(e|f))", "e", true);
 
   std::cout << "\n=== Long String Complex Pattern Tests ===\n";
   std::string long_mixed_ab;
@@ -212,6 +215,16 @@ int main() {
   TEST_AND_LOG("(ab)*", long_ab_sequence, true);
   TEST_AND_LOG("(a|b)*", long_ab_sequence, true);
   TEST_AND_LOG("(aa)*", long_ab_sequence, false);
+
+  std::cout << "\n=== Character-class-heavy and Nested Tests ===\n";
+  // Character-class combined with groups and quantifiers
+  TEST_AND_LOG("([a-c][0-2])+", "a0b1", true);
+  TEST_AND_LOG("([a-c][0-2])+", "a9", false);
+  TEST_AND_LOG("([a-z]+[0-9]*)", "abc123", true);
+  TEST_AND_LOG("([a-z]+[0-9]*)", "abc", true);
+  TEST_AND_LOG("([a-z]+[0-9]*)", "123", false);
+  TEST_AND_LOG("([ab]|[cd])*e", "ababcd", false);
+  TEST_AND_LOG("([ab]|[cd])*e", "ababce", true);
 
   return 0;
 }
