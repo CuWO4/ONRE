@@ -2,7 +2,7 @@ TARGET := test.exe
 EXTERN := cpp
 COMPILER := clang++-18
 
-COMPILE_OPTION := -Wall -O2 --std=c++20
+COMPILE_OPTION := -Wall -O2 --std=c++23 -fbracket-depth=65536
 # to generate dependent files #
 COMPILE_OPTION_DES := -MMD -MP 
 

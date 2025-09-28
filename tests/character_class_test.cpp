@@ -9,4 +9,7 @@ void character_class_test() {
   TEST_AND_LOG("([a-z]+[0-9]*)", "123", false);
   TEST_AND_LOG("([ab]|[cd])*e", "ababcd", false);
   TEST_AND_LOG("([ab]|[cd])*e", "ababce", true);
+  TEST_AND_LOG("([^ab])*e", "ababce", false);
+  TEST_AND_LOG("([^ab])*a", "defga", true);
+  TEST_AND_LOG("([^ab])*a", "defgaa", false);
 }

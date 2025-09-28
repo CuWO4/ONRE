@@ -13,8 +13,10 @@ namespace impl {
 
 /* === type list, a linear container of types === */
 template<typename... Ts> struct TypeList {};
+
 template<typename List, typename T> struct Contains;
 template<typename T, typename... Ts> struct Contains<TypeList<Ts...>, T> : std::disjunction<std::is_same<T, Ts>...> {};
+
 template<typename List, typename T>
 struct PushBackUnique;
 template<typename... Ts, typename T>
@@ -24,6 +26,18 @@ struct PushBackUnique<TypeList<Ts...>, T> {
     TypeList<Ts...>,
     TypeList<Ts..., T>
   >;
+};
+
+template<typename List1, typename List2>
+struct JoinUnique;
+template<typename List1, typename Head, typename... Tail>
+struct JoinUnique<List1, TypeList<Head, Tail...>> {
+  using TmpAcc = typename PushBackUnique<List1, Head>::type;
+  using type = typename JoinUnique<TmpAcc, TypeList<Tail...>>::type;
+};
+template<typename List1>
+struct JoinUnique<List1, TypeList<>> {
+  using type = List1;
 };
 
 /* find index of T in TypeList<Ls...> */
@@ -266,9 +280,10 @@ using Alphabet = typename AlphabetGenerator<visible_ascii_start, visible_ascii_e
     Regex       := Term ('|' Regex)?
     Term        := Factor Term | (empty)
     Factor      := Atom ('*')? | Atom ('+')? | Atom ('?')?
-    Atom        := '(' Regex ')' | '[' CharSet ']' | CHAR | '.'
+    Atom        := '(' Regex ')' | CharGroup | CHAR | '.'
+    CharGroup   := '[' CharSet ']' | '[' '^' CharSet ']'
     CharSet     := CharSetAtom CharSet | CharSetAtom
-    CharSetAtom := [IN CLASS CHAR] | [IN CLASS CHAR] '-' [IN CLASS CHAR]
+    CharSetAtom := [IN CLASS CHAR] | [IN CLASS CHAR] '-' [IN CLASS CHAR] | '\' [VISIBLE CHAR]
     CHAR        := [VALID CHAR] | '\' [VISIBLE CHAR]
     Empty input -> Epsilon
 */
@@ -278,19 +293,19 @@ template<FixedString Pattern, size_t Pos> struct ParseRegex;
 template<FixedString Pattern, size_t Pos> struct ParseTerm;
 template<FixedString Pattern, size_t Pos> struct ParseFactor;
 template<FixedString Pattern, size_t Pos> struct ParseAtom;
+template<FixedString Pattern, size_t Pos> struct ParseCharGroup;
 template<FixedString Pattern, size_t Pos> struct ParseCharSet;
 template<FixedString Pattern, size_t Pos> struct ParseCharSetAtom;
 template<FixedString Pattern, size_t Pos> struct ParseCHAR;
 
 template<char Start, char End>
-struct CharOrSequential {
-  static_assert(Start <= End, "CharOrSequential: invalid range");
-  using type = Or<Char<Start>, typename CharOrSequential<Start + 1, End>::type>;
+struct BuildCharList {
+  static_assert(Start <= End, "BuildCharList: invalid range");
+  using type = typename PushBackUnique<typename BuildCharList<Start, End - 1>::type, Char<End>>::type;
 };
-
 template<char C>
-struct CharOrSequential<C, C> {
-  using type = Char<C>;
+struct BuildCharList<C, C> {
+  using type = TypeList<Char<C>>;
 };
 
 /* ParseCHAR : [VALID CHAR] | '\' [VISIBLE CHAR] */
@@ -319,7 +334,7 @@ struct ParseCHAR {
   static constexpr size_t next = chosen::next;
 };
 
-/* ParseCharSetAtom: [IN CLASS CHAR] | [IN CLASS CHAR] '-' [IN CLASS CHAR] */
+/* ParseCharSetAtom: [IN CLASS CHAR] | [IN CLASS CHAR] '-' [IN CLASS CHAR] | '\' [VISIBLE CHAR] */
 template<FixedString Pattern, size_t Pos>
 struct ParseCharSetAtom {
   static_assert(Pos < Pattern.length, "ParseCharSetAtom: unexpected pattern ending");
@@ -327,17 +342,24 @@ struct ParseCharSetAtom {
 
   struct impl_seq {
     static_assert(Pos + 2 < Pattern.length && is_in_class_char(Pattern[Pos + 2]), "ParseCharSetAtom: `-` has no ending");
-    using type = typename CharOrSequential<Pattern[Pos], Pattern[Pos + 2]>::type;
+    using type = typename BuildCharList<Pattern[Pos], Pattern[Pos + 2]>::type;
     static constexpr size_t next = Pos + 3;
   };
 
   struct impl_char {
-    using type = Char<Pattern[Pos]>;
+    using type = TypeList<Char<Pattern[Pos]>>;
     static constexpr size_t next = Pos + 1;
   };
 
+  struct impl_escape {
+    static_assert(Pos + 1 < Pattern.length && is_visible_char(Pattern[Pos + 1]), "ParseCharSetAtom: cannot find escaped character");
+      using type = TypeList<Char<Pattern[Pos + 1]>>;
+    static constexpr size_t next = Pos + 2;
+  };
+
+  static constexpr bool is_escape = Pattern[Pos] == '\\';
   static constexpr bool has_hyphen = Pos + 1 < Pattern.length && Pattern[Pos + 1] == '-';
-  using chosen = std::conditional_t<has_hyphen, impl_seq, impl_char>;
+  using chosen = std::conditional_t<is_escape, impl_escape, std::conditional_t<has_hyphen, impl_seq, impl_char>>;
   using type = typename Simplify<typename chosen::type>::type;
   static constexpr size_t next = chosen::next;
 };
@@ -351,7 +373,7 @@ struct ParseCharSet {
   struct impl_run_on {
     using Next = ParseCharSet<Pattern, CharSetAtom::next>;
     static_assert(Next::next <= Pattern.length, "ParseCharSet: next parsing overflow");
-    using type = Or<typename CharSetAtom::type, typename Next::type>;
+    using type = typename JoinUnique<typename CharSetAtom::type, typename Next::type>::type;
     static constexpr size_t next = Next::next;
   };
 
@@ -366,14 +388,61 @@ struct ParseCharSet {
   static constexpr size_t next = chosen::next;
 };
 
+template<typename CharList>
+struct CharListToOrSequential;
+template<typename Head, typename... Tail>
+struct CharListToOrSequential<TypeList<Head, Tail...>> {
+  using type = Or<Head, typename CharListToOrSequential<TypeList<Tail...>>::type>;
+};
+template<typename Head>
+struct CharListToOrSequential<TypeList<Head>> {
+  using type = Head;
+};
+
+template<typename Acc, typename CharList, typename Alphabet>
+struct CharListNegation;
+template<typename Acc, typename CharList, typename Head, typename... Tail>
+struct CharListNegation<Acc, CharList, TypeList<Head, Tail...>> {
+  using TmpAcc = std::conditional_t<Contains<CharList, Head>::value, Acc, typename PushBackUnique<Acc, Head>::type>;
+  using type = typename CharListNegation<TmpAcc, CharList, TypeList<Tail...>>::type;
+};
+template<typename Acc, typename CharList>
+struct CharListNegation<Acc, CharList, TypeList<>> {
+  using type = Acc;
+};
+
+/* ParseCharGroup: '[' CharSet ']' | '[' '^' CharSet ']' */
+template<FixedString Pattern, size_t Pos> 
+struct ParseCharGroup {
+  struct impl_pos {
+    using CharSet = ParseCharSet<Pattern, Pos + 1>;
+    static_assert(CharSet::next <= Pattern.length, "ParseCharGroup: char set parsing overflow");
+    static_assert(CharSet::next < Pattern.length && Pattern[CharSet::next] == ']', "ParseCharGroup: ']' not closed");
+    using type = typename CharListToOrSequential<typename CharSet::type>::type;
+    static constexpr size_t next = CharSet::next + 1;
+  };
+
+  struct impl_neg {
+    using CharSet = ParseCharSet<Pattern, Pos + 2>;
+    static_assert(CharSet::next <= Pattern.length, "ParseCharGroup: char set parsing overflow");
+    static_assert(CharSet::next < Pattern.length && Pattern[CharSet::next] == ']', "ParseCharGroup: ']' not closed");
+    using NegCharList = typename CharListNegation<TypeList<>, typename CharSet::type, Alphabet>::type;
+    using type = typename CharListToOrSequential<NegCharList>::type;
+    static constexpr size_t next = CharSet::next + 1;
+  };
+
+  static constexpr bool is_neg = Pos + 1 < Pattern.length && Pattern[Pos + 1] == '^';
+  using chosen = std::conditional_t<is_neg, impl_neg, impl_pos>;
+  using type = typename Simplify<typename chosen::type>::type;
+  static constexpr size_t next = chosen::next;
+};
+
 template<typename Alphabet>
 struct FullMatch;
-
 template<char C, typename... Remains>
 struct FullMatch<TypeList<Char<C>, Remains...>> {
   using type = Or<Char<C>, typename FullMatch<TypeList<Remains...>>::type>;
 };
-
 template<char C>
 struct FullMatch<TypeList<Char<C>>> {
   using type = Char<C>;
@@ -399,14 +468,12 @@ struct ParseAtom {
     static constexpr size_t next = Regex::next + 1;
   };
 
-  /* case '[' CharSet ']'*/
+  /* case CharGroup */
   struct impl_square {
-    using CharSet = ParseCharSet<Pattern, Pos + 1>;
-    static_assert(CharSet::next <= Pattern.length, "ParseAtom: char set parse overflow");
-    static_assert(CharSet::next < Pattern.length && Pattern[CharSet::next] == ']',
-      "ParseAtom impl_paren: missing closing ']' in pattern");
-    using type = typename CharSet::type;
-    static constexpr size_t next = CharSet::next + 1;
+    using CharGroup = ParseCharGroup<Pattern, Pos>;
+    static_assert(CharGroup::next <= Pattern.length, "ParseAtom: char set parse overflow");
+    using type = typename CharGroup::type;
+    static constexpr size_t next = CharGroup::next;
   };
 
   /* case CHAR */

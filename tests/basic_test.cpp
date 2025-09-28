@@ -35,6 +35,10 @@ void basic_test() {
   TEST_AND_LOG("[a-z]", "A", false);
   TEST_AND_LOG("[0-9]", "5", true);
   TEST_AND_LOG("[0-9]", "a", false);
+  TEST_AND_LOG("[^0-9]", "a", true);
+  TEST_AND_LOG("[^0-9]", "4", false);
+  TEST_AND_LOG("[^abc]", "a", false);
+  TEST_AND_LOG("[^abc]", "d", true);
   TEST_AND_LOG(".", "5", true);
   TEST_AND_LOG(".", "a", true);
   TEST_AND_LOG("..", "ab", true);
