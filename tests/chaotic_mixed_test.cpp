@@ -10,6 +10,5 @@ void chaotic_mixed_test() {
   TEST_AND_LOG("(a|(b|c))*d", "aaad", true);
   TEST_AND_LOG("(a|(b|c))*d", "abcd", true);
   TEST_AND_LOG("(a|(b|c))*d", "abca", false);
-
   TEST_AND_LOG("(a|[bcd]|(e|f))", "e", true);
 }
