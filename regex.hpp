@@ -11,6 +11,7 @@
 namespace onre {
 namespace impl {
 
+/* === type list, a linear container of types === */
 template<typename... Ts> struct TypeList {};
 template<typename List, typename T> struct Contains;
 template<typename T, typename... Ts> struct Contains<TypeList<Ts...>, T> : std::disjunction<std::is_same<T, Ts>...> {};
@@ -34,6 +35,8 @@ struct IndexOf<TypeList<Head, Tail...>, Head, I> : std::integral_constant<std::s
 template<typename T, std::size_t I>
 struct IndexOf<TypeList<>, T, I> { static_assert(sizeof(T) == 0, "IndexOf: type not found in TypeList"); };
 
+
+/* === fixed string, a string container enabling compile-time visiting === */
 template<size_t N>
 struct FixedString {
   consteval FixedString(const char (&str)[N]) {
@@ -50,6 +53,8 @@ struct FixedString {
 template<size_t N>
 FixedString(const char (&str)[N]) -> FixedString<N>;
 
+
+/* === extended regular expression tree representation with zero-width action === */
 struct RE {};
 struct EmptySet : RE {};
 struct Epsilon : RE {};
@@ -58,48 +63,8 @@ template<typename R, typename S> struct Or : RE { using left = R; using right = 
 template<typename R, typename S> struct Concat : RE {using left = R; using right = S; };
 template<typename R> struct Closure : RE { using inner = R; };
 
-constexpr size_t nr_ascii_char = 128;
-constexpr char visible_ascii_start = ' ';
-constexpr char visible_ascii_end = '~';
 
-constexpr bool is_visible_char(char ch) {
-  return ch >= visible_ascii_start && ch <= visible_ascii_end; // ASCII visible characters
-}
-
-constexpr std::array<bool, nr_ascii_char> make_valid_table() {
-  std::array<bool, nr_ascii_char> table {};
-  for (int32_t i = 0; i < nr_ascii_char; i++) {
-    table[i] = is_visible_char(i) && i != '|' && i != '*' && i != '+'
-      && i != '?' && i != '(' && i != ')' && i != '[' && i != ']'
-      && i != '.';
-  }
-  return table;
-}
-
-constexpr auto valid_table = make_valid_table();
-
-constexpr bool is_valid_char(char ch) {
-  return valid_table[static_cast<unsigned char>(ch)];
-}
-
-constexpr bool is_in_class_char(char ch) {
-  return is_visible_char(ch) && ch != ']';
-}
-
-template <char Start, char End, typename Acc>
-struct AlphabetGenerator {
-  static_assert(Start <= End, "invalid char range");
-  using TmpAcc = typename PushBackUnique<Acc, Char<Start>>::type;
-  using type = typename AlphabetGenerator<Start + 1, End, TmpAcc>::type;
-};
-
-template <char C, typename Acc>
-struct AlphabetGenerator<C, C, Acc> {
-  using type = typename PushBackUnique<Acc, Char<C>>::type;
-};
-
-using Alphabet = typename AlphabetGenerator<visible_ascii_start, visible_ascii_end, TypeList<>>::type;
-
+/* === nullable testing, testing whether \epsilon \in L(R) === */
 template<typename R>
 struct Nullable {};
 /* delta(0) = F */
@@ -115,40 +80,40 @@ template<typename L, typename R> struct Nullable<Concat<L, R>> : std::bool_const
 /* delta(R*) = T */
 template<typename R> struct Nullable<Closure<R>> : std::true_type {};
 
+
+/* === First notation, get TypeList<Char...> of possible character occurring in the head of string in RE language === */
+template <typename RE, typename Acc>
+struct First;
+template <typename Acc> struct First<EmptySet, Acc> { using type = Acc; };
+template <typename Acc> struct First<Epsilon, Acc> { using type = Acc; };
+template <char C, typename Acc>
+struct First<Char<C>, Acc> {
+  using type = typename PushBackUnique<Acc, Char<C>>::type;
+};
+template <typename R, typename S, typename Acc>
+struct First<Or<R, S>, Acc> {
+  using TmpAcc = typename First<R, Acc>::type;
+  using type = typename First<S, TmpAcc>::type;
+};
+template <typename R, typename S, typename Acc>
+struct First<Concat<R, S>, Acc> {
+  struct impl_r_nullable {
+    using TmpAcc = typename First<R, Acc>::type;
+    using type = typename First<S, TmpAcc>::type;
+  };
+  struct impl_r_non_nullable {
+    using type = typename First<R, Acc>::type;
+  };
+  using type = typename std::conditional_t<Nullable<R>::value, impl_r_nullable, impl_r_non_nullable>::type;
+};
+template <typename R, typename Acc>
+struct First<Closure<R>, Acc> {
+  using type = typename First<R, Acc>::type;
+};
+
+
+/* === simplify and standard ordering rules, significantly reduce complexity === */
 template<typename R> struct Simplify { using type = R; };
-
-template<typename R, char C> struct Derivative;
-/* d0/dc = 0 */
-template<char C> struct Derivative<EmptySet, C> { using type = EmptySet; };
-/* de/dc = 0 */
-template<char C> struct Derivative<Epsilon, C> { using type = EmptySet; };
-/* dx/dc = x == c ? e : 0 */
-template<char X, char C>
-struct Derivative<Char<X>, C> {
-  using type = std::conditional_t<X == C, Epsilon, EmptySet>;
-};
-/* d(R|S)/dc = dR/dc | dS/dc */
-template<typename R, typename S, char C>
-struct Derivative<Or<R, S>, C> {
-  using type = typename Simplify<Or<typename Derivative<R, C>::type, typename Derivative<S, C>::type>>::type;
-};
-/* d(RS)/dc = dR/dc S | (delta(R) ? dS/dc : 0)*/
-template<typename L, typename R, char C>
-struct Derivative<Concat<L, R>, C> {
-  using Part1 = Concat<typename Derivative<L, C>::type, R>;
-  using Part2 = std::conditional_t<
-    Nullable<L>::value,
-    typename Derivative<R, C>::type,
-    EmptySet
-  >;
-  using type = typename Simplify<Or<Part1, Part2>>::type;
-};
-/* d(R*)/dc = dR/dc R* */
-template<typename R, char C>
-struct Derivative<Closure<R>, C> {
-    using type = typename Simplify<Concat<typename Derivative<R, C>::type, Closure<R>>>::type;
-};
-
 /* e|R <=> R|e <=> R */
 template<typename R> struct Simplify<Or<EmptySet, R>> { using type = typename Simplify<R>::type; };
 template<typename R> struct Simplify<Or<R, EmptySet>> { using type = typename Simplify<R>::type; };
@@ -250,6 +215,52 @@ template<typename L, typename R> struct Simplify<Or<L, R>> {
 template<typename L, typename R> struct Simplify<Concat<L, R>> { using type = Concat<typename Simplify<L>::type, typename Simplify<R>::type>; };
 template<typename R> struct Simplify<Closure<R>> { using type = Closure<typename Simplify<R>::type>; };
 
+
+/* === compile-time alphabet and helper function === */
+constexpr size_t nr_ascii_char = 128;
+constexpr char visible_ascii_start = ' ';
+constexpr char visible_ascii_end = '~';
+
+constexpr bool is_visible_char(char ch) {
+  return ch >= visible_ascii_start && ch <= visible_ascii_end; // ASCII visible characters
+}
+
+constexpr std::array<bool, nr_ascii_char> make_valid_table() {
+  std::array<bool, nr_ascii_char> table {};
+  for (int32_t i = 0; i < nr_ascii_char; i++) {
+    table[i] = is_visible_char(i) && i != '|' && i != '*' && i != '+'
+      && i != '?' && i != '(' && i != ')' && i != '[' && i != ']'
+      && i != '.';
+  }
+  return table;
+}
+
+constexpr auto valid_table = make_valid_table();
+
+constexpr bool is_valid_char(char ch) {
+  return valid_table[static_cast<unsigned char>(ch)];
+}
+
+constexpr bool is_in_class_char(char ch) {
+  return is_visible_char(ch) && ch != ']';
+}
+
+template <char Start, char End, typename Acc>
+struct AlphabetGenerator {
+  static_assert(Start <= End, "invalid char range");
+  using TmpAcc = typename PushBackUnique<Acc, Char<Start>>::type;
+  using type = typename AlphabetGenerator<Start + 1, End, TmpAcc>::type;
+};
+
+template <char C, typename Acc>
+struct AlphabetGenerator<C, C, Acc> {
+  using type = typename PushBackUnique<Acc, Char<C>>::type;
+};
+
+using Alphabet = typename AlphabetGenerator<visible_ascii_start, visible_ascii_end, TypeList<>>::type;
+
+
+/* === regex parser === */
 /*
   Grammar:
     Regex       := Term ('|' Regex)?
@@ -514,6 +525,43 @@ struct RegexScan {
   static_assert(Parse::next == Pattern.length, "RegexScan: pattern not fully consumed or contains unexpected trailing characters");
 };
 
+namespace dfa { /* for fast O(|s|) bool matching with little O(1) */
+
+/* === classic brzozowski derivative === */
+template<typename R, char C> struct Derivative;
+/* d0/dc = 0 */
+template<char C> struct Derivative<EmptySet, C> { using type = EmptySet; };
+/* de/dc = 0 */
+template<char C> struct Derivative<Epsilon, C> { using type = EmptySet; };
+/* dx/dc = x == c ? e : 0 */
+template<char X, char C>
+struct Derivative<Char<X>, C> {
+  using type = std::conditional_t<X == C, Epsilon, EmptySet>;
+};
+/* d(R|S)/dc = dR/dc | dS/dc */
+template<typename R, typename S, char C>
+struct Derivative<Or<R, S>, C> {
+  using type = typename Simplify<Or<typename Derivative<R, C>::type, typename Derivative<S, C>::type>>::type;
+};
+/* d(RS)/dc = dR/dc S | (delta(R) ? dS/dc : 0)*/
+template<typename L, typename R, char C>
+struct Derivative<Concat<L, R>, C> {
+  using Part1 = Concat<typename Derivative<L, C>::type, R>;
+  using Part2 = std::conditional_t<
+    Nullable<L>::value,
+    typename Derivative<R, C>::type,
+    EmptySet
+  >;
+  using type = typename Simplify<Or<Part1, Part2>>::type;
+};
+/* d(R*)/dc = dR/dc R* */
+template<typename R, char C>
+struct Derivative<Closure<R>, C> {
+    using type = typename Simplify<Concat<typename Derivative<R, C>::type, Closure<R>>>::type;
+};
+
+
+/* === DFA builder === */
 template<typename R>
 struct State {
   using re = R;
@@ -530,36 +578,6 @@ template<typename StatesList, typename EdgesList>
 struct StateEdgePair {
   using States = StatesList;
   using Edges = EdgesList;
-};
-
-/* get TypeList<Char...> of possible used character in RE */
-template <typename RE, typename Acc>
-struct First;
-template <typename Acc> struct First<EmptySet, Acc> { using type = Acc; };
-template <typename Acc> struct First<Epsilon, Acc> { using type = Acc; };
-template <char C, typename Acc>
-struct First<Char<C>, Acc> {
-  using type = typename PushBackUnique<Acc, Char<C>>::type;
-};
-template <typename R, typename S, typename Acc>
-struct First<Or<R, S>, Acc> {
-  using TmpAcc = typename First<R, Acc>::type;
-  using type = typename First<S, TmpAcc>::type;
-};
-template <typename R, typename S, typename Acc>
-struct First<Concat<R, S>, Acc> {
-  struct impl_r_nullable {
-    using TmpAcc = typename First<R, Acc>::type;
-    using type = typename First<S, TmpAcc>::type;
-  };
-  struct impl_r_non_nullable {
-    using type = typename First<R, Acc>::type;
-  };
-  using type = typename std::conditional_t<Nullable<R>::value, impl_r_nullable, impl_r_non_nullable>::type;
-};
-template <typename R, typename Acc>
-struct First<Closure<R>, Acc> {
-  using type = typename First<R, Acc>::type;
 };
 
 /* Append derivative for a single character C, given current accumulator Pair<States,Edges> and a source StateT */
@@ -591,6 +609,7 @@ public:
   >;
 };
 
+/* derive state for all character in given alphabet */
 template<typename PairAcc, typename StateT, typename Alphabet>
 struct AppendDerivativesForStatePair;
 template<typename PairAcc, typename StateT>
@@ -603,7 +622,7 @@ struct AppendDerivativesForStatePair<PairAcc, StateT, TypeList<Head, Tail...>> {
   using type = typename AppendDerivativesForStatePair<after_processing, StateT, TypeList<Tail...>>::type;
 };
 
-/* ExpandOnce on a list of states: produce Pair<NewStates, NewEdges> */
+/* expand once on a list of states, produce Pair<NewStates, NewEdges> */
 template<typename StateEdgePair>
 struct ExpandOnce {
 private:
@@ -635,7 +654,8 @@ public:
   using type = typename FoldHelper<StateEdgePair, typename StateEdgePair::States>::type;
 };
 
-/* ExpandUntilStable: iterate ExpandOncePair until states length doesn't increase */
+/* expand until stable pair: iterate expand once until states length doesn't increase */
+/* separate impl to avoid possible self reference causing errors */
 template<typename PairAcc, std::size_t PrevLen>
 struct ExpandUntilStablePairImpl;
 
@@ -674,6 +694,8 @@ template<typename RE> using AllStateEdgePair = typename AllStatesAndEdgesGenerat
 template<typename RE> using AllStatesList = typename AllStatesAndEdgesGenerator<RE>::States;
 template<typename RE> using AllEdgesList  = typename AllStatesAndEdgesGenerator<RE>::Edges;
 
+
+/* === table builder, convert sparse graph representation into jump table representation === */
 template<typename EdgesList>
 struct BuildTable {
   template<std::size_t N>
@@ -701,126 +723,35 @@ struct BuildAccepts<TypeList<Ss...>> {
   }
 };
 
+} /* namespace dfa */
+
 } /* namespace impl */
 
+
+/* === interface === */
 template<impl::FixedString Pattern>
 class Regex {
 public:
-  static bool match(std::string_view str) {
+  static bool is_match(std::string_view str) {
     std::size_t state = 0;
     for (const char& ch : str) {
       if (!impl::is_visible_char(ch)) [[unlikely]] return false;
-      int32_t nxt = trans[state][static_cast<std::size_t>(ch)];
+      int32_t nxt = dfa_trans_table[state][static_cast<std::size_t>(ch)];
       if (nxt < 0) return false;
       state = static_cast<std::size_t>(nxt);
     }
-    return accepts[state];
+    return dfa_is_accept_states[state];
   }
 
 private:
   using Re = typename impl::RegexScan<Pattern>::type;
-  using Pair = impl::AllStateEdgePair<Re>;
-  using StatesList = typename Pair::States;
-  using EdgesList  = typename Pair::Edges;
-  static constexpr std::size_t nr_states = impl::TypeListLength<StatesList>::value;
-  static constexpr auto trans = impl::BuildTable<EdgesList>::template make<nr_states>();
-  static constexpr auto accepts = impl::BuildAccepts<StatesList>::make();
+  using DFAStatesList = impl::dfa::AllStatesList<Re>;
+  using DFAEdgesList  = impl::dfa::AllEdgesList<Re>;
+  static constexpr std::size_t nr_dfa_states = impl::dfa::TypeListLength<DFAStatesList>::value;
+  static constexpr auto dfa_trans_table = impl::dfa::BuildTable<DFAEdgesList>::template make<nr_dfa_states>();
+  static constexpr auto dfa_is_accept_states = impl::dfa::BuildAccepts<DFAStatesList>::make();
 };
-
-namespace logger {
-
-  template <typename RE>
-  struct ToString;
-
-  template <>
-  struct ToString<impl::EmptySet> {
-    static std::string to_string() {
-      return "(/)";
-    }
-  };
-
-  template <>
-  struct ToString<impl::Epsilon> {
-    static std::string to_string() {
-      return "";
-    }
-  };
-
-  template <char C>
-  struct ToString<impl::Char<C>> {
-    static std::string to_string() {
-      return std::string(1, C);
-    }
-  };
-
-  template <typename R, typename S>
-  struct ToString<impl::Or<R, S>> {
-    static std::string to_string() {
-      return ToString<R>::to_string() + '|' + ToString<S>::to_string();
-    }
-  };
-
-  template <typename R, typename S>
-  struct ToString<impl::Concat<R, S>> {
-    static std::string to_string() {
-      auto left_str = impl::is_less<R, impl::Concat<R, S>>::value
-        ? '(' + ToString<R>::to_string() + ")" : ToString<R>::to_string();
-      auto right_str = impl::is_less<S, impl::Concat<R, S>>::value
-        ? '(' + ToString<S>::to_string() + ")" : ToString<S>::to_string();
-      return  left_str + right_str;
-    }
-  };
-
-  template <typename R>
-  struct ToString<impl::Closure<R>> {
-    static std::string to_string() {
-      return impl::is_less<R, impl::Closure<R>>::value
-        ? '(' + ToString<R>::to_string() + ")*"
-        : ToString<R>::to_string() + '*';
-    }
-  };
-
-  template <typename TypeList, size_t idx>
-  struct TypeListPrinterImpl;
-
-  template <typename TypeList>
-  struct TypeListPrinter {
-    static void print() {
-      TypeListPrinterImpl<TypeList, 0>::print();
-    }
-  };
-
-  template<size_t idx, typename RE, typename... Remains>
-  struct TypeListPrinterImpl<impl::TypeList<impl::State<RE>, Remains...>, idx> {
-    static void print() {
-      printf("(%lu) %s\n", idx, ToString<RE>::to_string().c_str());
-      TypeListPrinterImpl<impl::TypeList<Remains...>, idx + 1>::print();
-    }
-  };
-
-  template<size_t idx, char C, typename... Remains>
-  struct TypeListPrinterImpl<impl::TypeList<impl::Char<C>, Remains...>, idx> {
-    static void print() {
-      printf("(%lu) %c\n", idx, C);
-      TypeListPrinterImpl<impl::TypeList<Remains...>, idx + 1>::print();
-    }
-  };
-
-  template<size_t idx, size_t From, char C, size_t To, typename... Remains>
-  struct TypeListPrinterImpl<impl::TypeList<impl::Edge<From, C, To>, Remains...>, idx> {
-    static void print() {
-      printf("(%lu) %lu --%c-> %lu\n", idx, From, C, To);
-      TypeListPrinterImpl<impl::TypeList<Remains...>, idx + 1>::print();
-    }
-  };
-
-  template <size_t idx>
-  struct TypeListPrinterImpl<impl::TypeList<>, idx> {
-    static void print() {}
-  };
-
-} /* namespace logger */
 
 } /* namespace onre */
 
-#endif
+#endif /* !ONRE_REGEX_HPP_ */

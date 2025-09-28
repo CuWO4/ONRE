@@ -10,7 +10,7 @@
 #define TEST_AND_LOG(pattern, str, expected) \
 do { \
   auto start = std::chrono::high_resolution_clock::now(); \
-  bool result = onre::Regex<pattern>::match(str); \
+  bool result = onre::Regex<pattern>::is_match(str); \
   auto end = std::chrono::high_resolution_clock::now(); \
   std::string s(str); \
   const char* color = (result == (expected)) ? "\033[1;32m" : "\033[1;31m"; \
