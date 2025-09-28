@@ -525,7 +525,8 @@ struct RegexScan {
   static_assert(Parse::next == Pattern.length, "RegexScan: pattern not fully consumed or contains unexpected trailing characters");
 };
 
-namespace dfa { /* for fast O(|s|) bool matching with little O(1) */
+/* for fast O(|s|) bool matching with little O(1) */
+namespace dfa {
 
 /* === classic brzozowski derivative === */
 template<typename R, char C> struct Derivative;
@@ -725,14 +726,40 @@ struct BuildAccepts<TypeList<Ss...>> {
 
 } /* namespace dfa */
 
+/*
+ * for slower O(|s| * #capture * 2^|pattern|) matching with capture group.
+ * the matching time is still linear in the length of the input string,
+ * but is related to the number of capture group (linear) and the length
+ * of the pattern (in the worst case exponential), and have  a bigger O(1).
+ * compile such automata would take considerably more time than DFA.
+ */
+namespace tnfa {
+
+/* === v operator === */
+// TODO
+
+
+/* === extended brzozowski derivative === */
+// TODO
+
+
+/* === TDFA builder === */
+// TODO
+
+
+/* === table builder, convert sparse graph representation into jump table, action list and other auxiliary structure === */
+// TODO
+
+} /* namespace tnfa */
+
 } /* namespace impl */
 
 
 /* === interface === */
 template<impl::FixedString Pattern>
-class Regex {
+class Match {
 public:
-  static bool is_match(std::string_view str) {
+  static bool eval(std::string_view str) {
     std::size_t state = 0;
     for (const char& ch : str) {
       if (!impl::is_visible_char(ch)) [[unlikely]] return false;
@@ -750,6 +777,15 @@ private:
   static constexpr std::size_t nr_dfa_states = impl::dfa::TypeListLength<DFAStatesList>::value;
   static constexpr auto dfa_trans_table = impl::dfa::BuildTable<DFAEdgesList>::template make<nr_dfa_states>();
   static constexpr auto dfa_is_accept_states = impl::dfa::BuildAccepts<DFAStatesList>::make();
+};
+
+template<impl::FixedString Pattern>
+class Replace {
+public:
+  static std::string eval(std::string_view replace_rule, std::string_view str) {
+    // TODO: implement me with TNFA
+    throw std::runtime_error("not implemented");
+  }
 };
 
 } /* namespace onre */
