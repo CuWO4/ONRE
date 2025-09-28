@@ -1,3 +1,6 @@
+#ifndef ONRE_REGEX_HPP
+#define ONRE_REGEX_HPP
+
 #include <array>
 #include <cstddef>
 #include <type_traits>
@@ -819,3 +822,5 @@ namespace logger {
 } /* namespace logger */
 
 } /* namespace onre */
+
+#endif
