@@ -69,29 +69,23 @@ FixedString(const char (&str)[N]) -> FixedString<N>;
 
 
 /* === extended regular expression tree representation with zero-width action === */
-struct RE {};
-struct EmptySet : RE {};
-struct Epsilon : RE {};
-template<char C> struct Char : RE { static constexpr char c = C; };
-template<typename R, typename S> struct Or : RE { using left = R; using right = S; };
-template<typename R, typename S> struct Concat : RE {using left = R; using right = S; };
-template<typename R> struct Closure : RE { using inner = R; };
+struct EmptySet {};
+struct Epsilon {};
+template<char C> struct Char { static constexpr char c = C; };
+template<std::size_t I> struct SetSlot { static constexpr char i = I; };
+template<typename R, typename S> struct Or { using left = R; using right = S; };
+template<typename R, typename S> struct Concat {using left = R; using right = S; };
+template<typename R> struct Closure { using inner = R; };
 
 
-/* === nullable testing, testing whether \epsilon \in L(R) === */
-template<typename R>
-struct Nullable {};
-/* delta(0) = F */
+/* === nullable testing, testing whether epsilon in L(R) === */
+template<typename R> struct Nullable {};
 template<> struct Nullable<EmptySet> : std::false_type {};
-/* delta(e) = T */
 template<> struct Nullable<Epsilon> : std::true_type {};
-/* delta(c) = T */
 template<char C> struct Nullable<Char<C>> : std::false_type {};
-/* delta(R|S) = delta(R) || delta(S) */
+template<size_t I> struct Nullable<SetSlot<I>> : std::true_type {};
 template<typename L, typename R> struct Nullable<Or<L, R>> : std::bool_constant<Nullable<L>::value || Nullable<R>::value> {};
-/* delta(RS) = delta(R) && delta(S) */
 template<typename L, typename R> struct Nullable<Concat<L, R>> : std::bool_constant<Nullable<L>::value && Nullable<R>::value> {};
-/* delta(R*) = T */
 template<typename R> struct Nullable<Closure<R>> : std::true_type {};
 
 
@@ -104,6 +98,7 @@ template <char C, typename Acc>
 struct First<Char<C>, Acc> {
   using type = typename PushBackUnique<Acc, Char<C>>::type;
 };
+template <size_t I, typename Acc> struct First<SetSlot<I>, Acc> { using type = Acc; };
 template <typename R, typename S, typename Acc>
 struct First<Or<R, S>, Acc> {
   using TmpAcc = typename First<R, Acc>::type;
@@ -146,21 +141,7 @@ template<> struct Simplify<Concat<Epsilon, EmptySet>> { using type = EmptySet; }
 template<> struct Simplify<Concat<EmptySet, Epsilon>> { using type = EmptySet; };
 template<> struct Simplify<Concat<Epsilon, Epsilon>> { using type = Epsilon; };
 
-/* R(S|T) <=> RS|RT */
-template<typename R, typename S, typename T>
-struct Simplify<Concat<R, Or<S, T>>> {
-  using type = typename Simplify<Or<Concat<R, S>, Concat<R, T>>>::type;
-};
-template<typename S, typename T>
-struct Simplify<Concat<EmptySet, Or<S, T>>> {
-  using type = EmptySet;
-};
-template<typename S, typename T>
-struct Simplify<Concat<Epsilon, Or<S, T>>> {
-  using type = typename Simplify<Or<S, T>>::type;
-};
-
-// /* 0* <=> e* <=> e */
+/* 0* <=> e* <=> e */
 template<> struct Simplify<Closure<EmptySet>> { using type = Epsilon; };
 template<> struct Simplify<Closure<Epsilon>> { using type = Epsilon; };
 
@@ -184,25 +165,33 @@ template<typename R> struct Simplify<Or<Closure<R>, Concat<Closure<R>, R>>> { us
 template<typename A, typename B>
 struct is_less : std::false_type {};
 
-/* Or < Concat < Closure < EmptySet < Epsilon < Char */
+/* Or < Concat < Closure < EmptySet < Epsilon < Char < SetSlot */
 template <typename R1, typename S1, typename R2, typename S2> struct is_less<Or<R1, S1>, Concat<R2, S2>> : std::true_type {};
 template <typename R1, typename S1, typename R2> struct is_less<Or<R1, S1>, Closure<R2>> : std::true_type {};
 template <typename R, typename S> struct is_less<Or<R, S>, EmptySet> : std::true_type {};
 template <typename R, typename S> struct is_less<Or<R, S>, Epsilon> : std::true_type {};
 template <typename R, typename S, char C> struct is_less<Or<R, S>, Char<C>> : std::true_type {};
+template <typename R, typename S, size_t I> struct is_less<Or<R, S>, SetSlot<I>> : std::true_type {};
 template <typename R1, typename S1, typename R2> struct is_less<Concat<R1, S1>, Closure<R2>> : std::true_type {};
 template <typename R, typename S> struct is_less<Concat<R, S>, EmptySet> : std::true_type {};
 template <typename R, typename S> struct is_less<Concat<R, S>, Epsilon> : std::true_type {};
 template <typename R, typename S, char C> struct is_less<Concat<R, S>, Char<C>> : std::true_type {};
+template <typename R, typename S, size_t I> struct is_less<Concat<R, S>, SetSlot<I>> : std::true_type {};
 template <typename R> struct is_less<Closure<R>, EmptySet> : std::true_type {};
 template <typename R> struct is_less<Closure<R>, Epsilon> : std::true_type {};
 template <typename R, char C> struct is_less<Closure<R>, Char<C>> : std::true_type {};
+template <typename R, size_t I> struct is_less<Closure<R>, SetSlot<I>> : std::true_type {};
 template <> struct is_less<EmptySet, Epsilon> : std::true_type {};
 template <char C> struct is_less<EmptySet, Char<C>> : std::true_type {};
+template <size_t I> struct is_less<EmptySet, SetSlot<I>> : std::true_type {};
 template <char C> struct is_less<Epsilon, Char<C>> : std::true_type {};
+template <size_t I> struct is_less<Epsilon, SetSlot<I>> : std::true_type {};
+template <char C, size_t I> struct is_less<Char<C>, SetSlot<I>> : std::true_type {};
 
 template <char C1, char C2>
 struct is_less<Char<C1>, Char<C2>> { static constexpr bool value = C1 < C2; };
+template <size_t I1, size_t I2>
+struct is_less<SetSlot<I1>, SetSlot<I2>> { static constexpr bool value = I1 < I2; };
 template<typename R1, typename S1, typename R2, typename S2>
 struct is_less<Or<R1, S1>, Or<R2, S2>> { static constexpr bool value = is_less<R1, R2>::value || (!is_less<R1, R2>::value && is_less<S1, S2>::value); };
 template<typename R1, typename S1, typename R2, typename S2>
@@ -217,6 +206,12 @@ template<typename R, typename S, typename T> struct Simplify<Concat<Concat<R, S>
 template<typename R, typename S> struct Simplify<Concat<Concat<R, S>, EmptySet>> { using type = EmptySet; };
 template<typename R, typename S> struct Simplify<Concat<Concat<R, S>, Epsilon>> { using type = typename Simplify<Concat<R, S>>::type; };
 template<typename R> struct Simplify<Concat<Closure<R>, R>> { using type = typename Simplify<Concat<R, Closure<R>>>::type; };
+template<typename R> struct Simplify<Concat<Closure<R>, Epsilon>> { using type = typename Simplify<Closure<R>>::type; };
+template<typename R> struct Simplify<Concat<Closure<R>, EmptySet>> { using type = EmptySet; };
+template<typename R, typename S>
+struct Simplify<Concat<Closure<Or<R, S>>, Or<R, S>>> {
+  using type = typename Simplify<Closure<Or<R, S>>>::type;
+};
 
 /* recursive */
 template<typename L, typename R> struct Simplify<Or<L, R>> {
@@ -289,10 +284,10 @@ using Alphabet = typename AlphabetGenerator<visible_ascii_start, visible_ascii_e
 */
 
 /* forward declarations */
-template<FixedString Pattern, size_t Pos> struct ParseRegex;
-template<FixedString Pattern, size_t Pos> struct ParseTerm;
-template<FixedString Pattern, size_t Pos> struct ParseFactor;
-template<FixedString Pattern, size_t Pos> struct ParseAtom;
+template<FixedString Pattern, size_t Pos, size_t CapIdx> struct ParseRegex;
+template<FixedString Pattern, size_t Pos, size_t CapIdx> struct ParseTerm;
+template<FixedString Pattern, size_t Pos, size_t CapIdx> struct ParseFactor;
+template<FixedString Pattern, size_t Pos, size_t CapIdx> struct ParseAtom;
 template<FixedString Pattern, size_t Pos> struct ParseCharGroup;
 template<FixedString Pattern, size_t Pos> struct ParseCharSet;
 template<FixedString Pattern, size_t Pos> struct ParseCharSetAtom;
@@ -412,7 +407,7 @@ struct CharListNegation<Acc, CharList, TypeList<>> {
 };
 
 /* ParseCharGroup: '[' CharSet ']' | '[' '^' CharSet ']' */
-template<FixedString Pattern, size_t Pos> 
+template<FixedString Pattern, size_t Pos>
 struct ParseCharGroup {
   struct impl_pos {
     using CharSet = ParseCharSet<Pattern, Pos + 1>;
@@ -449,7 +444,7 @@ struct FullMatch<TypeList<Char<C>>> {
 };
 
 /* ParseAtom: '(' Regex ')' | '[' CharSet ']' |  CHAR | '.' */
-template<FixedString Pattern, size_t Pos>
+template<FixedString Pattern, size_t Pos, size_t CapIdx>
 struct ParseAtom {
   static_assert(
     Pos < Pattern.length && (
@@ -460,12 +455,13 @@ struct ParseAtom {
 
   /* case '(' Regex ')' */
   struct impl_paren {
-    using Regex = ParseRegex<Pattern, Pos + 1>;
+    using Regex = ParseRegex<Pattern, Pos + 1, CapIdx + 1>;
     static_assert(Regex::next <= Pattern.length, "ParseAtom: regex parse overflow");
     static_assert(Regex::next < Pattern.length && Pattern[Regex::next] == ')',
       "ParseAtom impl_paren: missing closing ')' in pattern");
-    using type = typename Regex::type;
+    using type = Concat<SetSlot<2 * CapIdx>, Concat<typename Regex::type, SetSlot<2 * CapIdx + 1>>>;
     static constexpr size_t next = Regex::next + 1;
+    static constexpr size_t next_cap_idx = Regex::next_cap_idx;
   };
 
   /* case CharGroup */
@@ -474,6 +470,7 @@ struct ParseAtom {
     static_assert(CharGroup::next <= Pattern.length, "ParseAtom: char set parse overflow");
     using type = typename CharGroup::type;
     static constexpr size_t next = CharGroup::next;
+    static constexpr size_t next_cap_idx = CapIdx;
   };
 
   /* case CHAR */
@@ -482,12 +479,14 @@ struct ParseAtom {
     static_assert(CHAR::next <= Pattern.length, "ParseAtom: char parse overflow");
     using type = typename CHAR::type;
     static constexpr size_t next = CHAR::next;
+    static constexpr size_t next_cap_idx = CapIdx;
   };
 
   /* case '.' */
   struct impl_full_match {
     using type = typename FullMatch<Alphabet>::type;
     static constexpr size_t next = Pos + 1;
+    static constexpr size_t next_cap_idx = CapIdx;
   };
 
   using chosen = std::conditional_t<
@@ -505,12 +504,13 @@ struct ParseAtom {
   >;
   using type = typename Simplify<typename chosen::type>::type;
   static constexpr size_t next = chosen::next;
+  static constexpr size_t next_cap_idx = chosen::next_cap_idx;
 };
 
 /* ParseFactor: Atom ('*')? | Atom ('+')? | Atom ('?')? */
-template<FixedString Pattern, size_t Pos>
+template<FixedString Pattern, size_t Pos, size_t CapIdx>
 struct ParseFactor {
-  using Atom = ParseAtom<Pattern, Pos>;
+  using Atom = ParseAtom<Pattern, Pos, CapIdx>;
 
   static_assert(Atom::next <= Pattern.length, "ParseFactor: atom parse overflow");
 
@@ -532,24 +532,27 @@ struct ParseFactor {
     >
   >>::type;
   static constexpr size_t next = (has_star || has_plus || has_question) ? (Atom::next + 1) : Atom::next;
+  static constexpr size_t next_cap_idx = Atom::next_cap_idx;
 };
 
 /* ParseTerm := Factor Term | (empty -> Epsilon) */
-template<FixedString Pattern, size_t Pos>
+template<FixedString Pattern, size_t Pos, size_t CapIdx>
 struct ParseTerm {
   /* empty case */
   struct impl_empty {
     using type = Epsilon;
     static constexpr size_t next = Pos;
+    static constexpr size_t next_cap_idx = CapIdx;
   };
   /* Factor Term case */
   struct impl_nonempty {
-    using Factor = ParseFactor<Pattern, Pos>;
+    using Factor = ParseFactor<Pattern, Pos, CapIdx>;
     static_assert(Factor::next <= Pattern.length, "ParseTerm: factor parse overflow");
-    using Term = ParseTerm<Pattern, Factor::next>;
+    using Term = ParseTerm<Pattern, Factor::next, Factor::next_cap_idx>;
     static_assert(Term::next <= Pattern.length, "ParseTerm: term parse overflow");
     using type = Concat<typename Factor::type, typename Term::type>;
     static constexpr size_t next = Term::next;
+    static constexpr size_t next_cap_idx = Term::next_cap_idx;
   };
 
   using chosen = std::conditional_t<
@@ -559,36 +562,40 @@ struct ParseTerm {
   >;
   using type = typename Simplify<typename chosen::type>::type;
   static constexpr size_t next = chosen::next;
+  static constexpr size_t next_cap_idx = chosen::next_cap_idx;
 };
 
 /* ParseRegex := Term ('|' Regex)? */
-template<FixedString Pattern, size_t Pos>
+template<FixedString Pattern, size_t Pos, size_t CapIdx>
 struct ParseRegex {
-  using Term = ParseTerm<Pattern, Pos>;
+  using Term = ParseTerm<Pattern, Pos, CapIdx>;
 
   static_assert(Term::next <= Pattern.length, "ParseRegex: term parse overflow");
 
   struct impl_bar {
-    using Regex = ParseRegex<Pattern, Term::next + 1>;
+    using Regex = ParseRegex<Pattern, Term::next + 1, Term::next_cap_idx>;
     static_assert(Regex::next <= Pattern.length, "ParseRegex: regex parse overflow");
     using type = Or<typename Term::type, typename Regex::type>;
     static constexpr size_t next = Regex::next;
+    static constexpr size_t next_cap_idx = Regex::next_cap_idx;
   };
   struct impl_no_bar {
     using type = typename Term::type;
     static constexpr size_t next = Term::next;
+    static constexpr size_t next_cap_idx = Term::next_cap_idx;
   };
 
   static constexpr bool has_bar = (Term::next < Pattern.length && Pattern[Term::next] == '|');
   using chosen = std::conditional_t<has_bar, impl_bar, impl_no_bar>;
   using type = typename Simplify<typename chosen::type>::type;
   static constexpr size_t next = chosen::next;
+  static constexpr size_t next_cap_idx = chosen::next_cap_idx;
 };
 
 template<FixedString Pattern>
 struct RegexScan {
-  using Parse = ParseRegex<Pattern, 0>;
-  using type = typename Parse::type;
+  using Parse = ParseRegex<Pattern, 0, 1>;
+  using type = Concat<SetSlot<0>, Concat<typename Parse::type, SetSlot<1>>>;
   static_assert(Parse::next == Pattern.length, "RegexScan: pattern not fully consumed or contains unexpected trailing characters");
 };
 
@@ -630,6 +637,27 @@ struct Derivative<Closure<R>, C> {
 
 
 /* === DFA builder === */
+template<typename R> struct RemoveAllAction;
+template<> struct RemoveAllAction<EmptySet> { using type = EmptySet; };
+template<> struct RemoveAllAction<Epsilon> { using type = Epsilon; };
+template<char C> struct RemoveAllAction<Char<C>> { using type = Char<C>; };
+template<size_t I> struct RemoveAllAction<SetSlot<I>> { using type = Epsilon; };
+template<typename L, typename R> struct RemoveAllAction<Or<L, R>> {
+  using type = typename Simplify<
+    Or<typename RemoveAllAction<L>::type, typename RemoveAllAction<R>::type>
+  >::type;
+};
+template<typename L, typename R> struct RemoveAllAction<Concat<L, R>> {
+  using type = typename Simplify<
+    Concat<typename RemoveAllAction<L>::type, typename RemoveAllAction<R>::type>
+  >::type;
+};
+template<typename R> struct RemoveAllAction<Closure<R>> : std::true_type {
+  using type = typename Simplify<
+    Closure<typename RemoveAllAction<R>::type>
+  >::type;
+};
+
 template<typename R>
 struct State {
   using re = R;
@@ -839,8 +867,9 @@ public:
 
 private:
   using Re = typename impl::RegexScan<Pattern>::type;
-  using DFAStatesList = impl::dfa::AllStatesList<Re>;
-  using DFAEdgesList  = impl::dfa::AllEdgesList<Re>;
+  using NoActionRe = typename impl::dfa::RemoveAllAction<Re>::type;
+  using DFAStatesList = impl::dfa::AllStatesList<NoActionRe>;
+  using DFAEdgesList  = impl::dfa::AllEdgesList<NoActionRe>;
   static constexpr std::size_t nr_dfa_states = impl::dfa::TypeListLength<DFAStatesList>::value;
   static constexpr auto dfa_trans_table = impl::dfa::BuildTable<DFAEdgesList>::template make<nr_dfa_states>();
   static constexpr auto dfa_is_accept_states = impl::dfa::BuildAccepts<DFAStatesList>::make();
