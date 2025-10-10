@@ -29,6 +29,13 @@ struct ToString<impl::Char<C>> {
   }
 };
 
+template <size_t I>
+struct ToString<impl::SetSlot<I>> {
+  static std::string to_string() {
+    return "<" + std::to_string(I) + ">";
+  }
+};
+
 template <typename R, typename S>
 struct ToString<impl::Or<R, S>> {
   static std::string to_string() {
@@ -38,10 +45,12 @@ struct ToString<impl::Or<R, S>> {
 
 template <typename R, typename S>
 struct ToString<impl::Concat<R, S>> {
+  template <typename T> struct is_concat : std::false_type {};
+  template <typename U, typename T> struct is_concat<impl::Concat<U, T>> : std::true_type {};
   static std::string to_string() {
-    auto left_str = impl::is_less<R, impl::Concat<R, S>>::value
+    auto left_str = !is_concat<R>::value && impl::is_less<R, impl::Concat<R, S>>::value
       ? '(' + ToString<R>::to_string() + ")" : ToString<R>::to_string();
-    auto right_str = impl::is_less<S, impl::Concat<R, S>>::value
+    auto right_str = !is_concat<S>::value && impl::is_less<S, impl::Concat<R, S>>::value
       ? '(' + ToString<S>::to_string() + ")" : ToString<S>::to_string();
     return  left_str + right_str;
   }
