@@ -931,7 +931,81 @@ template<typename R> struct v<Closure<R>> { using type = TypeList<Omega>; };
 
 
 /* === extended brzozowski derivative === */
-// TODO
+template <typename Remain, typename Action> struct DerivedPair {
+  using remain = Remain; using action = Action;
+};
+
+template <typename RE, char C> struct Derivative;
+/* d0/dx de/dx = d<i>/dx = 0 */
+template <char C> struct Derivative<EmptySet, C> { using type = TypeList<>; };
+template <char C>
+struct Derivative<Epsilon, C> { using type = TypeList<>; };
+template <size_t I, char C> struct Derivative<SetSlot<I>, C> { using type = TypeList<>; };
+/* dy/dx = x == y ? {(e, o)} : 0 */
+template <char y, char C>
+struct Derivative<Char<y>, C> {
+  using type = std::conditional_t<
+    y == C,
+    TypeList<DerivedPair<Epsilon, Omega>>,
+    TypeList<>
+  >;
+};
+/* d(R|S)/dx = dR/dx U dS/dx */
+template <typename R, typename S, char C>
+struct Derivative<Or<R, S>, C> {
+  using dr = Derivative<R, C>::type;
+  using ds = Derivative<S, C>::type;
+  using type = JoinUnique<dr, ds>::type;
+};
+/* d(RS)/dx = {(R'S, a):(R',a) in dR/dx} U {(S', ab):a in v(R), (S', b) in dS/dx} */
+template <typename R, typename S, char C>
+struct Derivative<Concat<R, S>, C> {
+  template <typename Pair>
+  struct MapFunc1 {
+    using type = DerivedPair<
+      typename Simplify<Concat<typename Pair::remain, S>>::type,
+      typename Pair::action
+    >;
+  };
+  using Part1 = Map<MapFunc1, Derivative<R, C>>::type;
+
+  template <typename Acc, typename vRList, typename SDList> struct Part2Generator;
+  template <typename Acc, typename SDList>
+  struct Part2Generator<Acc, TypeList<>, SDList> {
+    using type = Acc;
+  };
+  template <typename Acc, typename vRHead, typename... vRTails, typename SDList>
+  struct Part2Generator<Acc, TypeList<vRHead, vRTails...>, SDList> {
+    template <typename Pair>
+    struct MapFunc2 {
+      using type = DerivedPair<
+        typename Pair::remain,
+        typename CatAction<vRHead, typename Pair::action>::type
+      >;
+    };
+    using type = Part2Generator<
+      typename JoinUnique<Acc, Map<MapFunc2, SDList>>::type,
+      TypeList<vRTails...>,
+      SDList
+    >::type;
+  };
+  using Part2 = Part2Generator<TypeList<>, typename v<R>::type, typename Derivative<S, C>::type>::type;
+
+  using type = JoinUnique<Part1, Part2>::type;
+};
+/* d(R*)/dx = {(R'R*,a):(R',a) in dR/dx} */
+template <typename R, char C>
+struct Derivative<Closure<R>, C> {
+  template <typename Pair>
+  struct MapFunc {
+    using type = DerivedPair<
+      typename Simplify<Concat<typename Pair::remain, Closure<R>>>::type,
+      typename Pair::action
+    >;
+  };
+
+  using type = Map<MapFunc, typename Derivative<R, C>::type>::type;
+};
 
 
 /* === TDFA builder === */
