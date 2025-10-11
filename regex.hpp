@@ -29,6 +29,8 @@ template<typename... Ts> struct TypeList {
     }(std::type_identity<Ts>{}), ...);
     return found ? index : static_cast<std::size_t>(-1);
   }();
+
+  static constexpr bool length = sizeof...(Ts);
 };
 
 template<typename List, typename T>
@@ -52,6 +54,54 @@ struct JoinUnique<List1, TypeList<Head, Tail...>> {
 template<typename List1>
 struct JoinUnique<List1, TypeList<>> {
   using type = List1;
+};
+
+template<template<typename> typename Func, typename List> struct Map;
+template<template<typename> typename Func, typename... Ts>
+struct Map<Func, TypeList<Ts...>> {
+  using type = TypeList<typename Func<Ts>::type...>;
+};
+
+template<template<typename> typename IsKeep, typename List, typename Acc> struct FilterImpl;
+template<template<typename> typename IsKeep, typename Head, typename... Tails, typename Acc>
+struct FilterImpl<IsKeep, TypeList<Head, Tails...>, Acc> {
+  using type = std::conditional_t<
+    IsKeep<Head>::value,
+    FilterImpl<IsKeep, TypeList<Tails...>, typename PushBackUnique<Acc, Head>::type>,
+    FilterImpl<IsKeep, TypeList<Tails...>, Acc>
+  >::type;
+};
+template<template<typename> typename IsKeep, typename Acc>
+struct FilterImpl<IsKeep, TypeList<>, Acc> {
+  using type = Acc;
+};
+template<template<typename> typename IsKeep, typename List> struct Filter {
+  using type = FilterImpl<IsKeep, List, TypeList<>>::type;
+};
+
+template<template<typename, typename> typename MergeFunc, typename List, typename Begin> struct RightFold;
+template<template<typename, typename> typename MergeFunc, typename Head, typename... Tails, typename Begin>
+struct RightFold<MergeFunc, TypeList<Head, Tails...>, Begin> {
+  using type = typename MergeFunc<Head, typename RightFold<MergeFunc, TypeList<Tails...>, Begin>::type>::type;
+};
+template<template<typename, typename> typename MergeFunc, typename Begin>
+struct RightFold<MergeFunc, TypeList<>, Begin> {
+  using type = Begin;
+};
+
+template<template<typename, typename> typename MergeFunc, typename List, typename Acc> struct LeftFoldImpl;
+template<template<typename, typename> typename MergeFunc, typename Head, typename... Tails, typename Acc>
+struct LeftFoldImpl<MergeFunc, TypeList<Head, Tails...>, Acc> {
+  using TmpAcc = MergeFunc<Acc, Head>::type;
+  using type = LeftFoldImpl<MergeFunc, TypeList<Tails...>, TmpAcc>::type;
+};
+template<template<typename, typename> typename MergeFunc, typename Acc>
+struct LeftFoldImpl<MergeFunc, TypeList<>, Acc> {
+  using type = Acc;
+};
+
+template<template<typename, typename> typename MergeFunc, typename List, typename Begin> struct LeftFold {
+  using type = LeftFoldImpl<MergeFunc, List, Begin>::type;
 };
 
 
@@ -402,26 +452,18 @@ struct ParseCharSet {
 };
 
 template<typename CharList>
-struct CharListToOrSequential;
-template<typename Head, typename... Tail>
-struct CharListToOrSequential<TypeList<Head, Tail...>> {
-  using type = Or<Head, typename CharListToOrSequential<TypeList<Tail...>>::type>;
-};
-template<typename Head>
-struct CharListToOrSequential<TypeList<Head>> {
-  using type = Head;
+struct CharListToOrSequential {
+  template<typename X, typename Y> struct BuildOr { using type = Or<X, Y>; };
+  using type = Simplify<typename RightFold<BuildOr, CharList, EmptySet>::type>::type;
 };
 
-template<typename Acc, typename CharList, typename Alphabet>
-struct CharListNegation;
-template<typename Acc, typename CharList, typename Head, typename... Tail>
-struct CharListNegation<Acc, CharList, TypeList<Head, Tail...>> {
-  using TmpAcc = std::conditional_t<CharList::template Contains<Head>, Acc, typename PushBackUnique<Acc, Head>::type>;
-  using type = typename CharListNegation<TmpAcc, CharList, TypeList<Tail...>>::type;
-};
-template<typename Acc, typename CharList>
-struct CharListNegation<Acc, CharList, TypeList<>> {
-  using type = Acc;
+template<typename CharList, typename Alphabet>
+struct CharListNegation {
+  template <typename Char>
+  struct NotInList {
+    static constexpr bool value = !CharList::template Contains<Char>;
+  };
+  using type = Filter<NotInList, Alphabet>::type;
 };
 
 /* ParseCharGroup: '[' CharSet ']' | '[' '^' CharSet ']' */
@@ -439,7 +481,7 @@ struct ParseCharGroup {
     using CharSet = ParseCharSet<Pattern, Pos + 2>;
     static_assert(CharSet::next <= Pattern.length, "ParseCharGroup: char set parsing overflow");
     static_assert(CharSet::next < Pattern.length && Pattern[CharSet::next] == ']', "ParseCharGroup: ']' not closed");
-    using NegCharList = typename CharListNegation<TypeList<>, typename CharSet::type, Alphabet>::type;
+    using NegCharList = typename CharListNegation<typename CharSet::type, Alphabet>::type;
     using type = typename CharListToOrSequential<NegCharList>::type;
     static constexpr size_t next = CharSet::next + 1;
   };
@@ -450,15 +492,9 @@ struct ParseCharGroup {
   static constexpr size_t next = chosen::next;
 };
 
-template<typename Alphabet>
-struct FullMatch;
-template<char C, typename... Remains>
-struct FullMatch<TypeList<Char<C>, Remains...>> {
-  using type = Or<Char<C>, typename FullMatch<TypeList<Remains...>>::type>;
-};
-template<char C>
-struct FullMatch<TypeList<Char<C>>> {
-  using type = Char<C>;
+template<typename Alphabet> struct FullMatch {
+  template<typename X, typename Y> struct BuildOr { using type = Or<X, Y>; };
+  using type = Simplify<typename RightFold<BuildOr, Alphabet, EmptySet>::type>::type;
 };
 
 /* ParseAtom: '(' Regex ')' | '[' CharSet ']' |  CHAR | '.' */
@@ -682,9 +718,6 @@ struct State {
   static constexpr bool accepting = Nullable<R>::value;
 };
 
-template<typename List> struct TypeListLength;
-template<typename... Ts> struct TypeListLength<TypeList<Ts...>> : std::integral_constant<std::size_t, sizeof...(Ts)> {};
-
 template<std::size_t From, char C, std::size_t To>
 struct Edge { static constexpr std::size_t from = From; static constexpr char ch = C; static constexpr std::size_t to = To; };
 
@@ -777,7 +810,7 @@ template<typename PairAcc, std::size_t PrevLen>
 struct ExpandUntilStablePairImpl {
 private:
   using NextPair = typename ExpandOnce<PairAcc>::type;
-  static constexpr std::size_t next_len = TypeListLength<typename NextPair::States>::value;
+  static constexpr std::size_t next_len = NextPair::States::length;
 
 public:
   using type = typename std::conditional_t<
@@ -787,7 +820,7 @@ public:
   >::type;
 };
 
-template<typename PairAcc, std::size_t PrevLen = TypeListLength<typename PairAcc::States>::value>
+template<typename PairAcc, std::size_t PrevLen = PairAcc::States::length>
 struct ExpandUntilStablePair {
   using type = typename ExpandUntilStablePairImpl<PairAcc, PrevLen>::type;
 };
@@ -798,7 +831,7 @@ private:
   using initial_states = TypeList<State<RE>>;
   using initial_pair = StateEdgePair<initial_states, TypeList<>>;
 public:
-  using type = typename ExpandUntilStablePair<initial_pair, TypeListLength<initial_states>::value>::type;
+  using type = typename ExpandUntilStablePair<initial_pair, initial_states::length>::type;
   using States = typename type::States;
   using Edges  = typename type::Edges;
 };
@@ -933,7 +966,7 @@ private:
   using NoActionRe = typename impl::dfa::RemoveAllAction<Re>::type;
   using DFAStatesList = impl::dfa::AllStatesList<NoActionRe>;
   using DFAEdgesList  = impl::dfa::AllEdgesList<NoActionRe>;
-  static constexpr std::size_t nr_dfa_states = impl::dfa::TypeListLength<DFAStatesList>::value;
+  static constexpr std::size_t nr_dfa_states = DFAStatesList::length;
   static constexpr auto dfa_trans_table = impl::dfa::BuildTable<DFAEdgesList>::template make<nr_dfa_states>();
   static constexpr auto dfa_is_accept_states = impl::dfa::BuildAccepts<DFAStatesList>::make();
 };
