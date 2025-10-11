@@ -250,6 +250,8 @@ template<typename L, typename R> struct Simplify<Or<L, R>> {
 template<typename L, typename R> struct Simplify<Concat<L, R>> { using type = Concat<typename Simplify<L>::type, typename Simplify<R>::type>; };
 template<typename R> struct Simplify<Closure<R>> { using type = Closure<typename Simplify<R>::type>; };
 
+template<typename Expr> using Simplify_t = Simplify<Expr>::type;
+
 
 /* === compile-time alphabet and helper function === */
 constexpr size_t nr_ascii_char = 128;
@@ -844,10 +846,55 @@ struct BuildAccepts<TypeList<Ss...>> {
  * of the pattern (in the worst case exponential), and have  a bigger O(1).
  * compile such automata would take considerably more time than DFA.
  */
+
+/* === action algebra === */
+struct Omega {};
+template<size_t I> struct Set { static constexpr size_t i = I; };
+template<typename... As> struct Seq {};
+
+template<typename A1, typename A2> struct CatAction;
+template<> struct CatAction<Omega, Omega> { using type = Omega; };
+template<size_t I> struct CatAction<Omega, Set<I>> { using type = Set<I>; };
+template<typename... As> struct CatAction<Omega, Seq<As...>> { using type = Seq<As...>; };
+template<size_t I> struct CatAction<Set<I>, Omega> { using type = Set<I>; };
+template<size_t I1, size_t I2> struct CatAction<Set<I1>, Set<I2>> { using type = Seq<Set<I1>, Set<I2>>; };
+template<size_t I, typename... As> struct CatAction<Set<I>, Seq<As...>> { using type = Seq<Set<I>, As...>; };
+template<typename... As> struct CatAction<Seq<As...>, Omega> { using type = Seq<As...>; };
+template<typename... As, size_t I> struct CatAction<Seq<As...>, Set<I>> { using type = Seq<As..., Set<I>>; };
+template<typename... As1, typename... As2> struct CatAction<Seq<As1...>, Seq<As2...>> { using type = Seq<As1..., As2...>; };
+template<typename Seq, typename A> using CarAction_t = CatAction<Seq, A>::type;
+
+
 namespace tnfa {
 
-/* === v operator === */
-// TODO
+/* === v notation === */
+template<typename List, typename ListOrAction, typename Acc> struct Product;
+template<typename Head, typename... Tails, typename A, typename Acc> struct Product<TypeList<Head, Tails...>, A, Acc> {
+  using TmpAcc = PushBackUnique<Acc, typename CatAction<Head, A>::type>::type;
+  using type = Product<TypeList<Tails...>, A, TmpAcc>::type;
+};
+template<typename A, typename Acc> struct Product<TypeList<>, A, Acc> {
+  using type = Acc;
+};
+template<typename List1, typename Head, typename... Tails, typename Acc> struct Product<List1, TypeList<Head, Tails...>, Acc> {
+  using TmpAcc = Product<List1, Head, Acc>::type;
+  using type = Product<List1, TypeList<Tails...>, TmpAcc>::type;
+};
+template<typename List1, typename Acc> struct Product<List1, TypeList<>, Acc> {
+  using type = Acc;
+};
+template<typename Acc> struct Product<TypeList<>, TypeList<>, Acc> {
+  using type = Acc;
+};
+
+template<typename RE> struct v;
+template<> struct v<EmptySet> { using type = TypeList<>; };
+template<> struct v<Epsilon> { using type = TypeList<Omega>; };
+template<char C> struct v<Char<C>> { using type = TypeList<>; };
+template<size_t I> struct v<SetSlot<I>> { using type = TypeList<Set<I>>; };
+template<typename R, typename S> struct v<Or<R, S>> { using type = JoinUnique<v<R>, v<S>>::type; };
+template<typename R, typename S> struct v<Concat<R, S>> { using type = Product<v<R>, v<S>, TypeList<>>::type; };
+template<typename R> struct v<Closure<R>> { using type = TypeList<Omega>; };
 
 
 /* === extended brzozowski derivative === */
