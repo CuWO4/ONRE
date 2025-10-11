@@ -12,17 +12,31 @@ namespace onre {
 namespace impl {
 
 /* === type list, a linear container of types === */
-template<typename... Ts> struct TypeList {};
+template<typename... Ts> struct TypeList {
+  template<typename T>
+  static constexpr bool Contains = (std::is_same_v<T, Ts> || ...);
 
-template<typename List, typename T> struct Contains;
-template<typename T, typename... Ts> struct Contains<TypeList<Ts...>, T> : std::disjunction<std::is_same<T, Ts>...> {};
+  template<typename T>
+  static constexpr std::size_t IndexOf = []{
+    std::size_t index = 0;
+    bool found = false;
+    ([&]<typename U>(std::type_identity<U>) {
+      if (!found && std::is_same_v<T, U>) {
+        found = true;
+        return;
+      }
+      if (!found) ++index;
+    }(std::type_identity<Ts>{}), ...);
+    return found ? index : static_cast<std::size_t>(-1);
+  }();
+};
 
 template<typename List, typename T>
 struct PushBackUnique;
 template<typename... Ts, typename T>
 struct PushBackUnique<TypeList<Ts...>, T> {
   using type = std::conditional_t<
-    Contains<TypeList<Ts...>, T>::value,
+    TypeList<Ts...>::template Contains<T>,
     TypeList<Ts...>,
     TypeList<Ts..., T>
   >;
@@ -39,15 +53,6 @@ template<typename List1>
 struct JoinUnique<List1, TypeList<>> {
   using type = List1;
 };
-
-/* find index of T in TypeList<Ls...> */
-template<typename List, typename T, std::size_t I = 0> struct IndexOf;
-template<typename Head, typename... Tail, typename T, std::size_t I>
-struct IndexOf<TypeList<Head, Tail...>, T, I> : IndexOf<TypeList<Tail...>, T, I + 1> {};
-template<typename Head, typename... Tail, std::size_t I>
-struct IndexOf<TypeList<Head, Tail...>, Head, I> : std::integral_constant<std::size_t, I> {};
-template<typename T, std::size_t I>
-struct IndexOf<TypeList<>, T, I> { static_assert(sizeof(T) == 0, "IndexOf: type not found in TypeList"); };
 
 
 /* === fixed string, a string container enabling compile-time visiting === */
@@ -76,6 +81,27 @@ template<std::size_t I> struct SetSlot { static constexpr char i = I; };
 template<typename R, typename S> struct Or { using left = R; using right = S; };
 template<typename R, typename S> struct Concat {using left = R; using right = S; };
 template<typename R> struct Closure { using inner = R; };
+
+template<typename R> struct is_empty_set : std::is_same<R, EmptySet> {};
+template<typename R> struct is_epsilon : std::is_same<R, Epsilon> {};
+template<typename R> struct is_char : std::false_type {};
+template<char C> struct is_char<Char<C>> : std::true_type {};
+template<typename R> struct is_setslot : std::false_type {};
+template<size_t I> struct is_setslot<SetSlot<I>> : std::true_type {};
+template<typename> struct is_or : std::false_type {};
+template<typename L, typename R> struct is_or<Or<L, R>> : std::true_type {};
+template<typename> struct is_concat : std::false_type {};
+template<typename L, typename R> struct is_concat<Concat<L, R>> : std::true_type {};
+template<typename> struct is_closure : std::false_type {};
+template<typename T> struct is_closure<Closure<T>> : std::true_type {};
+
+template<typename T> static constexpr auto is_empty_set_v = is_empty_set<T>::value;
+template<typename T> static constexpr auto is_epsilon_v = is_epsilon<T>::value;
+template<typename T> static constexpr auto is_char_v = is_char<T>::value;
+template<typename T> static constexpr auto is_setslot_v = is_setslot<T>::value;
+template<typename T> static constexpr auto is_or_v = is_or<T>::value;
+template<typename T> static constexpr auto is_concat_v = is_concat<T>::value;
+template<typename T> static constexpr auto is_closure_v = is_closure<T>::value;
 
 
 /* === nullable testing, testing whether epsilon in L(R) === */
@@ -123,7 +149,7 @@ struct First<Closure<R>, Acc> {
 
 /* === simplify and standard ordering rules, significantly reduce complexity === */
 template<typename R> struct Simplify { using type = R; };
-/* e|R <=> R|e <=> R */
+/* 0|R <=> R|0 <=> R */
 template<typename R> struct Simplify<Or<EmptySet, R>> { using type = typename Simplify<R>::type; };
 template<typename R> struct Simplify<Or<R, EmptySet>> { using type = typename Simplify<R>::type; };
 /* R|R <=> R */
@@ -254,19 +280,19 @@ constexpr bool is_in_class_char(char ch) {
   return is_visible_char(ch) && ch != ']';
 }
 
-template <char Start, char End, typename Acc>
-struct AlphabetGenerator {
+template <char Start, char End>
+struct BuildCharList {
   static_assert(Start <= End, "invalid char range");
-  using TmpAcc = typename PushBackUnique<Acc, Char<Start>>::type;
-  using type = typename AlphabetGenerator<Start + 1, End, TmpAcc>::type;
+
+  template <typename Indices> struct Impl;
+  template <size_t... Is> struct Impl<std::index_sequence<Is...>> {
+    using type = TypeList<Char<Start + Is>...>;
+  };
+
+  using type = Impl<std::make_index_sequence<End - Start + 1>>::type;
 };
 
-template <char C, typename Acc>
-struct AlphabetGenerator<C, C, Acc> {
-  using type = typename PushBackUnique<Acc, Char<C>>::type;
-};
-
-using Alphabet = typename AlphabetGenerator<visible_ascii_start, visible_ascii_end, TypeList<>>::type;
+using Alphabet = typename BuildCharList<visible_ascii_start, visible_ascii_end>::type;
 
 
 /* === regex parser === */
@@ -292,16 +318,6 @@ template<FixedString Pattern, size_t Pos> struct ParseCharGroup;
 template<FixedString Pattern, size_t Pos> struct ParseCharSet;
 template<FixedString Pattern, size_t Pos> struct ParseCharSetAtom;
 template<FixedString Pattern, size_t Pos> struct ParseCHAR;
-
-template<char Start, char End>
-struct BuildCharList {
-  static_assert(Start <= End, "BuildCharList: invalid range");
-  using type = typename PushBackUnique<typename BuildCharList<Start, End - 1>::type, Char<End>>::type;
-};
-template<char C>
-struct BuildCharList<C, C> {
-  using type = TypeList<Char<C>>;
-};
 
 /* ParseCHAR : [VALID CHAR] | '\' [VISIBLE CHAR] */
 template <FixedString Pattern, size_t Pos>
@@ -398,7 +414,7 @@ template<typename Acc, typename CharList, typename Alphabet>
 struct CharListNegation;
 template<typename Acc, typename CharList, typename Head, typename... Tail>
 struct CharListNegation<Acc, CharList, TypeList<Head, Tail...>> {
-  using TmpAcc = std::conditional_t<Contains<CharList, Head>::value, Acc, typename PushBackUnique<Acc, Head>::type>;
+  using TmpAcc = std::conditional_t<CharList::template Contains<Head>, Acc, typename PushBackUnique<Acc, Head>::type>;
   using type = typename CharListNegation<TmpAcc, CharList, TypeList<Tail...>>::type;
 };
 template<typename Acc, typename CharList>
@@ -696,9 +712,9 @@ public:
       typename PushBackUnique<
         current_edges,
         Edge<
-          IndexOf<typename PushBackUnique<current_states, State<Der_t>>::type, StateT>::value,
+          PushBackUnique<current_states, State<Der_t>>::type::template IndexOf<StateT>,
           C,
-          IndexOf<typename PushBackUnique<current_states, State<Der_t>>::type, State<Der_t>>::value
+          PushBackUnique<current_states, State<Der_t>>::type::template IndexOf<State<Der_t>>
         >
       >::type
     >
