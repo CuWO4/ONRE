@@ -98,7 +98,7 @@ template<template<typename> typename IsKeep, typename Head, typename... Tails, t
 struct FilterImpl<IsKeep, TypeList<Head, Tails...>, Acc> {
   using type = std::conditional_t<
     IsKeep<Head>::value,
-    FilterImpl<IsKeep, TypeList<Tails...>, typename PushBackUnique<Acc, Head>::type>,
+    FilterImpl<IsKeep, TypeList<Tails...>, typename PushBack<Acc, Head>::type>,
     FilterImpl<IsKeep, TypeList<Tails...>, Acc>
   >::type;
 };
@@ -818,7 +818,7 @@ struct DerivNewStates<Acc, S, TypeList<Char<C>, Tails...>> {
     std::is_same_v<Der, EmptySet>,
     std::type_identity<Acc>,
     DerivNewStates<
-      typename PushBackUnique<Acc, CharStatePair<C, State<Der>>>::type,
+      typename PushBack<Acc, CharStatePair<C, State<Der>>>::type,
       S,
       TypeList<Tails...>
     >
@@ -838,10 +838,10 @@ struct PushNewStates<SA, EA, TBP, StartState, TypeList<HeadPair, TailPairs...>> 
   using FromState = StartState;
   using ToState = typename HeadPair::state;
   static constexpr char C = HeadPair::c;
-  static constexpr bool isStateNew = !SA::template Contains<ToState>;
-  using NextStateAcc = std::conditional_t<isStateNew, typename PushBackUnique<SA, ToState>::type, SA>;
-  using NextToBeProcessList = std::conditional_t<isStateNew, typename PushBackUnique<TBP, ToState>::type, TBP>;
-  using NextEdgeAcc = typename PushBackUnique<
+  static constexpr bool IsStateNew = !SA::template Contains<ToState>;
+  using NextStateAcc = PushBackUnique<SA, ToState>::type;
+  using NextToBeProcessList = std::conditional_t<IsStateNew, PushBack<TBP, ToState>, std::type_identity<TBP>>::type;
+  using NextEdgeAcc = typename PushBack<
     EA,
     Edge<
       NextStateAcc::template IndexOf<FromState>,
@@ -944,7 +944,7 @@ namespace tnfa {
 /* === v notation === */
 template<typename List, typename ListOrAction, typename Acc> struct Product;
 template<typename Head, typename... Tails, typename A, typename Acc> struct Product<TypeList<Head, Tails...>, A, Acc> {
-  using TmpAcc = PushBackUnique<Acc, typename CatAction<Head, A>::type>::type;
+  using TmpAcc = PushBack<Acc, typename CatAction<Head, A>::type>::type;
   using type = Product<TypeList<Tails...>, A, TmpAcc>::type;
 };
 template<typename A, typename Acc> struct Product<TypeList<>, A, Acc> {
