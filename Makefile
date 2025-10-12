@@ -46,5 +46,5 @@ test : $(DEBUGDIR)/$(TARGET)
 .PHONY : clean
 clean :
 	@ echo try to clean...
-	rm -r $(DEBUGDIR)/$(TARGET) $(OBJS) $(DEPS)
+	rm -r $(DEBUGDIR) $(TMPDIR)
 	@ echo completed!
