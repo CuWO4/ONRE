@@ -30,7 +30,38 @@ template<typename... Ts> struct TypeList {
     return found ? index : static_cast<std::size_t>(-1);
   }();
 
-  static constexpr bool length = sizeof...(Ts);
+  static constexpr size_t length = sizeof...(Ts);
+
+  template<template<typename, typename> typename IsLess>
+  static constexpr bool IsInOrder = [] {
+    if constexpr (length < 2) {
+      return true;
+    } else {
+      using Tuple = std::tuple<Ts...>;
+      return []<std::size_t... Is>(std::index_sequence<Is...>) {
+        return ((!IsLess<std::tuple_element_t<Is + 1, Tuple>,
+                      std::tuple_element_t<Is, Tuple>>::value) && ...);
+      }(std::make_index_sequence<length - 1>{});
+    }
+  }();
+};
+
+template<typename List1, typename List2> struct CatList;
+template<typename... Ts1, typename... Ts2>
+struct CatList<TypeList<Ts1...>, TypeList<Ts2...>> {
+  using type = TypeList<Ts1..., Ts2...>;
+};
+
+template<typename List, typename T> struct PushFront;
+template<typename... Ts, typename T>
+struct PushFront<TypeList<Ts...>, T> {
+  using type = TypeList<T, Ts...>;
+};
+
+template<typename List, typename T> struct PushBack;
+template<typename... Ts, typename T>
+struct PushBack<TypeList<Ts...>, T> {
+  using type = TypeList<Ts..., T>;
 };
 
 template<typename List, typename T>
@@ -104,11 +135,40 @@ template<template<typename, typename> typename MergeFunc, typename List, typenam
   using type = LeftFoldImpl<MergeFunc, List, Begin>::type;
 };
 
+template<template<typename, typename> typename IsLess, typename List, typename T>
+struct InsertElem;
+template<template<typename, typename> typename IsLess, typename T>
+struct InsertElem<IsLess, TypeList<>, T> {
+  using type = TypeList<T>;
+};
+template<template<typename, typename> typename IsLess, typename Head, typename... Tails, typename T>
+struct InsertElem<IsLess, TypeList<Head, Tails...>, T> {
+  using type = std::conditional_t<
+    IsLess<T, Head>::value,
+    std::type_identity<TypeList<T, Head, Tails...>>,
+    PushFront<typename InsertElem<IsLess, TypeList<Tails...>, T>::type, Head>
+  >::type;
+};
+template<template<typename, typename> typename IsLess, typename List> struct InsertSort {
+  template<typename Acc, typename Head>
+  struct Merge { using type = typename InsertElem<IsLess, Acc, Head>::type; };
+  using type = LeftFold<Merge, List, TypeList<>>::type;
+};
+
+template<template<typename, typename> typename IsLess, typename List>
+struct Sort {
+  using type = std::conditional_t<
+    List::template IsInOrder<IsLess>,
+    std::type_identity<List>,
+    InsertSort<IsLess, List>
+  >::type;
+};
+
 
 /* === fixed string, a string container enabling compile-time visiting === */
 template<size_t N>
 struct FixedString {
-  consteval FixedString(const char (&str)[N]) {
+  constexpr FixedString(const char (&str)[N]) {
     std::copy_n(str, N, data.begin());
   }
   FixedString(const FixedString&) = delete;
@@ -240,7 +300,6 @@ template<typename R> struct Simplify<Or<Closure<R>, Concat<Closure<R>, R>>> { us
 /* standard ordering */
 template<typename A, typename B>
 struct is_less : std::false_type {};
-
 /* Or < Concat < Closure < EmptySet < Epsilon < Char < SetSlot */
 template <typename R1, typename S1, typename R2, typename S2> struct is_less<Or<R1, S1>, Concat<R2, S2>> : std::true_type {};
 template <typename R1, typename S1, typename R2> struct is_less<Or<R1, S1>, Closure<R2>> : std::true_type {};
@@ -290,17 +349,34 @@ struct Simplify<Concat<Closure<Or<R, S>>, Or<R, S>>> {
 };
 
 /* recursive */
-template<typename L, typename R> struct Simplify<Or<L, R>> {
-  using type = std::conditional_t<
-    is_less<L, R>::value,
-    Or<typename Simplify<L>::type, typename Simplify<R>::type>,
-    Or<typename Simplify<R>::type, typename Simplify<L>::type>
-  >;
+template<typename Expr, typename Simplified, bool IsSame>
+struct SimplifyFixedPoint;
+template<typename Expr, typename Simplified>
+struct SimplifyFixedPoint<Expr, Simplified, true> {
+  using type = Simplified;
 };
-template<typename L, typename R> struct Simplify<Concat<L, R>> { using type = Concat<typename Simplify<L>::type, typename Simplify<R>::type>; };
-template<typename R> struct Simplify<Closure<R>> { using type = Closure<typename Simplify<R>::type>; };
-
-template<typename Expr> using Simplify_t = Simplify<Expr>::type;
+template<typename Expr, typename Simplified>
+struct SimplifyFixedPoint<Expr, Simplified, false> {
+  using type = typename Simplify<Simplified>::type;
+};
+template<typename L, typename R>
+struct Simplify<Or<L, R>> {
+  using simplified = Or<typename Simplify<L>::type, typename Simplify<R>::type>;
+  static constexpr bool is_same = std::is_same<simplified, Or<L, R>>::value;
+  using type = typename SimplifyFixedPoint<Or<L, R>, simplified, is_same>::type;
+};
+template<typename L, typename R>
+struct Simplify<Concat<L, R>> {
+  using simplified = Concat<typename Simplify<L>::type, typename Simplify<R>::type>;
+  static constexpr bool is_same = std::is_same<simplified, Concat<L, R>>::value;
+  using type = typename SimplifyFixedPoint<Concat<L, R>, simplified, is_same>::type;
+};
+template<typename R>
+struct Simplify<Closure<R>> {
+  using simplified = Closure<typename Simplify<R>::type>;
+  static constexpr bool is_same = std::is_same<simplified, Closure<R>>::value;
+  using type = typename SimplifyFixedPoint<Closure<R>, simplified, is_same>::type;
+};
 
 
 /* === compile-time alphabet and helper function === */
@@ -719,119 +795,84 @@ struct State {
 };
 
 template<std::size_t From, char C, std::size_t To>
-struct Edge { static constexpr std::size_t from = From; static constexpr char ch = C; static constexpr std::size_t to = To; };
-
-template<typename StatesList, typename EdgesList>
-struct StateEdgePair {
-  using States = StatesList;
-  using Edges = EdgesList;
+struct Edge {
+  static constexpr std::size_t from = From;
+  static constexpr char ch = C;
+  static constexpr std::size_t to = To;
 };
 
-/* Append derivative for a single character C, given current accumulator Pair<States,Edges> and a source StateT */
-template<typename PairAcc, typename StateT, char C>
-struct AppendDerivativeChar {
-private:
-  using current_states = typename PairAcc::States;
-  using current_edges  = typename PairAcc::Edges;
-  using RE_t = typename StateT::re;
-  using Der_t = typename Derivative<RE_t, C>::type;
+template<char C, typename State>
+struct CharStatePair {
+  static constexpr char c = C;
+  using state = State;
+};
 
-  /* If derivative is EmptySet -> no change */
-  static constexpr bool is_empty = std::is_same<Der_t, EmptySet>::value;
-public:
+template<typename CharStatePairAcc, typename State, typename Alphabet> struct DerivNewStates;
+template<typename Acc, typename S> struct DerivNewStates<Acc, S, TypeList<>> {
+  using type = Acc;
+};
+template<typename Acc, typename S, char C, typename... Tails>
+struct DerivNewStates<Acc, S, TypeList<Char<C>, Tails...>> {
+  using Der = typename Derivative<typename S::re, C>::type;
   using type = std::conditional_t<
-    is_empty,
-    PairAcc,
-    StateEdgePair<
-      typename PushBackUnique<current_states, State<Der_t>>::type,
-      typename PushBackUnique<
-        current_edges,
-        Edge<
-          PushBackUnique<current_states, State<Der_t>>::type::template IndexOf<StateT>,
-          C,
-          PushBackUnique<current_states, State<Der_t>>::type::template IndexOf<State<Der_t>>
-        >
-      >::type
+    std::is_same_v<Der, EmptySet>,
+    std::type_identity<Acc>,
+    DerivNewStates<
+      typename PushBackUnique<Acc, CharStatePair<C, State<Der>>>::type,
+      S,
+      TypeList<Tails...>
     >
-  >;
-};
-
-/* derive state for all character in given alphabet */
-template<typename PairAcc, typename StateT, typename Alphabet>
-struct AppendDerivativesForStatePair;
-template<typename PairAcc, typename StateT>
-struct AppendDerivativesForStatePair<PairAcc, StateT, TypeList<>> {
-  using type = PairAcc;
-};
-template<typename PairAcc, typename StateT, typename Head, typename... Tail>
-struct AppendDerivativesForStatePair<PairAcc, StateT, TypeList<Head, Tail...>> {
-  using after_processing = typename AppendDerivativeChar<PairAcc, StateT, Head::c>::type;
-  using type = typename AppendDerivativesForStatePair<after_processing, StateT, TypeList<Tail...>>::type;
-};
-
-/* expand once on a list of states, produce Pair<NewStates, NewEdges> */
-template<typename StateEdgePair>
-struct ExpandOnce {
-private:
-  /* fold over each state: for each state, append derivatives across alphabet */
-  template<typename PairSoFar, typename StateT>
-  struct DoState {
-    using PossibleChars = typename First<typename StateT::re, TypeList<>>::type;
-    using type = typename AppendDerivativesForStatePair<PairSoFar, StateT, PossibleChars>::type;
-  };
-
-  /* compile-time fold: iterate through States... */
-  template<typename Acc, typename... Remaining> struct Fold;
-  template<typename Acc, typename HeadState, typename... Rest>
-  struct Fold<Acc, HeadState, Rest...> {
-    using after = typename DoState<Acc, HeadState>::type;
-    using type = typename Fold<after, Rest...>::type;
-  };
-  template<typename Acc>
-  struct Fold<Acc> { using type = Acc; };
-
-  /* unpacking List */
-  template<typename Acc, typename StateList> struct FoldHelper;
-  template<typename Acc, typename... States>
-  struct FoldHelper<Acc, TypeList<States...>> {
-      using type = typename Fold<Acc, States...>::type;
-  };
-
-public:
-  using type = typename FoldHelper<StateEdgePair, typename StateEdgePair::States>::type;
-};
-
-/* expand until stable pair: iterate expand once until states length doesn't increase */
-/* separate impl to avoid possible self reference causing errors */
-template<typename PairAcc, std::size_t PrevLen>
-struct ExpandUntilStablePairImpl;
-
-template<typename PairAcc, std::size_t PrevLen>
-struct ExpandUntilStablePairImpl {
-private:
-  using NextPair = typename ExpandOnce<PairAcc>::type;
-  static constexpr std::size_t next_len = NextPair::States::length;
-
-public:
-  using type = typename std::conditional_t<
-    next_len == PrevLen,
-    std::type_identity<NextPair>,
-    ExpandUntilStablePairImpl<NextPair, next_len>
   >::type;
 };
 
-template<typename PairAcc, std::size_t PrevLen = PairAcc::States::length>
-struct ExpandUntilStablePair {
-  using type = typename ExpandUntilStablePairImpl<PairAcc, PrevLen>::type;
+template<typename StateAcc, typename EdgeAcc, typename ToBeProcessList, typename StartState, typename NewCharStates>
+struct PushNewStates;
+template<typename SA, typename EA, typename TBP, typename StartState>
+struct PushNewStates<SA, EA, TBP, StartState, TypeList<>> {
+  using StateAcc = SA;
+  using EdgeAcc = EA;
+  using ToBeProcessList = TBP;
+};
+template<typename SA, typename EA, typename TBP, typename StartState, typename HeadPair, typename... TailPairs>
+struct PushNewStates<SA, EA, TBP, StartState, TypeList<HeadPair, TailPairs...>> {
+  using FromState = StartState;
+  using ToState = typename HeadPair::state;
+  static constexpr char C = HeadPair::c;
+  static constexpr bool isStateNew = !SA::template Contains<ToState>;
+  using NextStateAcc = std::conditional_t<isStateNew, typename PushBackUnique<SA, ToState>::type, SA>;
+  using NextToBeProcessList = std::conditional_t<isStateNew, typename PushBackUnique<TBP, ToState>::type, TBP>;
+  using NextEdgeAcc = typename PushBackUnique<
+    EA,
+    Edge<
+      NextStateAcc::template IndexOf<FromState>,
+      C,
+      NextStateAcc::template IndexOf<ToState>
+    >
+  >::type;
+  using NextIt = PushNewStates<NextStateAcc, NextEdgeAcc, NextToBeProcessList, StartState, TypeList<TailPairs...>>;
+  using StateAcc = typename NextIt::StateAcc;
+  using EdgeAcc = typename NextIt::EdgeAcc;
+  using ToBeProcessList = typename NextIt::ToBeProcessList;
+};
+
+template<typename StateAcc, typename EdgeAcc, typename ToBeProcessList> struct BuildDFA;
+template<typename StateAcc, typename EdgeAcc> struct BuildDFA<StateAcc, EdgeAcc, TypeList<>> {
+  using States = StateAcc;
+  using Edges = EdgeAcc;
+};
+template<typename StateAcc, typename EdgeAcc, typename StateHead, typename... StateTails>
+struct BuildDFA<StateAcc, EdgeAcc, TypeList<StateHead, StateTails...>> {
+  using NewCharStates = DerivNewStates<TypeList<>, StateHead, typename First<typename StateHead::re, TypeList<>>::type>::type;
+  using Processed = PushNewStates<StateAcc, EdgeAcc, TypeList<StateTails...>, StateHead, NewCharStates>;
+  using NextIt = BuildDFA<typename Processed::StateAcc, typename Processed::EdgeAcc, typename Processed::ToBeProcessList>;
+  using States = NextIt::States;
+  using Edges = NextIt::Edges;
 };
 
 template<typename RE>
 struct AllStatesAndEdgesGenerator {
-private:
-  using initial_states = TypeList<State<RE>>;
-  using initial_pair = StateEdgePair<initial_states, TypeList<>>;
 public:
-  using type = typename ExpandUntilStablePair<initial_pair, initial_states::length>::type;
+  using type = BuildDFA<TypeList<State<RE>>, TypeList<>, TypeList<State<RE>>>;
   using States = typename type::States;
   using Edges  = typename type::Edges;
 };
@@ -846,14 +887,14 @@ template<typename RE> using AllEdgesList  = typename AllStatesAndEdgesGenerator<
 template<typename EdgesList>
 struct BuildTable {
   template<std::size_t N>
-  static consteval void make() {
+  static constexpr void make() {
     static_assert(false, "impossible: should never fall through");
   }
 };
 template<typename... Edges>
 struct BuildTable<TypeList<Edges...>> {
   template<std::size_t N>
-  static consteval std::array<std::array<int32_t, nr_ascii_char>, N> make() {
+  static constexpr std::array<std::array<int32_t, nr_ascii_char>, N> make() {
     std::array<std::array<int32_t, nr_ascii_char>, N> table{};
     for (auto &row : table) row.fill(-1);
     ((table[Edges::from][static_cast<std::size_t>(Edges::ch)] = Edges::to), ...);
@@ -865,7 +906,7 @@ template<typename StatesList>
 struct BuildAccepts;
 template<typename... Ss>
 struct BuildAccepts<TypeList<Ss...>> {
-  static consteval std::array<bool, sizeof...(Ss)> make() {
+  static constexpr std::array<bool, sizeof...(Ss)> make() {
     return std::array<bool, sizeof...(Ss)>{ Ss::accepting... };
   }
 };
