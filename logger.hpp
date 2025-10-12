@@ -65,6 +65,34 @@ struct ToString<impl::Closure<R>> {
   }
 };
 
+template<>
+struct ToString<impl::Omega> {
+  static std::string to_string() {
+    return "<o>";
+  }
+};
+
+template<size_t I>
+struct ToString<impl::Set<I>> {
+  static std::string to_string() {
+    return "<" + std::to_string(I) +">";
+  }
+};
+
+template<typename Head, typename... Tails>
+struct ToString<impl::Seq<Head, Tails...>> {
+  static std::string to_string() {
+    return ToString<Head>::to_string() + ToString<impl::Seq<Tails...>>::to_string();
+  }
+};
+
+template<>
+struct ToString<impl::Seq<>> {
+  static std::string to_string() {
+    return "";
+  }
+};
+
 template <typename TypeList, size_t idx>
 struct TypeListPrinterImpl;
 
@@ -78,7 +106,7 @@ struct TypeListPrinter {
 template<size_t idx, typename RE, typename... Remains>
 struct TypeListPrinterImpl<impl::TypeList<impl::dfa::State<RE>, Remains...>, idx> {
   static void print() {
-    printf("(%lu) %s\n", idx, ToString<RE>::to_string().c_str());
+    printf("(%lu) %s %s\n", idx, (impl::dfa::State<RE>::accepting ? "(*)" : "   "), ToString<RE>::to_string().c_str());
     TypeListPrinterImpl<impl::TypeList<Remains...>, idx + 1>::print();
   }
 };
@@ -96,6 +124,46 @@ struct TypeListPrinterImpl<impl::TypeList<impl::dfa::Edge<From, C, To>, Remains.
   static void print() {
     printf("(%lu) %lu --%c-> %lu\n", idx, From, C, To);
     TypeListPrinterImpl<impl::TypeList<Remains...>, idx + 1>::print();
+  }
+};
+
+template<typename List> struct ActionTypeListToString;
+template<typename Head, typename... Tails> struct ActionTypeListToString<impl::TypeList<Head, Tails...>> {
+  static std::string to_string() {
+    return ToString<Head>::to_string() + ", " + ActionTypeListToString<impl::TypeList<Tails...>>::to_string();
+  }
+};
+template<> struct ActionTypeListToString<impl::TypeList<>> {
+  static std::string to_string() { return ""; }
+};
+
+template<size_t idx, typename RE, typename... Remains>
+struct TypeListPrinterImpl<impl::TypeList<impl::tnfa::State<RE>, Remains...>, idx> {
+  static void print() {
+    printf(
+      "(%lu) %s %s : %s : { %s }\n",
+      idx, (impl::tnfa::State<RE>::accepting ? "(*)" : "   "),
+      ToString<typename impl::dfa::RemoveAllAction<RE>::type>::to_string().c_str(),
+      ToString<RE>::to_string().c_str(),
+      ActionTypeListToString<typename impl::tnfa::v<RE>::type>::to_string().c_str()
+    );
+    TypeListPrinterImpl<impl::TypeList<Remains...>, idx + 1>::print();
+  }
+};
+
+template<size_t idx, size_t From, char C, typename Action, size_t To, typename... Remains>
+struct TypeListPrinterImpl<impl::TypeList<impl::tnfa::Edge<From, C, Action, To>, Remains...>, idx> {
+  static void print() {
+    printf("(%lu) %lu --%s, %c-> %lu\n", idx, From, ToString<Action>::to_string().c_str(), C, To);
+    TypeListPrinterImpl<impl::TypeList<Remains...>, idx + 1>::print();
+  }
+};
+
+template<size_t idx, typename Remain, typename Action, typename... Tails>
+struct TypeListPrinterImpl<impl::TypeList<impl::tnfa::DerivedPair<Remain, Action>, Tails...>, idx> {
+  static void print() {
+    printf("(%lu) (%s, %s)\n", idx, ToString<Remain>::to_string().c_str(), ToString<Action>::to_string().c_str());
+    TypeListPrinterImpl<impl::TypeList<Tails...>, idx + 1>::print();
   }
 };
 

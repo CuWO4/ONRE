@@ -942,22 +942,16 @@ template<typename Seq, typename A> using CarAction_t = CatAction<Seq, A>::type;
 namespace tnfa {
 
 /* === v notation === */
-template<typename List, typename ListOrAction, typename Acc> struct Product;
-template<typename Head, typename... Tails, typename A, typename Acc> struct Product<TypeList<Head, Tails...>, A, Acc> {
-  using TmpAcc = PushBack<Acc, typename CatAction<Head, A>::type>::type;
-  using type = Product<TypeList<Tails...>, A, TmpAcc>::type;
+template<typename List, typename Action> struct ProductAction {
+  template <typename A> struct AddAction { using type = CatAction<A, Action>::type; };
+  using type = Map<AddAction, List>::type;
 };
-template<typename A, typename Acc> struct Product<TypeList<>, A, Acc> {
-  using type = Acc;
-};
+template<typename List1, typename List2, typename Acc> struct Product;
 template<typename List1, typename Head, typename... Tails, typename Acc> struct Product<List1, TypeList<Head, Tails...>, Acc> {
-  using TmpAcc = Product<List1, Head, Acc>::type;
+  using TmpAcc = ProductAction<List1, Head>::type;
   using type = Product<List1, TypeList<Tails...>, TmpAcc>::type;
 };
 template<typename List1, typename Acc> struct Product<List1, TypeList<>, Acc> {
-  using type = Acc;
-};
-template<typename Acc> struct Product<TypeList<>, TypeList<>, Acc> {
   using type = Acc;
 };
 
@@ -966,8 +960,12 @@ template<> struct v<EmptySet> { using type = TypeList<>; };
 template<> struct v<Epsilon> { using type = TypeList<Omega>; };
 template<char C> struct v<Char<C>> { using type = TypeList<>; };
 template<size_t I> struct v<SetSlot<I>> { using type = TypeList<Set<I>>; };
-template<typename R, typename S> struct v<Or<R, S>> { using type = JoinUnique<v<R>, v<S>>::type; };
-template<typename R, typename S> struct v<Concat<R, S>> { using type = Product<v<R>, v<S>, TypeList<>>::type; };
+template<typename R, typename S> struct v<Or<R, S>> {
+  using type = JoinUnique<typename v<R>::type, typename v<S>::type>::type;
+};
+template<typename R, typename S> struct v<Concat<R, S>> {
+  using type = Product<typename v<R>::type, typename v<S>::type, TypeList<>>::type;
+};
 template<typename R> struct v<Closure<R>> { using type = TypeList<Omega>; };
 
 
@@ -1008,7 +1006,7 @@ struct Derivative<Concat<R, S>, C> {
       typename Pair::action
     >;
   };
-  using Part1 = Map<MapFunc1, Derivative<R, C>>::type;
+  using Part1 = Map<MapFunc1, typename Derivative<R, C>::type>::type;
 
   template <typename Acc, typename vRList, typename SDList> struct Part2Generator;
   template <typename Acc, typename SDList>
@@ -1025,7 +1023,7 @@ struct Derivative<Concat<R, S>, C> {
       >;
     };
     using type = Part2Generator<
-      typename JoinUnique<Acc, Map<MapFunc2, SDList>>::type,
+      typename JoinUnique<Acc, typename Map<MapFunc2, SDList>::type>::type,
       TypeList<vRTails...>,
       SDList
     >::type;
@@ -1049,9 +1047,118 @@ struct Derivative<Closure<R>, C> {
 };
 
 
-/* === TDFA builder === */
-// TODO
+/* === TNFA builder === */
+template<typename R>
+struct State {
+  using re = R;
+  static constexpr bool accepting = Nullable<R>::value;
+};
 
+template<size_t From, char C, typename Action, size_t To>
+struct Edge {
+  static constexpr std::size_t from = From;
+  static constexpr char ch = C;
+  using action = Action;
+  static constexpr size_t to = To;
+};
+
+template<char C, typename State, typename Action>
+struct CharStateAction {
+  static constexpr char c = C;
+  using state = State;
+  using action = Action;
+};
+
+template<typename CharStateActionAcc, typename State, typename Alphabet> struct DerivNewStates;
+template<typename Acc, typename S> struct DerivNewStates<Acc, S, TypeList<>> {
+  using type = Acc;
+};
+
+template<typename Acc, typename S, char C, typename... Tails>
+struct DerivNewStates<Acc, S, TypeList<Char<C>, Tails...>> {
+  template<typename RemainActionPair>
+  struct AddChar {
+    using type = CharStateAction<
+      C,
+      State<typename RemainActionPair::remain>,
+      typename RemainActionPair::action
+    >;
+  };
+
+  using Der = typename Derivative<typename S::re, C>::type;
+  using type = std::conditional_t<
+    std::is_same_v<Der, TypeList<>>,
+    std::type_identity<Acc>,
+    DerivNewStates<
+      typename CatList<Acc, typename Map<AddChar, Der>::type>::type,
+      S,
+      TypeList<Tails...>
+    >
+  >::type;
+};
+
+template<typename StateAcc, typename EdgeAcc, typename ToBeProcessList, typename StartState, typename NewCharStates>
+struct PushNewStates;
+template<typename SA, typename EA, typename TBP, typename StartState>
+struct PushNewStates<SA, EA, TBP, StartState, TypeList<>> {
+  using StateAcc = SA;
+  using EdgeAcc = EA;
+  using ToBeProcessList = TBP;
+};
+template<typename SA, typename EA, typename TBP, typename StartState, typename HeadTuple, typename... TailPairs>
+struct PushNewStates<SA, EA, TBP, StartState, TypeList<HeadTuple, TailPairs...>> {
+  using FromState = StartState;
+  using ToState = typename HeadTuple::state;
+  static constexpr char C = HeadTuple::c;
+  using Action = HeadTuple::action;
+  static constexpr bool IsStateNew = !SA::template Contains<ToState>;
+  using NextStateAcc = PushBackUnique<SA, ToState>::type;
+  using NextToBeProcessList = std::conditional_t<IsStateNew, PushBack<TBP, ToState>, std::type_identity<TBP>>::type;
+  using NextEdgeAcc = typename PushBack<
+    EA,
+    Edge<
+      NextStateAcc::template IndexOf<FromState>,
+      C,
+      Action,
+      NextStateAcc::template IndexOf<ToState>
+    >
+  >::type;
+  using NextIt = PushNewStates<NextStateAcc, NextEdgeAcc, NextToBeProcessList, StartState, TypeList<TailPairs...>>;
+  using StateAcc = typename NextIt::StateAcc;
+  using EdgeAcc = typename NextIt::EdgeAcc;
+  using ToBeProcessList = typename NextIt::ToBeProcessList;
+};
+
+template<typename StateAcc, typename EdgeAcc, typename ToBeProcessList>
+struct BuildTNFA;
+
+template<typename StateAcc, typename EdgeAcc>
+struct BuildTNFA<StateAcc, EdgeAcc, TypeList<>> {
+  using States = StateAcc;
+  using Edges = EdgeAcc;
+};
+
+template<typename StateAcc, typename EdgeAcc, typename StateHead, typename... StateTails>
+struct BuildTNFA<StateAcc, EdgeAcc, TypeList<StateHead, StateTails...>> {
+  using NewCharStates = DerivNewStates<TypeList<>, StateHead, typename First<typename StateHead::re, TypeList<>>::type>::type;
+  using Processed = PushNewStates<StateAcc, EdgeAcc, TypeList<StateTails...>, StateHead, NewCharStates>;
+  using NextIt = BuildTNFA<typename Processed::StateAcc, typename Processed::EdgeAcc, typename Processed::ToBeProcessList>;
+  using States = NextIt::States;
+  using Edges = NextIt::Edges;
+};
+
+template<typename RE>
+struct AllStatesAndEdgesGenerator {
+public:
+  using type = BuildTNFA<TypeList<State<RE>>, TypeList<>, TypeList<State<RE>>>;
+  using States = typename type::States;
+  using Edges  = typename type::Edges;
+};
+
+/* aliases */
+template<typename RE> using AllStateEdgePair = typename AllStatesAndEdgesGenerator<RE>::type;
+template<typename RE> using AllStatesList = typename AllStatesAndEdgesGenerator<RE>::States;
+template<typename RE> using AllEdgesList  = typename AllStatesAndEdgesGenerator<RE>::Edges;
 
 /* === table builder, convert sparse graph representation into jump table, action list and other auxiliary structure === */
 // TODO
