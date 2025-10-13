@@ -7,6 +7,9 @@
 #include <string_view>
 #include <algorithm>
 #include <cstdio>
+#include <string>
+#include <stdexcept>
+#include <iostream>
 
 namespace onre {
 namespace impl {
@@ -884,18 +887,12 @@ template<typename RE> using AllEdgesList  = typename AllStatesAndEdgesGenerator<
 
 
 /* === table builder, convert sparse graph representation into jump table representation === */
-template<typename EdgesList>
-struct BuildTable {
-  template<std::size_t N>
-  static constexpr void make() {
-    static_assert(false, "impossible: should never fall through");
-  }
-};
-template<typename... Edges>
-struct BuildTable<TypeList<Edges...>> {
-  template<std::size_t N>
-  static constexpr std::array<std::array<int32_t, nr_ascii_char>, N> make() {
-    std::array<std::array<int32_t, nr_ascii_char>, N> table{};
+template<size_t NrStates, typename EdgesList>
+struct BuildTable;
+template<size_t NrStates, typename... Edges>
+struct BuildTable<NrStates, TypeList<Edges...>> {
+  static constexpr std::array<std::array<int32_t, nr_ascii_char>, NrStates> make() {
+    std::array<std::array<int32_t, nr_ascii_char>, NrStates> table{};
     for (auto &row : table) row.fill(-1);
     ((table[Edges::from][static_cast<std::size_t>(Edges::ch)] = Edges::to), ...);
     return table;
@@ -922,9 +919,16 @@ struct BuildAccepts<TypeList<Ss...>> {
  */
 
 /* === action algebra === */
-struct Omega {};
-template<size_t I> struct Set { static constexpr size_t i = I; };
-template<typename... As> struct Seq {};
+struct Omega { static constexpr size_t length = 0;};
+template<size_t I> struct Set { static constexpr size_t i = I, length = 1; };
+template<typename... As> struct Seq { static constexpr size_t length = (As::length + ...); };
+
+template<typename A> struct is_omega : std::false_type {};
+template<> struct is_omega<Omega> : std::true_type {};
+template<typename A> struct is_set : std::false_type {};
+template<size_t I> struct is_set<Set<I>> : std::true_type {};
+template<typename A> struct is_seq : std::false_type {};
+template<typename... As> struct is_seq<Seq<As...>> : std::true_type {};
 
 template<typename A1, typename A2> struct CatAction;
 template<> struct CatAction<Omega, Omega> { using type = Omega; };
@@ -1052,6 +1056,7 @@ template<typename R>
 struct State {
   using re = R;
   static constexpr bool accepting = Nullable<R>::value;
+  using AcceptActions = v<R>::type;
 };
 
 template<size_t From, char C, typename Action, size_t To>
@@ -1161,7 +1166,137 @@ template<typename RE> using AllStatesList = typename AllStatesAndEdgesGenerator<
 template<typename RE> using AllEdgesList  = typename AllStatesAndEdgesGenerator<RE>::Edges;
 
 /* === table builder, convert sparse graph representation into jump table, action list and other auxiliary structure === */
-// TODO
+template<typename RE> struct NrUsedSlots {
+  static constexpr size_t value = 0;
+};
+template<size_t I> struct NrUsedSlots<SetSlot<I>> {
+  static constexpr size_t value = I + 1;
+};
+template<typename R, typename S> struct NrUsedSlots<Or<R, S>> {
+  static constexpr size_t value = std::max(NrUsedSlots<R>::value, NrUsedSlots<S>::value);
+};
+template<typename R, typename S> struct NrUsedSlots<Concat<R, S>> {
+  static constexpr size_t value = std::max(NrUsedSlots<R>::value, NrUsedSlots<S>::value);
+};
+template<typename R> struct NrUsedSlots<Closure<R>> {
+  static constexpr size_t value = NrUsedSlots<R>::value;
+};
+
+template<typename Edges> struct MaxTransActionLength;
+template<> struct MaxTransActionLength<TypeList<>> { static constexpr size_t value = 0; };
+template<typename... Edges> struct MaxTransActionLength<TypeList<Edges...>> {
+  static constexpr size_t value = std::max({ Edges::action::length... });
+};
+
+template<typename List> struct MaxActionLengthInList;
+template<> struct MaxActionLengthInList<TypeList<>> { static constexpr size_t value = 0; };
+template<typename... Actions> struct MaxActionLengthInList<TypeList<Actions...>> {
+  static constexpr size_t value = std::max({ Actions::length... });
+};
+
+template<typename States> struct MaxAcceptActionLength;
+template<> struct MaxAcceptActionLength<TypeList<>> { static constexpr size_t value = 0; };
+template<typename... States> struct MaxAcceptActionLength<TypeList<States...>> {
+  static constexpr size_t value = std::max({ MaxActionLengthInList<typename States::AcceptActions>::value... });
+};
+
+template<size_t NrStates, typename EdgeList> struct BuildTransTable;
+template<size_t NrStates, typename... Edges> struct BuildTransTable<NrStates, TypeList<Edges...>> {
+  static constexpr std::array<std::array<std::array<bool, NrStates>, nr_ascii_char>, NrStates> make() {
+    std::array<std::array<std::array<bool, NrStates>, nr_ascii_char>, NrStates> result{};
+    for (auto& state_table : result) for (auto& char_table : state_table) char_table.fill(false);
+    ((result[Edges::from][static_cast<size_t>(Edges::ch)][Edges::to] = true), ...);
+    return result;
+  }
+};
+
+template<typename StateList> struct BuildAcceptTable;
+template<typename... States> struct BuildAcceptTable<TypeList<States...>> {
+  static constexpr std::array<bool, sizeof...(States)> make() {
+    return std::array<bool, sizeof...(States)>{ States::accepting... };
+  }
+};
+
+template<size_t NrStates, size_t MaxTransActionLength, typename EdgeList> struct BuildTransActionTable;
+template<size_t NrStates, size_t MaxTransActionLength, typename... Edges>
+struct BuildTransActionTable<NrStates, MaxTransActionLength, TypeList<Edges...>> {
+  static constexpr std::array<std::array<std::array<std::array<int32_t, MaxTransActionLength>, NrStates>, nr_ascii_char>, NrStates> make() {
+    std::array<std::array<std::array<std::array<int32_t, MaxTransActionLength>, NrStates>, nr_ascii_char>, NrStates> result{};
+    for (auto& from_state_table : result)
+      for (auto& char_table : from_state_table)
+        for (auto& action_list : char_table)
+          action_list.fill(-1);
+
+    (([&]<typename Edge>(Edge) {
+      using Action = typename Edge::action;
+      auto& action_list = result[Edge::from][Edge::ch][Edge::to];
+      // simplify overwrite if there have multiple possible of (from, char, to)
+      // may cause non-longest match or other incompatibilities with standards,
+      // but the result is guaranteed to be correct.
+      // TODO: try to use heuristic rules to mitigate incompatibilities
+      action_list.fill(-1);
+      if constexpr (is_omega<Action>::value) {
+        /* ignore */
+      } else if constexpr (is_set<Action>::value) {
+        static_assert(MaxTransActionLength > 0, "bad max trans action length");
+        action_list[0] = static_cast<int32_t>(Action::i);
+      } else if constexpr (is_seq<Action>::value) {
+        [&]<typename... As>(Seq<As...>) {
+          static_assert(MaxTransActionLength >= sizeof...(As), "bad max trans action length");
+          size_t idx = 0;
+          ((action_list[idx++] = static_cast<int32_t>(As::i)), ...);
+        }(Action{});
+      } else {
+        static_assert(!std::is_same<Edges, Edges>::value, "unknown action type");
+      }
+    }(Edges{})), ...);
+
+    return result;
+  }
+};
+
+template<size_t MaxAcceptActionLength, typename StateList> struct BuildAcceptActionTable;
+template<size_t MaxAcceptActionLength, typename... States>
+struct BuildAcceptActionTable<MaxAcceptActionLength, TypeList<States...>> {
+  static constexpr std::array<std::array<int32_t, MaxAcceptActionLength>, sizeof...(States)> make() {
+    std::array<std::array<int32_t, MaxAcceptActionLength>, sizeof...(States)> result{};
+    for (auto& action_list : result) action_list.fill(-1);
+    (([&]<typename State>(State){
+      auto& action_list = result[TypeList<States...>::template IndexOf<State>];
+      // simplify choose the longest if multiple accept actions are possible heuristically
+      using Action = typename LongestAction<typename v<typename States::re>::type, Omega, 0>::type;
+      if constexpr (is_omega<Action>::value) {
+        /* ignore */
+      } else if constexpr (is_set<Action>::value) {
+        static_assert(MaxAcceptActionLength > 0, "bad max accept action length");
+        action_list[0] = static_cast<int32_t>(Action::i);
+      } else if constexpr (is_seq<Action>::value) {
+        [&]<typename... As>(Seq<As...>) {
+          static_assert(MaxAcceptActionLength >= sizeof...(As), "bad max accept action length");
+          size_t idx = 0;
+          ((action_list[idx++] = static_cast<int32_t>(As::i)), ...);
+        }(Action{});
+      } else {
+        static_assert(!std::is_same<States, States>::value, "unknown action type");
+      }
+    }(States{})), ...);
+    return result;
+  }
+
+  template<typename ActionList, typename CurLongestAction, size_t CurShortestLen> struct LongestAction;
+  template<typename CurLongestAction, size_t CurShortestLen> struct LongestAction<TypeList<>, CurLongestAction, CurShortestLen> {
+    using type = CurLongestAction;
+  };
+  template<typename HeadAction, typename... TailActions, typename CurLongestAction, size_t CurShortestLen>
+  struct LongestAction<TypeList<HeadAction, TailActions...>, CurLongestAction, CurShortestLen> {
+    using type = std::conditional_t<
+      (HeadAction::length > CurShortestLen),
+      LongestAction<TypeList<TailActions...>, HeadAction, HeadAction::length>,
+      LongestAction<TypeList<TailActions...>, CurLongestAction, CurShortestLen>
+    >::type;
+  };
+};
+
 
 } /* namespace tnfa */
 
