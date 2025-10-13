@@ -9,7 +9,7 @@
 #include <cstdio>
 #include <string>
 #include <stdexcept>
-#include <iostream>
+#include <sstream>
 
 namespace onre {
 namespace impl {
@@ -1304,6 +1304,19 @@ struct BuildAcceptActionTable<MaxAcceptActionLength, TypeList<States...>> {
 
 
 /* === interface === */
+class replacement_not_matched : public std::runtime_error {
+public:
+  replacement_not_matched(const char* msg) : std::runtime_error(msg) {}
+  replacement_not_matched(const std::string& msg) : std::runtime_error(msg) {}
+  replacement_not_matched(std::string&& msg) : std::runtime_error(msg) {}
+};
+class invalid_replacement_rule : public std::runtime_error {
+public:
+  invalid_replacement_rule(const char* msg) : std::runtime_error(msg) {}
+  invalid_replacement_rule(const std::string& msg) : std::runtime_error(msg) {}
+  invalid_replacement_rule(std::string&& msg) : std::runtime_error(msg) {}
+};
+
 template<impl::FixedString Pattern>
 class Match {
 public:
@@ -1324,7 +1337,7 @@ private:
   using DFAStatesList = impl::dfa::AllStatesList<NoActionRe>;
   using DFAEdgesList  = impl::dfa::AllEdgesList<NoActionRe>;
   static constexpr std::size_t nr_dfa_states = DFAStatesList::length;
-  static constexpr auto dfa_trans_table = impl::dfa::BuildTable<DFAEdgesList>::template make<nr_dfa_states>();
+  static constexpr auto dfa_trans_table = impl::dfa::BuildTable<nr_dfa_states, DFAEdgesList>::make();
   static constexpr auto dfa_is_accept_states = impl::dfa::BuildAccepts<DFAStatesList>::make();
 };
 
@@ -1332,8 +1345,154 @@ template<impl::FixedString Pattern>
 class Replace {
 public:
   static std::string eval(std::string_view replace_rule, std::string_view str) {
-    // TODO: implement me with TNFA
-    throw std::runtime_error("not implemented");
+    if (!Match<Pattern>::eval(str)) {
+      throw replacement_not_matched("failed to match");
+    }
+
+    auto slot_file1 = new_slot_file(), slot_file2 = new_slot_file();
+    std::array<bool, nr_states> active_states1 {}, active_states2 {};
+    active_states1.fill(false); active_states2.fill(false);
+
+    auto* cur_slot_file = &slot_file1, * next_slot_file = &slot_file2;
+    auto* cur_active_state = &active_states1, * next_active_state = &active_states2;
+
+    (*cur_active_state)[0] = true;
+    for (size_t idx = 0; idx < str.size(); idx++) {
+      char ch = str[idx];
+      if (ch == '\0') break;
+      next_active_state->fill(false);
+      for (size_t state = 0; state < nr_states; state++) {
+        if (!(*cur_active_state)[state]) continue;
+        for (size_t next_state = 0; next_state < nr_states; next_state++) {
+          if (!trans_table[state][static_cast<size_t>(ch)][next_state]) continue;
+          auto next_slot_line = apply_action(
+            (*cur_slot_file)[state], trans_action_table[state][static_cast<size_t>(ch)][next_state], idx
+          );
+          if (!(*next_active_state)[next_state] || need_change((*next_slot_file)[next_state], next_slot_line)) {
+            (*next_slot_file)[next_state] = next_slot_line;
+          }
+          (*next_active_state)[next_state] = true;
+        }
+      }
+      std::swap(cur_slot_file, next_slot_file);
+      std::swap(cur_active_state, next_active_state);
+    }
+
+    bool is_final_line_updated = false;
+    SlotLine final_line {};
+    for (size_t state = 0; state < nr_states; state++) {
+      if (!(*cur_active_state)[state]) continue;
+      if (!accept_table[state]) continue;
+      auto after_accept = apply_action((*cur_slot_file)[state], accept_action_table[state], str.size());
+      if (!is_final_line_updated || need_change(final_line, after_accept)) {
+        final_line = after_accept;
+      }
+    }
+
+    std::ostringstream result_buffer;
+
+    for (size_t idx = 0; idx < replace_rule.size(); idx++) {
+      char ch = replace_rule[idx];
+      if (ch != '$') {
+        result_buffer << ch;
+        continue;
+      }
+      if (idx + 1 >= replace_rule.size()) {
+        throw invalid_replacement_rule("missing argument for `$`");
+      }
+      idx++;
+      if (replace_rule[idx] == '$') {
+        result_buffer << '$';
+        continue;
+      } else if (is_digit(replace_rule[idx])) {
+        size_t group_idx = replace_rule[idx] - '0';
+        while (idx + 1 < replace_rule.size() && is_digit(replace_rule[idx + 1])) {
+          idx++;
+          group_idx = 10 * group_idx + replace_rule[idx] - '0';
+        }
+        if (group_idx >= nr_capture_group) {
+          throw invalid_replacement_rule("undefined capture group `$" + std::to_string(group_idx) +"`");
+        }
+        int l = final_line[group_idx * 2], r = final_line[group_idx * 2 + 1];
+        if (l < 0 || r < 0) continue;
+        for (const auto& captured_char : str.substr(l, r - l)) {
+          result_buffer << captured_char;
+        }
+      } else {
+        throw invalid_replacement_rule("invalid argument for `$`");
+      }
+    }
+
+    return result_buffer.str();
+  }
+
+private:
+  using Re = typename impl::RegexScan<Pattern>::type;
+  using StateList = impl::tnfa::AllStatesList<Re>;
+  using EdgeList  = impl::tnfa::AllEdgesList<Re>;
+  static constexpr std::size_t nr_states = StateList::length;
+  static constexpr std::size_t nr_used_slots = impl::tnfa::NrUsedSlots<Re>::value;
+  static constexpr std::size_t max_trans_action_length = impl::tnfa::MaxTransActionLength<EdgeList>::value;
+  static constexpr std::size_t max_accept_action_length = impl::tnfa::MaxAcceptActionLength<StateList>::value;
+  static constexpr std::size_t nr_capture_group = nr_used_slots / 2;
+
+  /* S x Alphabet x S -> bool */
+  static constexpr auto trans_table = impl::tnfa::BuildTransTable<nr_states, EdgeList>::make();
+  /* S -> bool */
+  static constexpr auto accept_table = impl::tnfa::BuildAcceptTable<StateList>::make();
+  /* S x Alphabet x S -> int32_t[], -1 represent no action */
+  static constexpr auto trans_action_table = impl::tnfa::BuildTransActionTable<nr_states, max_trans_action_length, EdgeList>::make();
+  // /* S -> int32_t[], -1 represent no action */
+  static constexpr auto accept_action_table = impl::tnfa::BuildAcceptActionTable<max_accept_action_length, StateList>::make();
+
+  std::array<bool, nr_states> is_active{};
+
+  using SlotLine = std::array<int32_t, nr_used_slots>;
+  using SlotFile = std::array<SlotLine, nr_states>;
+
+  static SlotFile new_slot_file() {
+    SlotFile res {};
+    for (auto& line : res) line.fill(-1);
+    return res;
+  }
+
+  template<size_t N>
+  static SlotLine apply_action(const SlotLine& old_line, const std::array<int32_t, N>& actions, int p) {
+    SlotLine new_line{old_line};
+    for (const auto& action : actions) {
+      if (action < 0) break;
+      new_line[action] = p;
+    }
+    return new_line;
+  }
+
+  // heuristically choose a slot configuration to try to get longest match
+  static bool need_change(const SlotLine& old_line, const SlotLine& new_line) {
+    #define OPENED(line, k) ((line)[(k) << 1] >= 0)
+    #define CLOSED(line, k) ((line)[((k) << 1) | 1] >= 0)
+    #define OPEN_TIME(line, k) ((line)[(k) << 1])
+    #define LEN(line, k) ((line)[((k) << 1) | 1] - (line)[(k) << 1])
+    for (size_t k = 0; k < nr_capture_group; k++) {
+      if (!OPENED(old_line, k) && !OPENED(new_line, k)) continue;
+      if (OPENED(old_line, k) && !OPENED(new_line, k)) return false;
+      if (!OPENED(old_line, k) && OPENED(new_line, k)) return true;
+      if (OPEN_TIME(old_line, k) < OPEN_TIME(new_line, k)) return false;
+      if (OPEN_TIME(old_line, k) > OPEN_TIME(new_line, k)) return true;
+      if (!CLOSED(old_line, k) && !CLOSED(new_line, k)) continue;
+      if (!CLOSED(old_line, k) && CLOSED(new_line, k)) return false;
+      if (CLOSED(old_line, k) && !CLOSED(new_line, k)) return true;
+      if (LEN(old_line, k) > LEN(new_line, k)) return false;
+      if (LEN(old_line, k) < LEN(new_line, k)) return true;
+    }
+    return false;
+    #undef LEN
+    #undef OPEN_TIME
+    #undef OPENED
+    #undef CLOSED
+  }
+
+  static bool is_digit(char ch) {
+    return '0' <= ch && ch <= '9';
   }
 };
 
