@@ -1210,6 +1210,28 @@ template<size_t NrStates, typename... Edges> struct BuildTransTable<NrStates, Ty
   }
 };
 
+/* remain the edge with shortest action among edges having same From, Char and To */
+template<typename EdgeList> struct RemoveConflictEdge {
+  template<typename Edge, typename ProcessingEdgeList> struct IsEdgeNeedRetainImpl;
+  template<typename Edge> struct IsEdgeNeedRetainImpl<Edge, TypeList<>> {
+    static constexpr bool value = true;
+  };
+  template<typename Edge, typename Head, typename... Tails>
+  struct IsEdgeNeedRetainImpl<Edge, TypeList<Head, Tails...>> {
+    static constexpr bool value = IsEdgeNeedRetainImpl<Edge, TypeList<Tails...>>::value;
+  };
+  template<size_t F, char C, size_t T, typename A1, typename A2, typename... Tails>
+  struct IsEdgeNeedRetainImpl<Edge<F, C, A1, T>, TypeList<Edge<F, C, A2, T>, Tails...>> {
+    static constexpr bool value = A1::length <= A2::length && IsEdgeNeedRetainImpl<Edge<F, C, A1, T>, TypeList<Tails...>>::value;
+  };
+
+  template<typename Edge> struct IsEdgeNeedRetain {
+    static constexpr bool value = IsEdgeNeedRetainImpl<Edge, EdgeList>::value;
+  };
+
+  using type = Filter<IsEdgeNeedRetain, EdgeList>::type;
+};
+
 template<typename StateList> struct BuildAcceptTable;
 template<typename... States> struct BuildAcceptTable<TypeList<States...>> {
   static constexpr std::array<bool, sizeof...(States)> make() {
@@ -1230,10 +1252,6 @@ struct BuildTransActionTable<NrStates, MaxTransActionLength, TypeList<Edges...>>
     (([&]<typename Edge>(Edge) {
       using Action = typename Edge::action;
       auto& action_list = result[Edge::from][Edge::ch][Edge::to];
-      // simplify overwrite if there have multiple possible of (from, char, to)
-      // may cause non-longest match or other incompatibilities with standards,
-      // but the result is guaranteed to be correct.
-      // TODO: try to use heuristic rules to mitigate incompatibilities
       action_list.fill(-1);
       if constexpr (is_omega<Action>::value) {
         /* ignore */
@@ -1356,6 +1374,8 @@ public:
     auto* cur_slot_file = &slot_file1, * next_slot_file = &slot_file2;
     auto* cur_active_state = &active_states1, * next_active_state = &active_states2;
 
+    MatchResults match_results {};
+
     (*cur_active_state)[0] = true;
     for (size_t idx = 0; idx < str.size(); idx++) {
       char ch = str[idx];
@@ -1366,7 +1386,7 @@ public:
         for (size_t next_state = 0; next_state < nr_states; next_state++) {
           if (!trans_table[state][static_cast<size_t>(ch)][next_state]) continue;
           auto next_slot_line = apply_action(
-            (*cur_slot_file)[state], trans_action_table[state][static_cast<size_t>(ch)][next_state], idx
+            (*cur_slot_file)[state], trans_action_table[state][static_cast<size_t>(ch)][next_state], idx, match_results
           );
           if (!(*next_active_state)[next_state] || need_change((*next_slot_file)[next_state], next_slot_line)) {
             (*next_slot_file)[next_state] = next_slot_line;
@@ -1383,7 +1403,7 @@ public:
     for (size_t state = 0; state < nr_states; state++) {
       if (!(*cur_active_state)[state]) continue;
       if (!accept_table[state]) continue;
-      auto after_accept = apply_action((*cur_slot_file)[state], accept_action_table[state], str.size());
+      auto after_accept = apply_action((*cur_slot_file)[state], accept_action_table[state], str.size(), match_results);
       if (!is_final_line_updated || need_change(final_line, after_accept)) {
         final_line = after_accept;
       }
@@ -1413,7 +1433,7 @@ public:
         if (group_idx >= nr_capture_group) {
           throw invalid_replacement_rule("undefined capture group `$" + std::to_string(group_idx) +"`");
         }
-        int l = final_line[group_idx * 2], r = final_line[group_idx * 2 + 1];
+        int32_t l = match_results[group_idx].l, r = match_results[group_idx].r;
         if (l < 0 || r < 0) continue;
         for (const auto& captured_char : str.substr(l, r - l)) {
           result_buffer << captured_char;
@@ -1429,7 +1449,7 @@ public:
 private:
   using Re = typename impl::RegexScan<Pattern>::type;
   using StateList = impl::tnfa::AllStatesList<Re>;
-  using EdgeList  = impl::tnfa::AllEdgesList<Re>;
+  using EdgeList  = impl::tnfa::RemoveConflictEdge<impl::tnfa::AllEdgesList<Re>>::type;
   static constexpr std::size_t nr_states = StateList::length;
   static constexpr std::size_t nr_used_slots = impl::tnfa::NrUsedSlots<Re>::value;
   static constexpr std::size_t max_trans_action_length = impl::tnfa::MaxTransActionLength<EdgeList>::value;
@@ -1450,6 +1470,12 @@ private:
   using SlotLine = std::array<int32_t, nr_used_slots>;
   using SlotFile = std::array<SlotLine, nr_states>;
 
+  struct MatchResult {
+    int32_t l = 0, r = 0;
+    size_t len() { return r - l; }
+  };
+  using MatchResults = std::array<MatchResult, nr_capture_group>;
+
   static SlotFile new_slot_file() {
     SlotFile res {};
     for (auto& line : res) line.fill(-1);
@@ -1457,10 +1483,20 @@ private:
   }
 
   template<size_t N>
-  static SlotLine apply_action(const SlotLine& old_line, const std::array<int32_t, N>& actions, int p) {
+  static SlotLine apply_action(
+    const SlotLine& old_line, const std::array<int32_t, N>& actions, 
+    int p, MatchResults& match_results
+  ) {
     SlotLine new_line{old_line};
     for (const auto& action : actions) {
       if (action < 0) break;
+      if (
+        action % 2 == 1 /* is close action */
+        && p - new_line[action - 1] > match_results[action / 2].len()
+      ) {
+        match_results[action / 2].l = new_line[action - 1];
+        match_results[action / 2].r = p;
+      }
       new_line[action] = p;
     }
     return new_line;
