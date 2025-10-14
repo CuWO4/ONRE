@@ -175,7 +175,7 @@ $$Q_\text{accept} = \lbrace R \in RE: \epsilon \in L(R)\rbrace$$
 
 1. $\emptyset \in E$;
 1. $\epsilon \in E$;
-1. $<i> \in E, \forall i \in \lbrace 0, 1, 2, ..., N-1 \rbrace $;
+1. $ \langle i \rangle \in E, \forall i \in \lbrace 0, 1, 2, ..., N-1 \rbrace $;
 1. $a \in E, \forall a \in \Sigma$;
 1. $R|S \in E, \forall R, S \in E$;
 1. $RS \in E, \forall R, S \in E$;
@@ -183,11 +183,11 @@ $$Q_\text{accept} = \lbrace R \in RE: \epsilon \in L(R)\rbrace$$
 
 那么我们称 $E$ 为字母表 $\Sigma$ 上带有 $N$ 个槽的扩展正则表达式.
 
-每个扩展正则表达式定义一个语言, $L(<i>) = \lbrace \epsilon \rbrace$, 其他规则与标准正则表达式一致.
+每个扩展正则表达式定义一个语言, $L(\langle i\rangle) = \lbrace \epsilon \rbrace$, 其他规则与标准正则表达式一致.
 
 我们在扩展正则表达式开始匹配时, 置初始槽状态为 $(-1, -1, ..., -1)$. 匹配时, 每一个子表达式完成匹配时, 执行其动作, 那么在完成匹配时, 将产生一个槽状态, 称为这个正则表达式对这串的输出. 输出不是唯一的 (存在多种可能的路径), 我们不考虑消除歧义的问题.
 
-例如对于 POSIX 正则表达式 `a(a*)a`, 它尝试捕获去除首字母和尾字母的串, 它可以看作扩展正则表达式 $<0>a^\ast<1>a$, 那么在完成匹配时, 将给出输出 $(s_0, s_1)$, 即为捕获组在待匹配串的起止索引(左开右闭).
+例如对于 POSIX 正则表达式 `a(a*)a`, 它尝试捕获去除首字母和尾字母的串, 它可以看作扩展正则表达式 $\langle 0\rangle a^\ast\langle 1\rangle a$, 那么在完成匹配时, 将给出输出 $(s_0, s_1)$, 即为捕获组在待匹配串的起止索引(左开右闭).
 
 ### $v$ 记号
 
@@ -197,7 +197,7 @@ $$ v(\emptyset) = \emptyset $$
 
 $$ v(\epsilon) = \lbrace \omega \rbrace $$
 
-$$ v(<i>) = \lbrace \text{set}(i, p) \rbrace $$
+$$ v(\langle i\rangle) = \lbrace \text{set}(i, p) \rbrace $$
 
 $$ v(a) = \emptyset $$
 
@@ -215,7 +215,7 @@ $$\frac{\partial \emptyset}{\partial x} = \emptyset$$
 
 $$\frac{\partial \epsilon}{\partial x} = \emptyset$$
 
-$$\frac{\partial <i>}{\partial x} = \emptyset$$
+$$\frac{\partial \langle i\rangle}{\partial x} = \emptyset$$
 
 $$\frac{\partial y}{\partial x} =\begin{cases}
 \lbrace (\epsilon, \omega) \rbrace,\qquad y = x \\
@@ -238,7 +238,7 @@ $$\frac{\partial (R^{\ast})}{\partial x} = \lbrace (R' R^{\ast}, \alpha) : (R', 
 
 $$Q \subset \text{Extended RE}$$
 
-$$N = \text{\#Unique Slot in R}$$
+$$N = \text{Number of Unique Slots in R}$$
 
 $$\delta(q, x) = \frac{\partial q}{\partial x}$$
 
@@ -254,7 +254,7 @@ $$A_\text{accept}(q) = v(q)$$
 
 回溯地模拟 TNFA 复杂度是指数的, 和回溯引擎没有区别(甚至潜在地更慢). 为了约束复杂度, 我们使用类活跃变量 NFA 模拟法的方法, 并引入一个启发式仲裁来解决歧义.
 
-现在我们先考虑叙述, 给定 TNFA, 对于一个接受串, 沿着任何一条从起始状态到终止状态的路径, 得到的槽状态都是原扩展正则表达式的一个可能输出. 换而言之, 对于 `(a*)(a*)` (即 $<0>a^\ast<1><2>a^\ast<3>$), 沿着不同路径存在多种可能的输出, 但是对于任何一个输出, 都可以保证 $<0>, <1>$ 分别标记了第一个 `a*` 的左右端点, $<2>, <3>$ 分别标记了第二个 `a*` 的左右端点, 且不会重叠. 我认为这是显然的, 但给出一个形式化的证明是困难的.
+现在我们先考虑叙述, 给定 TNFA, 对于一个接受串, 沿着任何一条从起始状态到终止状态的路径, 得到的槽状态都是原扩展正则表达式的一个可能输出. 换而言之, 对于 `(a*)(a*)` (即 $\langle 0\rangle a^\ast\langle 1\rangle\langle 2\rangle a^\ast\langle 3\rangle$), 沿着不同路径存在多种可能的输出, 但是对于任何一个输出, 都可以保证 $\langle 0\rangle, \langle 1\rangle$ 分别标记了第一个 `a*` 的左右端点, $\langle 2\rangle, \langle 3\rangle$ 分别标记了第二个 `a*` 的左右端点, 且不会重叠. 我认为这是显然的, 但给出一个形式化的证明是困难的.
 
 那么我们考虑算法: TNFA 有 $S$ 个结点, 分别标号为 $q_0, q_1, q_2, ..., q_{S-1}$, 其中 $q_0$ 为开始状态, $N$ 个槽. 那么我们置容器 `bool is_active[S]` 和 `number slots[S][N]`. `slots[i]` 是第 $i$ 个状态的槽格局.
 
