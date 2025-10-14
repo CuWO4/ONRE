@@ -15,30 +15,30 @@ std::string binary_represent(uint64_t x) {
 
 void divisible_test() {
   std::cout << "\n=== Divisible Test (match all binary number mod 5 remain 2) ===\n";
-  TEST_AND_LOG(PATTERN, "000000", false);
-  TEST_AND_LOG(PATTERN, "000001", false);
-  TEST_AND_LOG(PATTERN, "000010", true);
-  TEST_AND_LOG(PATTERN, "000011", false);
-  TEST_AND_LOG(PATTERN, "000100", false);
-  TEST_AND_LOG(PATTERN, "000101", false);
-  TEST_AND_LOG(PATTERN, "000110", false);
-  TEST_AND_LOG(PATTERN, "000111", true);
-  TEST_AND_LOG(PATTERN, "001000", false);
-  TEST_AND_LOG(PATTERN, "001001", false);
-  TEST_AND_LOG(PATTERN, "001010", false);
-  TEST_AND_LOG(PATTERN, "001011", false);
-  TEST_AND_LOG(PATTERN, "001100", true);
-  TEST_AND_LOG(PATTERN, "001101", false);
-  TEST_AND_LOG(PATTERN, "001110", false);
-  TEST_AND_LOG(PATTERN, "001111", false);
-  TEST_AND_LOG(PATTERN, "010000", false);
-  TEST_AND_LOG(PATTERN, "010001", true);
-  TEST_AND_LOG(PATTERN, "010010", false);
-  TEST_AND_LOG(PATTERN, "010011", false);
-  TEST_AND_LOG(PATTERN, "010100", false);
+  test_match_and_log<PATTERN>("000000", false);
+  test_match_and_log<PATTERN>("000001", false);
+  test_match_and_log<PATTERN>("000010", true);
+  test_match_and_log<PATTERN>("000011", false);
+  test_match_and_log<PATTERN>("000100", false);
+  test_match_and_log<PATTERN>("000101", false);
+  test_match_and_log<PATTERN>("000110", false);
+  test_match_and_log<PATTERN>("000111", true);
+  test_match_and_log<PATTERN>("001000", false);
+  test_match_and_log<PATTERN>("001001", false);
+  test_match_and_log<PATTERN>("001010", false);
+  test_match_and_log<PATTERN>("001011", false);
+  test_match_and_log<PATTERN>("001100", true);
+  test_match_and_log<PATTERN>("001101", false);
+  test_match_and_log<PATTERN>("001110", false);
+  test_match_and_log<PATTERN>("001111", false);
+  test_match_and_log<PATTERN>("010000", false);
+  test_match_and_log<PATTERN>("010001", true);
+  test_match_and_log<PATTERN>("010010", false);
+  test_match_and_log<PATTERN>("010011", false);
+  test_match_and_log<PATTERN>("010100", false);
 
   for (int _ = 0; _ < 10; _++) {
     uint32_t rand_number = rand();
-    TEST_AND_LOG(PATTERN, binary_represent(rand_number), rand_number % 5 == 2);
+    test_match_and_log<PATTERN>(binary_represent(rand_number), rand_number % 5 == 2);
   }
 }

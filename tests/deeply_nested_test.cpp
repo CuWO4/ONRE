@@ -2,22 +2,22 @@
 
 void deeply_nested_test() {
   std::cout << "\n=== Deeply Nested and Chaotic Expressions ===\n";
-  TEST_AND_LOG("((a|b)|(c|d))|(e|f)|(g|h)", "c", true);
-  TEST_AND_LOG("((a|b)|(c|d))|(e|f)|(g|h)", "h", true);
-  TEST_AND_LOG("((a|b)|(c|d))|(e|f)|(g|h)", "x", false);
-  TEST_AND_LOG("(((a)|(b))*)", "abab", true);
-  TEST_AND_LOG("(((a)|(b))*)", "aaabbb", true);
+  test_match_and_log<"((a|b)|(c|d))|(e|f)|(g|h)">("c", true);
+  test_match_and_log<"((a|b)|(c|d))|(e|f)|(g|h)">("h", true);
+  test_match_and_log<"((a|b)|(c|d))|(e|f)|(g|h)">("x", false);
+  test_match_and_log<"(((a)|(b))*)">("abab", true);
+  test_match_and_log<"(((a)|(b))*)">("aaabbb", true);
 
-  TEST_AND_LOG("((a|[bcd])|(c|d))|(e|f)", "d", true);
-  TEST_AND_LOG("(a([bcd])*)*", "abcbcd", true);
+  test_match_and_log<"((a|[bcd])|(c|d))|(e|f)">("d", true);
+  test_match_and_log<"(a([bcd])*)*">("abcbcd", true);
 
-  TEST_AND_LOG("(a(b)*)*", "abab", true);
-  TEST_AND_LOG("(a(b)*)*", "a", true);
-  TEST_AND_LOG("(a(b)*)*", "abb", true);
-  TEST_AND_LOG("(a(b)*)*", "b", false);
+  test_match_and_log<"(a(b)*)*">("abab", true);
+  test_match_and_log<"(a(b)*)*">("a", true);
+  test_match_and_log<"(a(b)*)*">("abb", true);
+  test_match_and_log<"(a(b)*)*">("b", false);
 
-  TEST_AND_LOG("a*b+", "b", true);
-  TEST_AND_LOG("a*b+", "ab", true);
-  TEST_AND_LOG("a*b+", "aaabbb", true);
-  TEST_AND_LOG("a*b+", "a", false);
+  test_match_and_log<"a*b+">("b", true);
+  test_match_and_log<"a*b+">("ab", true);
+  test_match_and_log<"a*b+">("aaabbb", true);
+  test_match_and_log<"a*b+">("a", false);
 }

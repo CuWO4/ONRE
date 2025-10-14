@@ -2,18 +2,18 @@
 
 void ambiguous_parsing_test() {
   std::cout << "\n=== Ambiguous and Tricky Parsing Tests ===\n";
-  TEST_AND_LOG("a|b|c", "b", true);
-  TEST_AND_LOG("a|b|c", "d", false);
-  TEST_AND_LOG("(a|b)|c", "c", true);
-  TEST_AND_LOG("a|(b|c)", "c", true);
-  TEST_AND_LOG("a||b", "a", true);
-  TEST_AND_LOG("a||b", "b", true);
-  TEST_AND_LOG("a||b", "", true);
-  TEST_AND_LOG("a||b", "c", false);
+  test_match_and_log<"a|b|c">("b", true);
+  test_match_and_log<"a|b|c">("d", false);
+  test_match_and_log<"(a|b)|c">("c", true);
+  test_match_and_log<"a|(b|c)">("c", true);
+  test_match_and_log<"a||b">("a", true);
+  test_match_and_log<"a||b">("b", true);
+  test_match_and_log<"a||b">("", true);
+  test_match_and_log<"a||b">("c", false);
 
-  TEST_AND_LOG("(a*|b*)*", "", true);
-  TEST_AND_LOG("(a*|b*)*", "a", true);
-  TEST_AND_LOG("(a*|b*)*", "b", true);
-  TEST_AND_LOG("(a*|b*)*", "abba", true);
-  TEST_AND_LOG("(a*|b*)*", "c", false);
+  test_match_and_log<"(a*|b*)*">("", true);
+  test_match_and_log<"(a*|b*)*">("a", true);
+  test_match_and_log<"(a*|b*)*">("b", true);
+  test_match_and_log<"(a*|b*)*">("abba", true);
+  test_match_and_log<"(a*|b*)*">("c", false);
 }

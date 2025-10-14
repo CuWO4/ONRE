@@ -2,7 +2,7 @@ TARGET := test.exe
 EXTERN := cpp
 COMPILER := clang++-18
 
-COMPILE_OPTION := -Wall -O2 --std=c++23 -fbracket-depth=65536
+COMPILE_OPTION := -Wall -O2 --std=c++23 -fbracket-depth=65536 -ftemplate-depth=65536
 # to generate dependent files #
 COMPILE_OPTION_DES := -MMD -MP 
 
@@ -46,5 +46,5 @@ test : $(DEBUGDIR)/$(TARGET)
 .PHONY : clean
 clean :
 	@ echo try to clean...
-	rm -r $(DEBUGDIR)/$(TARGET) $(OBJS) $(DEPS)
+	rm -r $(DEBUGDIR) $(TMPDIR)
 	@ echo completed!
