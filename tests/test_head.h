@@ -7,27 +7,53 @@
 #include <chrono>
 #include <string>
 
+inline std::string abbr(std::string s, size_t max_len) {
+  size_t subpart_len = max_len / 2 - 2;
+  return s.length() <= max_len
+    ? s
+    : s.substr(0, subpart_len) + "...." + s.substr(s.length() - subpart_len, subpart_len);
+}
+
 template<onre::impl::FixedString pattern>
 void test_match_and_log(std::string_view str, bool expected) {
   auto start = std::chrono::high_resolution_clock::now();
   bool result = onre::Match<pattern>::eval(str);
   auto end = std::chrono::high_resolution_clock::now();
   std::string s(str);
-  const char* color = (result == (expected)) ? "\033[1;32m" : "\033[1;31m";
+  const char* color = (result == expected) ? "\033[1;32m" : "\033[1;31m";
   const char* reset = "\033[0m";
   std::string pattern_s(pattern.c_str());
-  std::cout << "pattern: " << std::left << std::setw(40)
-            << (pattern_s.length() > 35 ? pattern_s.substr(0, 15) + "...." + pattern_s.substr(pattern_s.length() - 15) : pattern_s)
+  std::cout << "pattern: " << std::left << std::setw(27) << abbr(pattern_s, 25)
             << " pattern_len: " << std::setw(5) << pattern_s.length()
-            << " str: " << std::setw(25)
-            << (s.length() > 20 ? s.substr(0, 8) + "...." + s.substr(s.length() - 8) : s)
+            << " str: " << std::setw(22) << abbr(s, 20)
             << " str_len: " << std::setw(8) << std::to_string(s.length())
             << " result: " << color << std::setw(6) << (result ? "true" : "false") << reset
-            << " expected: " << color << std::setw(6) << ((expected) ? "true" : "false") << reset
+            << " expected: " << color << std::setw(6) << (expected ? "true" : "false") << reset
             << " time: "
             << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() << "us"
             << std::endl;
 } 
+
+template<onre::impl::FixedString pattern>
+void test_replace_and_log(std::string_view rule, std::string_view str, std::string_view expected) {
+  auto start = std::chrono::high_resolution_clock::now();
+  std::string result = onre::Replace<pattern>::eval(rule, str);
+  auto end = std::chrono::high_resolution_clock::now();
+  std::string s(str);
+  const char* color = (result == expected) ? "\033[1;32m" : "\033[1;31m";
+  const char* reset = "\033[0m";
+  std::string pattern_s(pattern.c_str());
+  std::cout << "pattern: " << std::left << std::setw(20) << abbr(pattern_s, 18)
+            << " pattern_len: " << std::setw(5) << pattern_s.length()
+            << " replace_rule: " << std::setw(20) << abbr(std::string(rule), 18)
+            << " str: " << std::setw(20) << abbr(s, 18)
+            << " str_len: " << std::setw(8) << std::to_string(s.length())
+            << " result: " << color << std::setw(20) << abbr(result, 18) << reset
+            << " expected: " << color << std::setw(20) << abbr(std::string(expected), 18) << reset
+            << " time: "
+            << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() << "us"
+            << std::endl;
+}
 
 void basic_test();
 void boundary_test();
@@ -42,6 +68,18 @@ void long_string_complex_test();
 void character_class_test();
 void extended_alphabet_and_escape_test();
 void divisible_test();
+
+void replace_basic_test();
+void replace_boundary_test();
+void replace_long_string_test();
+void replace_backtrace_killer_test();
+void replace_deeply_nested_test();
+void replace_ambiguous_parsing_test();
+void replace_chaotic_mixed_test();
+void replace_long_string_complex_test();
+void replace_character_class_test();
+void replace_extended_alphabet_and_escape_test();
+void replace_longest_match_test();
 
 constexpr int N = 100000;
 constexpr int M = 10000;
