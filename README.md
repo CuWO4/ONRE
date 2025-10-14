@@ -54,7 +54,7 @@ pattern: (a*)b                pattern_len: 5     replace_rule: $1B              
 
 可以看到, 在超长串, 回溯地狱, 超长模式, 超复杂模式用例下, 引擎仍然十分稳定地取得了 O(n) 的结果, 同样的用例对于回溯引擎则几乎必然崩溃 (例如著名的 [Cloudflare 事件](https://www.reddit.com/r/sysadmin/comments/c8eymj/cloudflare_outage_caused_by_deploying_bad_regular/)).
 
-编译这些复杂模式的时间同样完全是完全可控且可接受的:
+编译这些(总数远超过上面展示的, 详见 `tests/`)复杂模式的时间是完全可控且可接受的:
 
 ```sh
 > make clean && time make -j30
