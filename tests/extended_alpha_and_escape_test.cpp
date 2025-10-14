@@ -2,11 +2,11 @@
 
 void extended_alphabet_and_escape_test() {
   std::cout << "\n=== Extended Alphabet & Escape Tests ===\n";
-  TEST_AND_LOG("([a-e]+)@([a-e]+)[.]com", "abcc@de.com", true);
-  TEST_AND_LOG("([a-e]+)@([a-e]+)[.]com", "abcc@de", false);
-  TEST_AND_LOG("([a-e]+)@([a-e]+)\\.com", "abcc@de.com", true);
-  TEST_AND_LOG("([a-e]+)@([a-e]+)\\.com", "abcc@de", false);
-  TEST_AND_LOG("((ab)*|c*|b)(@\\.)?", "abab", true);
-  TEST_AND_LOG("((ab)*|c*|b)(@\\.)?", "abab@.", true);
-  TEST_AND_LOG("((ab)*|c*|b)(@\\.)?", "ababc", false);
+  test_match_and_log<"([a-e]+)@([a-e]+)[.]com">("abcc@de.com", true);
+  test_match_and_log<"([a-e]+)@([a-e]+)[.]com">("abcc@de", false);
+  test_match_and_log<"([a-e]+)@([a-e]+)\\.com">("abcc@de.com", true);
+  test_match_and_log<"([a-e]+)@([a-e]+)\\.com">("abcc@de", false);
+  test_match_and_log<"((ab)*|c*|b)(@\\.)?">("abab", true);
+  test_match_and_log<"((ab)*|c*|b)(@\\.)?">("abab@.", true);
+  test_match_and_log<"((ab)*|c*|b)(@\\.)?">("ababc", false);
 }

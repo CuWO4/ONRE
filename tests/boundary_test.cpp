@@ -2,11 +2,11 @@
 
 void boundary_test() {
   std::cout << "\n=== Boundary Tests ===\n";
-  TEST_AND_LOG("", "", true);
-  TEST_AND_LOG("", "a", false);
-  TEST_AND_LOG("a", "", false);
-  TEST_AND_LOG("(a|)", "", true);
-  TEST_AND_LOG("(a|)", "a", true);
-  TEST_AND_LOG("[a]*", "", true);
-  TEST_AND_LOG("[a]", "", false);
+  test_match_and_log<"">("", true);
+  test_match_and_log<"">("a", false);
+  test_match_and_log<"a">("", false);
+  test_match_and_log<"(a|)">("", true);
+  test_match_and_log<"(a|)">("a", true);
+  test_match_and_log<"[a]*">("", true);
+  test_match_and_log<"[a]">("", false);
 }

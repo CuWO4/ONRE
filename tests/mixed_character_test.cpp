@@ -6,6 +6,6 @@ void mixed_character_test() {
   for (int i = 0; i < M; i++) {
     mixed += ('a' + (i % 26));
   }
-  TEST_AND_LOG("(a|b|c|d|e)*", mixed, false);
-  TEST_AND_LOG("[abcde]*", mixed, false);
+  test_match_and_log<"(a|b|c|d|e)*">(mixed, false);
+  test_match_and_log<"[abcde]*">(mixed, false);
 }

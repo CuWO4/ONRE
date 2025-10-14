@@ -2,14 +2,14 @@
 
 void character_class_test() {
   std::cout << "\n=== Character-class-heavy and Nested Tests ===\n";
-  TEST_AND_LOG("([a-c][0-2])+", "a0b1", true);
-  TEST_AND_LOG("([a-c][0-2])+", "a9", false);
-  TEST_AND_LOG("([a-z]+[0-9]*)", "abc123", true);
-  TEST_AND_LOG("([a-z]+[0-9]*)", "abc", true);
-  TEST_AND_LOG("([a-z]+[0-9]*)", "123", false);
-  TEST_AND_LOG("([ab]|[cd])*e", "ababcd", false);
-  TEST_AND_LOG("([ab]|[cd])*e", "ababce", true);
-  TEST_AND_LOG("([^ab])*e", "ababce", false);
-  TEST_AND_LOG("([^ab])*a", "defga", true);
-  TEST_AND_LOG("([^ab])*a", "defgaa", false);
+  test_match_and_log<"([a-c][0-2])+">("a0b1", true);
+  test_match_and_log<"([a-c][0-2])+">("a9", false);
+  test_match_and_log<"([a-z]+[0-9]*)">("abc123", true);
+  test_match_and_log<"([a-z]+[0-9]*)">("abc", true);
+  test_match_and_log<"([a-z]+[0-9]*)">("123", false);
+  test_match_and_log<"([ab]|[cd])*e">("ababcd", false);
+  test_match_and_log<"([ab]|[cd])*e">("ababce", true);
+  test_match_and_log<"([^ab])*e">("ababce", false);
+  test_match_and_log<"([^ab])*a">("defga", true);
+  test_match_and_log<"([^ab])*a">("defgaa", false);
 }
