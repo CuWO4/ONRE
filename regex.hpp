@@ -10,6 +10,7 @@
 #include <string>
 #include <stdexcept>
 #include <sstream>
+#include <tuple>
 
 namespace onre {
 namespace impl {
@@ -18,6 +19,9 @@ namespace impl {
 template<typename... Ts> struct TypeList {
   template<typename T>
   static constexpr bool Contains = (std::is_same_v<T, Ts> || ...);
+
+  template<size_t Idx>
+  using At = std::tuple_element_t<Idx, std::tuple<Ts...>>;
 
   template<typename T>
   static constexpr std::size_t IndexOf = []{
@@ -65,6 +69,12 @@ template<typename List, typename T> struct PushBack;
 template<typename... Ts, typename T>
 struct PushBack<TypeList<Ts...>, T> {
   using type = TypeList<Ts..., T>;
+};
+
+template<typename List> struct PopFront { using type = List; };
+template<typename Head, typename... Tails>
+struct PopFront<TypeList<Head, Tails...>> {
+  using type = TypeList<Tails...>;
 };
 
 template<typename List, typename T>
@@ -1312,6 +1322,41 @@ struct BuildAcceptActionTable<MaxAcceptActionLength, TypeList<States...>> {
   };
 };
 
+template<size_t Value> struct Num { static constexpr size_t value = Value; };
+template<size_t X, size_t Y> struct NumPair { static constexpr size_t x = X, y = Y; };
+template<typename Acc, FixedString Pattern, size_t Idx, size_t NrSeenGroup, typename OpeningGroupsIdx, typename ClosedGroups> struct MutualGroups {
+  struct Impl {
+    struct Open {
+      static constexpr size_t OpenedIdx = NrSeenGroup;
+      template<typename ClosedIdx> struct MapFunc { using type = NumPair<ClosedIdx::value, OpenedIdx>; };
+      using NextAcc = JoinUnique<Acc, typename Map<MapFunc, ClosedGroups>::type>::type;
+      using NextOpeningGroupsIdx = PushFront<OpeningGroupsIdx, Num<OpenedIdx>>::type;
+      using type = MutualGroups<NextAcc, Pattern, Idx + 1, NrSeenGroup + 1, NextOpeningGroupsIdx, ClosedGroups>::type;
+    };
+    struct Close {
+      static constexpr size_t ClosedIdx = OpeningGroupsIdx::template At<0>::value;
+      using NextOpeningGroupsIdx = PopFront<OpeningGroupsIdx>::type;
+      using NextClosedGroups = PushBack<ClosedGroups, Num<ClosedIdx>>::type;
+      using type = MutualGroups<Acc, Pattern, Idx + 1, NrSeenGroup, NextOpeningGroupsIdx, NextClosedGroups>::type;
+    };
+    struct Other {
+      using type = MutualGroups<Acc, Pattern, Idx + 1, NrSeenGroup, OpeningGroupsIdx, ClosedGroups>::type;
+    };
+    using type = std::conditional_t<Pattern[Idx] == '(', Open, std::conditional_t<Pattern[Idx] == ')', Close, Other>>::type;
+  };
+  using type = std::conditional_t<Idx >= Pattern.length, std::type_identity<Acc>, Impl>::type;
+};
+
+template<size_t NrGroups, typename MutualPairList> struct BuildMutualTable;
+template<size_t NrGroups, typename... MutualPairs> struct BuildMutualTable<NrGroups, TypeList<MutualPairs...>> {
+  static constexpr std::array<std::array<bool, NrGroups>, NrGroups> make() {
+    std::array<std::array<bool, NrGroups>, NrGroups> result;
+    for (auto& line : result) line.fill(false);
+    ((result[MutualPairs::x][MutualPairs::y] = result[MutualPairs::y][MutualPairs::x] = true), ...);
+    return result;
+  }
+};
+
 
 } /* namespace tnfa */
 
@@ -1452,6 +1497,7 @@ private:
   static constexpr std::size_t max_trans_action_length = impl::tnfa::MaxTransActionLength<EdgeList>::value;
   static constexpr std::size_t max_accept_action_length = impl::tnfa::MaxAcceptActionLength<StateList>::value;
   static constexpr std::size_t nr_capture_group = nr_used_slots / 2;
+  using MutualPairList = impl::tnfa::MutualGroups<impl::TypeList<>, Pattern, 0, 1, impl::TypeList<>, impl::TypeList<>>::type;
 
   /* S x Alphabet x S -> bool */
   static constexpr auto trans_table = impl::tnfa::BuildTransTable<nr_states, EdgeList>::make();
@@ -1459,8 +1505,10 @@ private:
   static constexpr auto accept_table = impl::tnfa::BuildAcceptTable<StateList>::make();
   /* S x Alphabet x S -> int32_t[], -1 represent no action */
   static constexpr auto trans_action_table = impl::tnfa::BuildTransActionTable<nr_states, max_trans_action_length, EdgeList>::make();
-  // /* S -> int32_t[], -1 represent no action */
+  /* S -> int32_t[], -1 represent no action */
   static constexpr auto accept_action_table = impl::tnfa::BuildAcceptActionTable<max_accept_action_length, StateList>::make();
+  /* CaptureGroup x CaptureGroup -> bool */
+  static constexpr auto mutual_group_table = impl::tnfa::BuildMutualTable<nr_capture_group, MutualPairList>::make();
 
   std::array<bool, nr_states> is_active{};
 
@@ -1481,20 +1529,28 @@ private:
 
   template<size_t N>
   static SlotLine apply_action(
-    const SlotLine& old_line, const std::array<int32_t, N>& actions, 
-    int p, MatchResults& match_results
+    const SlotLine& old_line, const std::array<int32_t, N>& actions,
+    int32_t p, MatchResults& match_results
   ) {
     SlotLine new_line{old_line};
     for (const auto& action : actions) {
       if (action < 0) break;
-      if (
-        action % 2 == 1 /* is close action */
-        && p - new_line[action - 1] > match_results[action / 2].len()
-      ) {
-        match_results[action / 2].l = new_line[action - 1];
-        match_results[action / 2].r = p;
-      }
       new_line[action] = p;
+      if (action % 2 == 0) /* open action */ continue;
+      size_t new_l = new_line[action - 1], new_r = new_line[action],
+             old_l = match_results[action / 2].l, old_r = match_results[action / 2].r,
+             new_len = new_r - new_l,
+             old_len = old_r - old_l;
+      if (new_len < old_len || (new_len == old_len && new_l < old_l)) continue;
+      bool is_mutual = false;
+      for (size_t k = 1; k < action / 2; k++) {
+        is_mutual |= mutual_group_table[k][action / 2] 
+          && match_results[k].r > new_l;
+        if (is_mutual) break;
+      }
+      if (is_mutual) continue;
+      match_results[action / 2].l = new_l;
+      match_results[action / 2].r = new_r;
     }
     return new_line;
   }
@@ -1509,13 +1565,16 @@ private:
       if (!OPENED(old_line, k) && !OPENED(new_line, k)) continue;
       if (OPENED(old_line, k) && !OPENED(new_line, k)) return false;
       if (!OPENED(old_line, k) && OPENED(new_line, k)) return true;
-      if (OPEN_TIME(old_line, k) < OPEN_TIME(new_line, k)) return false;
-      if (OPEN_TIME(old_line, k) > OPEN_TIME(new_line, k)) return true;
-      if (!CLOSED(old_line, k) && !CLOSED(new_line, k)) continue;
+      if (!CLOSED(old_line, k) && !CLOSED(new_line, k)) {
+        if (OPEN_TIME(old_line, k) < OPEN_TIME(new_line, k)) return false;
+        if (OPEN_TIME(old_line, k) > OPEN_TIME(new_line, k)) return true;
+      }
       if (!CLOSED(old_line, k) && CLOSED(new_line, k)) return false;
       if (CLOSED(old_line, k) && !CLOSED(new_line, k)) return true;
       if (LEN(old_line, k) > LEN(new_line, k)) return false;
       if (LEN(old_line, k) < LEN(new_line, k)) return true;
+      if (OPEN_TIME(old_line, k) > OPEN_TIME(new_line, k)) return false;
+      if (OPEN_TIME(old_line, k) < OPEN_TIME(new_line, k)) return true;
     }
     return false;
     #undef LEN
