@@ -280,9 +280,10 @@ template<> struct Simplify<Concat<Epsilon, EmptySet>> { using type = EmptySet; }
 template<> struct Simplify<Concat<EmptySet, Epsilon>> { using type = EmptySet; };
 template<> struct Simplify<Concat<Epsilon, Epsilon>> { using type = Epsilon; };
 
-/* 0* <=> e* <=> e */
+/* e* <=> e */
 template<> struct Simplify<Closure<EmptySet>> { using type = Epsilon; };
-template<> struct Simplify<Closure<Epsilon>> { using type = Epsilon; };
+/* 0* <=> 0 */
+template<> struct Simplify<Closure<Epsilon>> { using type = EmptySet; };
 
 /* R** <=> R* */
 template<typename R> struct Simplify<Closure<Closure<R>>> { using type = typename Simplify<Closure<R>>::type; };
@@ -346,10 +347,6 @@ template<typename R, typename S> struct Simplify<Concat<Concat<R, S>, Epsilon>> 
 template<typename R> struct Simplify<Concat<Closure<R>, R>> { using type = typename Simplify<Concat<R, Closure<R>>>::type; };
 template<typename R> struct Simplify<Concat<Closure<R>, Epsilon>> { using type = typename Simplify<Closure<R>>::type; };
 template<typename R> struct Simplify<Concat<Closure<R>, EmptySet>> { using type = EmptySet; };
-template<typename R, typename S>
-struct Simplify<Concat<Closure<Or<R, S>>, Or<R, S>>> {
-  using type = typename Simplify<Closure<Or<R, S>>>::type;
-};
 
 /* recursive */
 template<typename Expr, typename Simplified, bool IsSame>
