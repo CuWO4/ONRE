@@ -1626,8 +1626,6 @@ public:
     auto* cur_slot_file = &slot_file1, * next_slot_file = &slot_file2;
     auto* cur_active_state = &active_states1, * next_active_state = &active_states2;
 
-    MatchResults match_results {};
-
     (*cur_active_state)[0] = true;
     for (size_t idx = 0; idx < str.size(); idx++) {
       char ch = str[idx];
@@ -1638,7 +1636,7 @@ public:
         for (size_t next_state = 0; next_state < nr_states; next_state++) {
           if (!trans_table[state][static_cast<size_t>(ch)][next_state]) continue;
           auto next_slot_line = apply_action(
-            (*cur_slot_file)[state], trans_action_table[state][static_cast<size_t>(ch)][next_state], idx, match_results
+            (*cur_slot_file)[state], trans_action_table[state][static_cast<size_t>(ch)][next_state], idx
           );
           if (!(*next_active_state)[next_state] || need_change((*next_slot_file)[next_state], next_slot_line)) {
             (*next_slot_file)[next_state] = next_slot_line;
@@ -1655,8 +1653,9 @@ public:
     for (size_t state = 0; state < nr_states; state++) {
       if (!(*cur_active_state)[state]) continue;
       if (!accept_table[state]) continue;
-      auto after_accept = apply_action((*cur_slot_file)[state], accept_action_table[state], str.size(), match_results);
+      auto after_accept = apply_action((*cur_slot_file)[state], accept_action_table[state], str.size());
       if (!is_final_line_updated || need_change(final_line, after_accept)) {
+        is_final_line_updated = true;
         final_line = after_accept;
       }
     }
@@ -1685,7 +1684,7 @@ public:
         if (group_idx >= nr_capture_group) {
           throw invalid_replacement_rule("undefined capture group `$" + std::to_string(group_idx) +"`");
         }
-        int32_t l = match_results[group_idx].l, r = match_results[group_idx].r;
+        int32_t l = open_time(final_line, group_idx), r = close_time(final_line, group_idx);
         if (l < 0 || r < 0) continue;
         for (const auto& captured_char : str.substr(l, r - l)) {
           result_buffer << captured_char;
@@ -1708,7 +1707,6 @@ private:
   static constexpr std::size_t max_trans_action_length = impl::tnfa::MaxTransActionLength<EdgeList>::value;
   static constexpr std::size_t max_accept_action_length = impl::tnfa::MaxAcceptActionLength<StateList>::value;
   static constexpr std::size_t nr_capture_group = nr_used_slots / 2;
-  using MutualPairList = impl::tnfa::MutualGroups<impl::TypeList<>, pattern_view, 0, 1, impl::TypeList<>, impl::TypeList<>>::type;
 
   /* S x Alphabet x S -> bool */
   static constexpr auto trans_table = impl::tnfa::BuildTransTable<nr_states, EdgeList>::make();
@@ -1718,19 +1716,18 @@ private:
   static constexpr auto trans_action_table = impl::tnfa::BuildTransActionTable<nr_states, max_trans_action_length, EdgeList>::make();
   /* S -> int32_t[], -1 represent no action */
   static constexpr auto accept_action_table = impl::tnfa::BuildAcceptActionTable<max_accept_action_length, StateList>::make();
-  /* CaptureGroup x CaptureGroup -> bool */
-  static constexpr auto mutual_group_table = impl::tnfa::BuildMutualTable<nr_capture_group, MutualPairList>::make();
 
   std::array<bool, nr_states> is_active{};
 
   using SlotLine = std::array<int32_t, nr_used_slots>;
-  using SlotFile = std::array<SlotLine, nr_states>;
 
-  struct MatchResult {
-    int32_t l = 0, r = 0;
-    size_t len() { return r - l; }
-  };
-  using MatchResults = std::array<MatchResult, nr_capture_group>;
+  static int32_t open_time(SlotLine line, size_t group_idx) { return line[group_idx << 1]; }
+  static int32_t close_time(SlotLine line, size_t group_idx) { return line[group_idx << 1 | 1]; }
+  static bool is_opened(SlotLine line, size_t group_idx) { return open_time(line, group_idx) >= 0; }
+  static bool is_closed(SlotLine line, size_t group_idx) { return close_time(line, group_idx) >= 0; }
+  static int32_t group_len(SlotLine line, size_t group_idx) { return close_time(line, group_idx) - open_time(line, group_idx); }
+
+  using SlotFile = std::array<SlotLine, nr_states>;
 
   static SlotFile new_slot_file() {
     SlotFile res {};
@@ -1739,59 +1736,34 @@ private:
   }
 
   template<size_t N>
-  static SlotLine apply_action(
-    const SlotLine& old_line, const std::array<int32_t, N>& actions,
-    int32_t p, MatchResults& match_results
-  ) {
+  static SlotLine apply_action(const SlotLine& old_line, const std::array<int32_t, N>& actions, int32_t p) {
     SlotLine new_line{old_line};
     for (const auto& action : actions) {
       if (action < 0) break;
       new_line[action] = p;
-      if (action % 2 == 0) /* open action */ continue;
-      size_t new_l = new_line[action - 1], new_r = new_line[action],
-             old_l = match_results[action / 2].l, old_r = match_results[action / 2].r,
-             new_len = new_r - new_l,
-             old_len = old_r - old_l;
-      if (new_len < old_len || (new_len == old_len && new_l < old_l)) continue;
-      bool is_mutual = false;
-      for (size_t k = 1; k < action / 2; k++) {
-        is_mutual |= mutual_group_table[k][action / 2]
-          && match_results[k].r > new_l;
-        if (is_mutual) break;
-      }
-      if (is_mutual) continue;
-      match_results[action / 2].l = new_l;
-      match_results[action / 2].r = new_r;
     }
     return new_line;
   }
 
   // heuristically choose a slot configuration to try to get longest match
   static bool need_change(const SlotLine& old_line, const SlotLine& new_line) {
-    #define OPENED(line, k) ((line)[(k) << 1] >= 0)
-    #define CLOSED(line, k) ((line)[((k) << 1) | 1] >= 0)
-    #define OPEN_TIME(line, k) ((line)[(k) << 1])
-    #define LEN(line, k) ((line)[((k) << 1) | 1] - (line)[(k) << 1])
     for (size_t k = 0; k < nr_capture_group; k++) {
-      if (!OPENED(old_line, k) && !OPENED(new_line, k)) continue;
-      if (OPENED(old_line, k) && !OPENED(new_line, k)) return false;
-      if (!OPENED(old_line, k) && OPENED(new_line, k)) return true;
-      if (!CLOSED(old_line, k) && !CLOSED(new_line, k)) {
-        if (OPEN_TIME(old_line, k) < OPEN_TIME(new_line, k)) return false;
-        if (OPEN_TIME(old_line, k) > OPEN_TIME(new_line, k)) return true;
+      if (!is_opened(old_line, k) && !is_opened(new_line, k)) continue;
+      if (is_opened(old_line, k) && !is_opened(new_line, k)) return false;
+      if (!is_opened(old_line, k) && is_opened(new_line, k)) return true;
+      if (!is_closed(old_line, k) && !is_closed(new_line, k)) {
+        if (open_time(old_line, k) < open_time(new_line, k)) return false;
+        if (open_time(old_line, k) > open_time(new_line, k)) return true;
+        continue;
       }
-      if (!CLOSED(old_line, k) && CLOSED(new_line, k)) return false;
-      if (CLOSED(old_line, k) && !CLOSED(new_line, k)) return true;
-      if (LEN(old_line, k) > LEN(new_line, k)) return false;
-      if (LEN(old_line, k) < LEN(new_line, k)) return true;
-      if (OPEN_TIME(old_line, k) > OPEN_TIME(new_line, k)) return false;
-      if (OPEN_TIME(old_line, k) < OPEN_TIME(new_line, k)) return true;
+      if (!is_closed(old_line, k) && is_closed(new_line, k)) return false;
+      if (is_closed(old_line, k) && !is_closed(new_line, k)) return true;
+      if (group_len(old_line, k) > group_len(new_line, k)) return false;
+      if (group_len(old_line, k) < group_len(new_line, k)) return true;
+      if (open_time(old_line, k) > open_time(new_line, k)) return false;
+      if (open_time(old_line, k) < open_time(new_line, k)) return true;
     }
     return false;
-    #undef LEN
-    #undef OPEN_TIME
-    #undef OPENED
-    #undef CLOSED
   }
 
   static bool is_digit(char ch) {

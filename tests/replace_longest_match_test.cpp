@@ -11,8 +11,12 @@ void replace_longest_match_test() {
   test_replace_and_log<"(a*)(a+)">("$1|$2", "aaaa", "aaa|a");
   test_replace_and_log<"(a|aa|aaa)a">("$0:$1", "aaaa", "aaaa:aaa");
   test_replace_and_log<"(ab|aba)(b)">("$1-$2", "abab", "aba-b");
+  test_replace_and_log<"((a*)b)*">("$1-$2", "aaaab", "aaaab-aaaa");
+  test_replace_and_log<"((a*)b)*">("$1-$2", "aaaabaab", "aab-aa");
+  test_replace_and_log<"((a*)b)*">("$1-$2", "aabaaaab", "aaaab-aaaa");
+  test_replace_and_log<"((a*)b)*">("$1-$2", "aabaaaabab", "ab-a");
   test_replace_and_log<"((a*)(a*)b)*">("$1-$2-$3", "aaaab", "aaaab-aaaa-");
-  test_replace_and_log<"((a*)(a*)b)*">("$1-$2-$3", "aaaabaab", "aaaab-aaaa-");
+  test_replace_and_log<"((a*)(a*)b)*">("$1-$2-$3", "aaaabaab", "aab-aa-");
   test_replace_and_log<"((a*)(a*)b)*">("$1-$2-$3", "aabaaaab", "aaaab-aaaa-");
-  test_replace_and_log<"((a*)(a*)b)*">("$1-$2-$3", "aabaaaabaabb", "aaaab-aaaa-");
+  test_replace_and_log<"((a*)(a*)b)*">("$1-$2-$3", "aabaaaabaabb", "b--");
 }
