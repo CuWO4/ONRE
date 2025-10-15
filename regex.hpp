@@ -181,20 +181,39 @@ struct Sort {
 /* === fixed string, a string container enabling compile-time visiting === */
 template<size_t N>
 struct FixedString {
-  constexpr FixedString(const char (&str)[N]) {
-    std::copy_n(str, N, data.begin());
-  }
-  FixedString(const FixedString&) = delete;
+  char data[N]; /* include '\0' */
 
-  std::array<char, N> data{};
+  constexpr FixedString(const char (&str)[N]) {
+    std::copy_n(str, N, data);
+  }
+
+  constexpr FixedString(const FixedString&) noexcept = default;
+  constexpr FixedString(FixedString&&) noexcept = default;
+  constexpr FixedString& operator=(const FixedString&) noexcept = default;
+  constexpr FixedString& operator=(FixedString&&) noexcept = default;
 
   static constexpr size_t length = N - 1;
-  constexpr const char* c_str() const { return data.data(); }
+  constexpr const char* c_str() const { return data; }
   constexpr char operator[](size_t i) const { return data[i]; }
 };
 template<size_t N>
 FixedString(const char (&str)[N]) -> FixedString<N>;
 
+template<size_t Length>
+struct FixedStringView {
+  const char* data;
+
+  constexpr FixedStringView(const char* str) : data(str) {}
+
+  constexpr FixedStringView(const FixedStringView&) noexcept = default;
+  constexpr FixedStringView(FixedStringView&&) noexcept = default;
+  constexpr FixedStringView& operator=(const FixedStringView&) noexcept = default;
+  constexpr FixedStringView& operator=(FixedStringView&&) noexcept = default;
+
+  static constexpr size_t length = Length;
+  constexpr const char* c_str() const { return data; }
+  constexpr char operator[](size_t i) const { return data[i]; }
+};
 
 /* === extended regular expression tree representation with zero-width action === */
 struct EmptySet {};
@@ -448,17 +467,37 @@ using Alphabet = typename BuildCharList<visible_ascii_start, visible_ascii_end>:
 */
 
 /* forward declarations */
-template<FixedString Pattern, size_t Pos, size_t CapIdx> struct ParseRegex;
-template<FixedString Pattern, size_t Pos, size_t CapIdx> struct ParseTerm;
-template<FixedString Pattern, size_t Pos, size_t CapIdx> struct ParseFactor;
-template<FixedString Pattern, size_t Pos, size_t CapIdx> struct ParseAtom;
-template<FixedString Pattern, size_t Pos> struct ParseCharGroup;
-template<FixedString Pattern, size_t Pos> struct ParseCharSet;
-template<FixedString Pattern, size_t Pos> struct ParseCharSetAtom;
-template<FixedString Pattern, size_t Pos> struct ParseCHAR;
+template<FixedStringView Pattern, size_t Pos, size_t CapIdx> struct ParseRegex;
+template<FixedStringView Pattern, size_t Pos, size_t CapIdx> struct ParseTerm;
+template<FixedStringView Pattern, size_t Pos, size_t CapIdx> struct ParseFactor;
+template<FixedStringView Pattern, size_t Pos, size_t CapIdx> struct ParseAtom;
+template<FixedStringView Pattern, size_t Pos> struct ParseCharGroup;
+template<FixedStringView Pattern, size_t Pos> struct ParseCharSet;
+template<FixedStringView Pattern, size_t Pos> struct ParseCharSetAtom;
+template<FixedStringView Pattern, size_t Pos> struct ParseCHAR;
+
+template<FixedStringView Pattern, size_t Pos, int64_t Acc> struct ParseDecimal {
+};
+template<FixedStringView Pattern, size_t Pos> struct ParseHex {
+};
+
+template<typename CharList>
+struct CharListToOrSequential {
+  template<typename X, typename Y> struct BuildOr { using type = Or<X, Y>; };
+  using type = Simplify<typename RightFold<BuildOr, CharList, EmptySet>::type>::type;
+};
+
+template<typename CharList, typename Alphabet>
+struct CharListNegation {
+  template <typename Char>
+  struct NotInList {
+    static constexpr bool value = !CharList::template Contains<Char>;
+  };
+  using type = Filter<NotInList, Alphabet>::type;
+};
 
 /* ParseCHAR : [VALID CHAR] | '\' [VISIBLE CHAR] */
-template <FixedString Pattern, size_t Pos>
+template <FixedStringView Pattern, size_t Pos>
 struct ParseCHAR {
   static_assert(
     Pos < Pattern.length && (Pattern[Pos] == '\\' || is_valid_char(Pattern[Pos])),
@@ -484,7 +523,7 @@ struct ParseCHAR {
 };
 
 /* ParseCharSetAtom: [IN CLASS CHAR] | [IN CLASS CHAR] '-' [IN CLASS CHAR] | '\' [VISIBLE CHAR] */
-template<FixedString Pattern, size_t Pos>
+template<FixedStringView Pattern, size_t Pos>
 struct ParseCharSetAtom {
   static_assert(Pos < Pattern.length, "ParseCharSetAtom: unexpected pattern ending");
   static_assert(is_in_class_char(Pattern[Pos]), "ParseCharSetAtom: unknown character");
@@ -514,7 +553,7 @@ struct ParseCharSetAtom {
 };
 
 /* ParseCharSet: CharSetAtom CharSet | CharSetAtom */
-template<FixedString Pattern, size_t Pos>
+template<FixedStringView Pattern, size_t Pos>
 struct ParseCharSet {
   using CharSetAtom = ParseCharSetAtom<Pattern, Pos>;
   static_assert(CharSetAtom::next <= Pattern.length, "ParseCharSet: char set atom parsing overflow");
@@ -537,23 +576,8 @@ struct ParseCharSet {
   static constexpr size_t next = chosen::next;
 };
 
-template<typename CharList>
-struct CharListToOrSequential {
-  template<typename X, typename Y> struct BuildOr { using type = Or<X, Y>; };
-  using type = Simplify<typename RightFold<BuildOr, CharList, EmptySet>::type>::type;
-};
-
-template<typename CharList, typename Alphabet>
-struct CharListNegation {
-  template <typename Char>
-  struct NotInList {
-    static constexpr bool value = !CharList::template Contains<Char>;
-  };
-  using type = Filter<NotInList, Alphabet>::type;
-};
-
 /* ParseCharGroup: '[' CharSet ']' | '[' '^' CharSet ']' */
-template<FixedString Pattern, size_t Pos>
+template<FixedStringView Pattern, size_t Pos>
 struct ParseCharGroup {
   struct impl_pos {
     using CharSet = ParseCharSet<Pattern, Pos + 1>;
@@ -584,7 +608,7 @@ template<typename Alphabet> struct FullMatch {
 };
 
 /* ParseAtom: '(' Regex ')' | '[' CharSet ']' |  CHAR | '.' */
-template<FixedString Pattern, size_t Pos, size_t CapIdx>
+template<FixedStringView Pattern, size_t Pos, size_t CapIdx>
 struct ParseAtom {
   static_assert(
     Pos < Pattern.length && (
@@ -648,7 +672,7 @@ struct ParseAtom {
 };
 
 /* ParseFactor: Atom ('*')? | Atom ('+')? | Atom ('?')? */
-template<FixedString Pattern, size_t Pos, size_t CapIdx>
+template<FixedStringView Pattern, size_t Pos, size_t CapIdx>
 struct ParseFactor {
   using Atom = ParseAtom<Pattern, Pos, CapIdx>;
 
@@ -676,7 +700,7 @@ struct ParseFactor {
 };
 
 /* ParseTerm := Factor Term | (empty -> Epsilon) */
-template<FixedString Pattern, size_t Pos, size_t CapIdx>
+template<FixedStringView Pattern, size_t Pos, size_t CapIdx>
 struct ParseTerm {
   /* empty case */
   struct impl_empty {
@@ -706,7 +730,7 @@ struct ParseTerm {
 };
 
 /* ParseRegex := Term ('|' Regex)? */
-template<FixedString Pattern, size_t Pos, size_t CapIdx>
+template<FixedStringView Pattern, size_t Pos, size_t CapIdx>
 struct ParseRegex {
   using Term = ParseTerm<Pattern, Pos, CapIdx>;
 
@@ -732,7 +756,7 @@ struct ParseRegex {
   static constexpr size_t next_cap_idx = chosen::next_cap_idx;
 };
 
-template<FixedString Pattern>
+template<FixedStringView Pattern>
 struct RegexScan {
   using Parse = ParseRegex<Pattern, 0, 1>;
   using type = Concat<SetSlot<0>, Concat<typename Parse::type, SetSlot<1>>>;
@@ -1324,7 +1348,7 @@ struct BuildAcceptActionTable<MaxAcceptActionLength, TypeList<States...>> {
 
 template<size_t Value> struct Num { static constexpr size_t value = Value; };
 template<size_t X, size_t Y> struct NumPair { static constexpr size_t x = X, y = Y; };
-template<typename Acc, FixedString Pattern, size_t Idx, size_t NrSeenGroup, typename OpeningGroupsIdx, typename ClosedGroups> struct MutualGroups {
+template<typename Acc, FixedStringView Pattern, size_t Idx, size_t NrSeenGroup, typename OpeningGroupsIdx, typename ClosedGroups> struct MutualGroups {
   struct Impl {
     struct Open {
       static constexpr size_t OpenedIdx = NrSeenGroup;
@@ -1392,7 +1416,8 @@ public:
   }
 
 private:
-  using Re = typename impl::RegexScan<Pattern>::type;
+  static constexpr auto pattern_view = impl::FixedStringView<Pattern.length>(Pattern.c_str());
+  using Re = typename impl::RegexScan<pattern_view>::type;
   using NoActionRe = typename impl::dfa::RemoveAllAction<Re>::type;
   using DFAStatesList = impl::dfa::AllStatesList<NoActionRe>;
   using DFAEdgesList  = impl::dfa::AllEdgesList<NoActionRe>;
@@ -1489,7 +1514,8 @@ public:
   }
 
 private:
-  using Re = typename impl::RegexScan<Pattern>::type;
+  static constexpr auto pattern_view = impl::FixedStringView<Pattern.length>(Pattern.c_str());
+  using Re = typename impl::RegexScan<pattern_view>::type;
   using StateList = impl::tnfa::AllStatesList<Re>;
   using EdgeList  = impl::tnfa::RemoveConflictEdge<impl::tnfa::AllEdgesList<Re>>::type;
   static constexpr std::size_t nr_states = StateList::length;
@@ -1497,7 +1523,7 @@ private:
   static constexpr std::size_t max_trans_action_length = impl::tnfa::MaxTransActionLength<EdgeList>::value;
   static constexpr std::size_t max_accept_action_length = impl::tnfa::MaxAcceptActionLength<StateList>::value;
   static constexpr std::size_t nr_capture_group = nr_used_slots / 2;
-  using MutualPairList = impl::tnfa::MutualGroups<impl::TypeList<>, Pattern, 0, 1, impl::TypeList<>, impl::TypeList<>>::type;
+  using MutualPairList = impl::tnfa::MutualGroups<impl::TypeList<>, pattern_view, 0, 1, impl::TypeList<>, impl::TypeList<>>::type;
 
   /* S x Alphabet x S -> bool */
   static constexpr auto trans_table = impl::tnfa::BuildTransTable<nr_states, EdgeList>::make();
