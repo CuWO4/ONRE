@@ -42,17 +42,17 @@ pattern: ((((0*1)0)....((10*1)0)*  pattern_len: 321  str: 000101                
 pattern: ((((0*1)0)....((10*1)0)*  pattern_len: 321  str: 000110                str_len: 6       time: 0us
 
 === Replace ===
-pattern: a+Xb+         pattern_len: 5   replace_rule: $0mid$0  str: aaaaaaa....bbbbbbb  str_len: 200001  time: 1199us
-pattern: (x*)end       pattern_len: 7   replace_rule: $1-END   str: xxxxxxx....xxxxend  str_len: 10003   time: 83us
-pattern: start(x*)end  pattern_len: 12  replace_rule: $1       str: startxx....xxxxend  str_len: 10008   time: 100us
-pattern: (a|b)+        pattern_len: 6   replace_rule: $0       str: aaaaaaa....aaaaaaa  str_len: 300000  time: 3235us
-pattern: (a+)+b        pattern_len: 6   replace_rule: $0       str: aaaaaaa....aaaaaab  str_len: 10001   time: 76us
-pattern: (a?)+b        pattern_len: 6   replace_rule: $0       str: aaaaaaa....aaaaaab  str_len: 10001   time: 102us
-pattern: (a|b)+c       pattern_len: 7   replace_rule: $0       str: aaaaaaa....aaaaaac  str_len: 10001   time: 107us
-pattern: (ab|a)*c      pattern_len: 8   replace_rule: $0       str: aaaaaaa....aaaaaac  str_len: 10001   time: 136us
-pattern: (a+)(a+)b     pattern_len: 9   replace_rule: $1|$2    str: aaaaaaa....aaaaaab  str_len: 10001   time: 358us
-pattern: (a|ab)+b      pattern_len: 8   replace_rule: OK       str: aaaaaaa....aaaaaab  str_len: 10001   time: 145us
-pattern: (a*)b         pattern_len: 5   replace_rule: $1B      str: aaaaaaa....aaaaaab  str_len: 10001   time: 75us
+pattern: a+Xb+         pattern_len: 5   replace_rule: $0mid$0  str: aaaaaaa....bbbbbbb  str_len: 200001  time: 952us
+pattern: (x*)end       pattern_len: 7   replace_rule: $1-END   str: xxxxxxx....xxxxend  str_len: 10003   time: 75us
+pattern: start(x*)end  pattern_len: 12  replace_rule: $1       str: startxx....xxxxend  str_len: 10008   time: 78us
+pattern: (a|b)+        pattern_len: 6   replace_rule: $0       str: aaaaaaa....aaaaaaa  str_len: 300000  time: 2892us
+pattern: (a+)+b        pattern_len: 6   replace_rule: $0       str: aaaaaaa....aaaaaab  str_len: 10001   time: 62us
+pattern: (a?)+b        pattern_len: 6   replace_rule: $0       str: aaaaaaa....aaaaaab  str_len: 10001   time: 272us
+pattern: (a|b)+c       pattern_len: 7   replace_rule: $0       str: aaaaaaa....aaaaaac  str_len: 10001   time: 161us
+pattern: (ab|a)*c      pattern_len: 8   replace_rule: $0       str: aaaaaaa....aaaaaac  str_len: 10001   time: 167us
+pattern: (a+)(a+)b     pattern_len: 9   replace_rule: $1|$2    str: aaaaaaa....aaaaaab  str_len: 10001   time: 336us
+pattern: (a|ab)+b      pattern_len: 8   replace_rule: OK       str: aaaaaaa....aaaaaab  str_len: 10001   time: 157us
+pattern: (a*)b         pattern_len: 5   replace_rule: $1B      str: aaaaaaa....aaaaaab  str_len: 10001   time: 61us
 ```
 
 可以看到, 在超长串, 回溯地狱, 超长模式, 超复杂模式用例下, 引擎仍然十分稳定地取得了 O(n) 的结果, 同样的用例对于回溯引擎则几乎必然崩溃 (例如著名的 [Cloudflare 事件](https://www.reddit.com/r/sysadmin/comments/c8eymj/cloudflare_outage_caused_by_deploying_bad_regular/)).
@@ -81,9 +81,7 @@ void f() {
 
 替换规则中, 使用 `$N` 来引用第 $N$ 个捕获组 (按照捕获组左括号位置排序, 从 1 开始). `$0` 为串本身. 通过 `$$` 来表示 `$`.
 
-如果 `onre::Replace` 无法匹配, 会抛出 `onre::replacement_not_matched` 异常; 如果替换规则不合法, 则会抛出 `invalid_replacement_rule` 异常.
-
-我们建议在只需要检测是否匹配的场景, 使用 `onre::Match` 而不是 `onre::Replace` 并捕捉异常.
+若 `onre::Replace` 无法匹配, 则 `eval()`结果是未定义的; 如果替换规则不合法, 则 `eval()` 将会返回空串. 因此, 对于有可能匹配失败的场景, 应该先使用 `onre::Match` 检查是否匹配.
 
 在代码的任何位置实例化 `onre::Match` 和 `onre::Replace`, 都会导致编译期展开, 增加编译时间, 即使动态运行时永远不可能运行到. 同一个编译单元中, 相同 pattern 的匹配器只会被实例化一次, 不同编译单元中的匹配器则在每个单元的编译中都会被实例化, 因此把复杂模式的匹配抽象到一个编译单元中会显著降低编译用时.
 

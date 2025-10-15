@@ -1575,23 +1575,10 @@ template<size_t NrGroups, typename... MutualPairs> struct BuildMutualTable<NrGro
 
 
 /* === interface === */
-class replacement_not_matched : public std::runtime_error {
-public:
-  replacement_not_matched(const char* msg) : std::runtime_error(msg) {}
-  replacement_not_matched(const std::string& msg) : std::runtime_error(msg) {}
-  replacement_not_matched(std::string&& msg) : std::runtime_error(msg) {}
-};
-class invalid_replacement_rule : public std::runtime_error {
-public:
-  invalid_replacement_rule(const char* msg) : std::runtime_error(msg) {}
-  invalid_replacement_rule(const std::string& msg) : std::runtime_error(msg) {}
-  invalid_replacement_rule(std::string&& msg) : std::runtime_error(msg) {}
-};
-
 template<impl::FixedString Pattern>
 class Match {
 public:
-  static bool eval(std::string_view str) {
+  static bool eval(std::string_view str) noexcept {
     std::size_t state = 0;
     for (const char& ch : str) {
       if (ch < 0 || ch > 128) [[unlikely]] return false;
@@ -1617,10 +1604,6 @@ template<impl::FixedString Pattern>
 class Replace {
 public:
   static std::string eval(std::string_view replace_rule, std::string_view str) noexcept {
-    if (!Match<Pattern>::eval(str)) {
-      throw replacement_not_matched("failed to match");
-    }
-
     auto slot_file1 = new_slot_file(), slot_file2 = new_slot_file();
     std::array<bool, nr_states> active_states1 {}, active_states2 {};
     active_states1.fill(false); active_states2.fill(false);
@@ -1671,7 +1654,7 @@ public:
         continue;
       }
       if (idx + 1 >= replace_rule.size()) {
-        throw invalid_replacement_rule("missing argument for `$`");
+        return "";
       }
       idx++;
       if (replace_rule[idx] == '$') {
@@ -1684,13 +1667,13 @@ public:
           group_idx = 10 * group_idx + replace_rule[idx] - '0';
         }
         if (group_idx >= nr_capture_group) {
-          throw invalid_replacement_rule("undefined capture group `$" + std::to_string(group_idx) +"`");
+          return "";
         }
         int32_t l = open_time(final_line, group_idx), r = close_time(final_line, group_idx);
         if (l < 0 || r < 0) continue;
         result_buffer.write(str.data() + l, r - l);
       } else {
-        throw invalid_replacement_rule("invalid argument for `$`");
+        return "";
       }
     }
 
