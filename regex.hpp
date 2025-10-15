@@ -517,7 +517,7 @@ template<FixedStringView Pattern, size_t Pos, int64_t Acc = 0> struct ParseDecim
   static constexpr size_t next = chosen::next;
 };
 
-template<FixedStringView Pattern, size_t Pos, int64_t Acc = 0> struct ParseHex {
+template<FixedStringView Pattern, size_t Pos, size_t N, int64_t Acc = 0> struct ParseHexN {
   struct is_digit_impl {
     static constexpr char ch = Pattern[Pos];
     static constexpr int64_t digit_value = (ch >= '0' && ch <= '9')
@@ -526,7 +526,7 @@ template<FixedStringView Pattern, size_t Pos, int64_t Acc = 0> struct ParseHex {
         ? ch - 'A' + 10
         : ch - 'a' + 10
     ;
-    using next_parse = ParseHex<Pattern, Pos + 1, 16 * Acc + digit_value>;
+    using next_parse = ParseHexN<Pattern, Pos + 1, N - 1, 16 * Acc + digit_value>;
     static constexpr int64_t value = next_parse::value;
     static constexpr size_t next = next_parse::next;
   };
@@ -535,7 +535,7 @@ template<FixedStringView Pattern, size_t Pos, int64_t Acc = 0> struct ParseHex {
     static constexpr size_t next = Pos;
   };
   using chosen = std::conditional_t<
-    Pos < Pattern.length && (
+    (N > 0) && Pos < Pattern.length && (
       (Pattern[Pos] >= '0' && Pattern[Pos] <= '9')
       || (Pattern[Pos] >= 'a' && Pattern[Pos] <= 'f')
       || (Pattern[Pos] >= 'A' && Pattern[Pos] <= 'F')
@@ -606,7 +606,7 @@ template<FixedStringView Pattern, size_t Pos> struct EscapeImpl<'x', Pattern, Po
     ),
     "no value specified for `\\x`"
   );
-  using HexParse = ParseHex<Pattern, Pos + 2>;
+  using HexParse = ParseHexN<Pattern, Pos + 2, 2>;
   using type = Char<HexParse::value>;
   static constexpr size_t next = HexParse::next;
 };
