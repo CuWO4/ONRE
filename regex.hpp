@@ -53,6 +53,9 @@ template<typename... Ts> struct TypeList {
   }();
 };
 
+template<typename T> struct IsTypeList : std::false_type {};
+template<typename... Es> struct IsTypeList<TypeList<Es...>> : std::true_type {};
+
 template<typename List1, typename List2> struct CatList;
 template<typename... Ts1, typename... Ts2>
 struct CatList<TypeList<Ts1...>, TypeList<Ts2...>> {
@@ -458,11 +461,14 @@ using Alphabet = typename BuildCharList<visible_ascii_start, visible_ascii_end>:
     Regex       := Term ('|' Regex)?
     Term        := Factor Term | (empty)
     Factor      := Atom ('*')? | Atom ('+')? | Atom ('?')?
+                | Atom '{' Number ',' '}' | Atom '{' Number ',' Number '}'
+                | Atom '{' ',' Number '}'
     Atom        := '(' Regex ')' | CharGroup | CHAR | '.'
     CharGroup   := '[' CharSet ']' | '[' '^' CharSet ']'
     CharSet     := CharSetAtom CharSet | CharSetAtom
-    CharSetAtom := [IN CLASS CHAR] | [IN CLASS CHAR] '-' [IN CLASS CHAR] | '\' [VISIBLE CHAR]
-    CHAR        := [VALID CHAR] | '\' [VISIBLE CHAR]
+    CharSetAtom := [IN CLASS CHAR] | [IN CLASS CHAR] '-' [IN CLASS CHAR] | Escape
+    CHAR        := [VALID CHAR] | Escape
+    Escape      := '\' [VISIBLE CHAR] | '\' 'x' Number
     Empty input -> Epsilon
 */
 
@@ -475,11 +481,7 @@ template<FixedStringView Pattern, size_t Pos> struct ParseCharGroup;
 template<FixedStringView Pattern, size_t Pos> struct ParseCharSet;
 template<FixedStringView Pattern, size_t Pos> struct ParseCharSetAtom;
 template<FixedStringView Pattern, size_t Pos> struct ParseCHAR;
-
-template<FixedStringView Pattern, size_t Pos, int64_t Acc> struct ParseDecimal {
-};
-template<FixedStringView Pattern, size_t Pos> struct ParseHex {
-};
+template<FixedStringView Pattern, size_t Pos> struct ParseEscape;
 
 template<typename CharList>
 struct CharListToOrSequential {
@@ -496,7 +498,129 @@ struct CharListNegation {
   using type = Filter<NotInList, Alphabet>::type;
 };
 
-/* ParseCHAR : [VALID CHAR] | '\' [VISIBLE CHAR] */
+template<FixedStringView Pattern, size_t Pos, int64_t Acc = 0> struct ParseDecimal {
+  struct is_digit_impl {
+    using next_parse = ParseDecimal<Pattern, Pos + 1, 10 * Acc + (Pattern[Pos] - '0')>;
+    static constexpr int64_t value = next_parse::value;
+    static constexpr size_t next = next_parse::next;
+  };
+  struct not_digit_impl {
+    static constexpr int64_t value = Acc;
+    static constexpr size_t next = Pos;
+  };
+  using chosen = std::conditional_t<
+    Pos < Pattern.length && Pattern[Pos] >= '0' && Pattern[Pos] <= '9',
+    is_digit_impl,
+    not_digit_impl
+  >;
+  static constexpr int64_t value = chosen::value;
+  static constexpr size_t next = chosen::next;
+};
+
+template<FixedStringView Pattern, size_t Pos, int64_t Acc = 0> struct ParseHex {
+  struct is_digit_impl {
+    static constexpr char ch = Pattern[Pos];
+    static constexpr int64_t digit_value = (ch >= '0' && ch <= '9')
+      ? ch - '0'
+      : (ch >= 'A' && ch <= 'F')
+        ? ch - 'A' + 10
+        : ch - 'a' + 10
+    ;
+    using next_parse = ParseHex<Pattern, Pos + 1, 16 * Acc + digit_value>;
+    static constexpr int64_t value = next_parse::value;
+    static constexpr size_t next = next_parse::next;
+  };
+  struct not_digit_impl {
+    static constexpr int64_t value = Acc;
+    static constexpr size_t next = Pos;
+  };
+  using chosen = std::conditional_t<
+    Pos < Pattern.length && (
+      (Pattern[Pos] >= '0' && Pattern[Pos] <= '9')
+      || (Pattern[Pos] >= 'a' && Pattern[Pos] <= 'f')
+      || (Pattern[Pos] >= 'A' && Pattern[Pos] <= 'F')
+    ),
+    is_digit_impl,
+    not_digit_impl
+  >;
+  static constexpr int64_t value = chosen::value;
+  static constexpr size_t next = chosen::next;
+};
+
+template<char C, FixedStringView Pattern, size_t Pos>
+struct EscapeImpl {
+  using type = Char<Pattern[Pos + 1]>;
+  static constexpr size_t next = Pos + 2;
+};
+using WordList = JoinUnique<
+  typename BuildCharList<'a', 'z'>::type,
+  typename JoinUnique<
+    typename BuildCharList<'A', 'Z'>::type,
+    typename PushBack<typename BuildCharList<'0', '9'>::type, Char<'_'>>::type
+  >::type
+>::type;
+template<FixedStringView Pattern, size_t Pos> struct EscapeImpl<'w', Pattern, Pos> {
+  using type = CharListToOrSequential<WordList>::type;
+  static constexpr size_t next = Pos + 2;
+};
+template<FixedStringView Pattern, size_t Pos> struct EscapeImpl<'W', Pattern, Pos> {
+  using type = CharListToOrSequential<typename CharListNegation<WordList, Alphabet>::type>::type;
+  static constexpr size_t next = Pos + 2;
+};
+using DigitList = BuildCharList<'0', '9'>::type;
+template<FixedStringView Pattern, size_t Pos> struct EscapeImpl<'d', Pattern, Pos> {
+  using type = CharListToOrSequential<DigitList>::type;
+  static constexpr size_t next = Pos + 2;
+};
+template<FixedStringView Pattern, size_t Pos> struct EscapeImpl<'D', Pattern, Pos> {
+  using type = CharListToOrSequential<typename CharListNegation<DigitList, Alphabet>::type>::type;
+  static constexpr size_t next = Pos + 2;
+};
+using WhitespaceList = TypeList<Char<' '>, Char<'\t'>, Char<'\x0B'>, Char<'\n'>, Char<'\f'>, Char<'\r'>>;
+template<FixedStringView Pattern, size_t Pos> struct EscapeImpl<'s', Pattern, Pos> {
+  using type = CharListToOrSequential<WhitespaceList>::type;
+  static constexpr size_t next = Pos + 2;
+};
+template<FixedStringView Pattern, size_t Pos> struct EscapeImpl<'S', Pattern, Pos> {
+  using type = CharListToOrSequential<typename CharListNegation<WhitespaceList, Alphabet>::type>::type;
+  static constexpr size_t next = Pos + 2;
+};
+template<FixedStringView Pattern, size_t Pos> struct EscapeImpl<'n', Pattern, Pos> {
+  using type = Char<'\n'>; static constexpr size_t next = Pos + 2;
+};
+template<FixedStringView Pattern, size_t Pos> struct EscapeImpl<'t', Pattern, Pos> {
+  using type = Char<'\t'>; static constexpr size_t next = Pos + 2;
+};
+template<FixedStringView Pattern, size_t Pos> struct EscapeImpl<'f', Pattern, Pos> {
+  using type = Char<'\f'>; static constexpr size_t next = Pos + 2;
+};
+template<FixedStringView Pattern, size_t Pos> struct EscapeImpl<'r', Pattern, Pos> {
+  using type = Char<'\r'>; static constexpr size_t next = Pos + 2;
+};
+template<FixedStringView Pattern, size_t Pos> struct EscapeImpl<'x', Pattern, Pos> {
+  static_assert(
+    Pos + 2 < Pattern.length && (
+      (Pattern[Pos + 2] >= '0' && Pattern[Pos + 2] <= '9')
+      || (Pattern[Pos + 2] >= 'a' && Pattern[Pos + 2] <= 'f')
+      || (Pattern[Pos + 2] >= 'A' && Pattern[Pos + 2] <= 'F')
+    ),
+    "no value specified for `\\x`"
+  );
+  using HexParse = ParseHex<Pattern, Pos + 2>;
+  using type = Char<HexParse::value>;
+  static constexpr size_t next = HexParse::next;
+};
+
+template <FixedStringView Pattern, size_t Pos>
+struct ParseEscape {
+  static_assert(Pos + 1 < Pattern.length, "ParseEscape: cannot find escape character");
+  static_assert(is_visible_char(Pattern[Pos + 1]), "ParseEscape: unknown character");
+  using chosen = EscapeImpl<Pattern[Pos + 1], Pattern, Pos>;
+  using type = Simplify<typename chosen::type>::type;
+  static constexpr size_t next = chosen::next;
+};
+
+/* ParseCHAR : [VALID CHAR] | Escape */
 template <FixedStringView Pattern, size_t Pos>
 struct ParseCHAR {
   static_assert(
@@ -505,10 +629,9 @@ struct ParseCHAR {
   );
 
   struct impl_escape {
-    static_assert(Pos + 1 < Pattern.length, "ParseAtom: cannot find escape character");
-    static_assert(is_visible_char(Pattern[Pos + 1]), "ParseAtom: unknown character");
-    using type = Char<Pattern[Pos + 1]>;
-    static constexpr size_t next = Pos + 2;
+    using EscapeParse = ParseEscape<Pattern, Pos>;
+    using type = EscapeParse::type;
+    static constexpr size_t next = ParseEscape<Pattern, Pos>::next;
   };
 
   struct impl_simple {
@@ -522,7 +645,7 @@ struct ParseCHAR {
   static constexpr size_t next = chosen::next;
 };
 
-/* ParseCharSetAtom: [IN CLASS CHAR] | [IN CLASS CHAR] '-' [IN CLASS CHAR] | '\' [VISIBLE CHAR] */
+/* ParseCharSetAtom: [IN CLASS CHAR] | [IN CLASS CHAR] '-' [IN CLASS CHAR] | Escape */
 template<FixedStringView Pattern, size_t Pos>
 struct ParseCharSetAtom {
   static_assert(Pos < Pattern.length, "ParseCharSetAtom: unexpected pattern ending");
@@ -540,9 +663,9 @@ struct ParseCharSetAtom {
   };
 
   struct impl_escape {
-    static_assert(Pos + 1 < Pattern.length && is_visible_char(Pattern[Pos + 1]), "ParseCharSetAtom: cannot find escaped character");
-      using type = TypeList<Char<Pattern[Pos + 1]>>;
-    static constexpr size_t next = Pos + 2;
+    using EscapeParse = ParseEscape<Pattern, Pos>;
+    using type = TypeList<typename EscapeParse::type>;
+    static constexpr size_t next = ParseEscape<Pattern, Pos>::next;
   };
 
   static constexpr bool is_escape = Pattern[Pos] == '\\';
@@ -1407,7 +1530,7 @@ public:
   static bool eval(std::string_view str) {
     std::size_t state = 0;
     for (const char& ch : str) {
-      if (!impl::is_visible_char(ch)) [[unlikely]] return false;
+      if (ch < 0 || ch > 128) [[unlikely]] return false;
       int32_t nxt = dfa_trans_table[state][static_cast<std::size_t>(ch)];
       if (nxt < 0) return false;
       state = static_cast<std::size_t>(nxt);
@@ -1570,7 +1693,7 @@ private:
       if (new_len < old_len || (new_len == old_len && new_l < old_l)) continue;
       bool is_mutual = false;
       for (size_t k = 1; k < action / 2; k++) {
-        is_mutual |= mutual_group_table[k][action / 2] 
+        is_mutual |= mutual_group_table[k][action / 2]
           && match_results[k].r > new_l;
         if (is_mutual) break;
       }

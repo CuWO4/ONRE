@@ -14,12 +14,25 @@ inline std::string abbr(std::string s, size_t max_len) {
     : s.substr(0, subpart_len) + "...." + s.substr(s.length() - subpart_len, subpart_len);
 }
 
+inline void replace_all(std::string& str, const std::string& from, const std::string& to) {
+  if (from.empty()) return;
+  size_t start_pos = 0;
+  while ((start_pos = str.find(from, start_pos)) != std::string::npos) {
+    str.replace(start_pos, from.length(), to);
+    start_pos += to.length();
+  }
+}
+
 template<onre::impl::FixedString pattern>
 void test_match_and_log(std::string_view str, bool expected) {
   auto start = std::chrono::high_resolution_clock::now();
   bool result = onre::Match<pattern>::eval(str);
   auto end = std::chrono::high_resolution_clock::now();
   std::string s(str);
+  replace_all(s, "\n", "\\n");
+  replace_all(s, "\t", "\\t");
+  replace_all(s, "\f", "\\f");
+  replace_all(s, "\r", "\\r");
   const char* color = (result == expected) ? "\033[1;32m" : "\033[1;31m";
   const char* reset = "\033[0m";
   std::string pattern_s(pattern.c_str());
@@ -32,15 +45,27 @@ void test_match_and_log(std::string_view str, bool expected) {
             << " time: "
             << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() << "us"
             << std::endl;
-} 
+}
 
 template<onre::impl::FixedString pattern>
 void test_replace_and_log(std::string_view rule, std::string_view str, std::string_view expected) {
   auto start = std::chrono::high_resolution_clock::now();
   std::string result = onre::Replace<pattern>::eval(rule, str);
   auto end = std::chrono::high_resolution_clock::now();
-  std::string s(str);
-  const char* color = (result == expected) ? "\033[1;32m" : "\033[1;31m";
+  std::string s(str), expected_s(expected);
+  replace_all(s, "\n", "\\n");
+  replace_all(s, "\t", "\\t");
+  replace_all(s, "\f", "\\f");
+  replace_all(s, "\r", "\\r");
+  replace_all(result, "\n", "\\n");
+  replace_all(result, "\t", "\\t");
+  replace_all(result, "\f", "\\f");
+  replace_all(result, "\r", "\\r");
+  replace_all(expected_s, "\n", "\\n");
+  replace_all(expected_s, "\t", "\\t");
+  replace_all(expected_s, "\f", "\\f");
+  replace_all(expected_s, "\r", "\\r");
+  const char* color = (result == expected_s) ? "\033[1;32m" : "\033[1;31m";
   const char* reset = "\033[0m";
   std::string pattern_s(pattern.c_str());
   std::cout << "pattern: " << std::left << std::setw(20) << abbr(pattern_s, 18)
@@ -49,7 +74,7 @@ void test_replace_and_log(std::string_view rule, std::string_view str, std::stri
             << " str: " << std::setw(20) << abbr(s, 18)
             << " str_len: " << std::setw(8) << std::to_string(s.length())
             << " result: " << color << std::setw(20) << abbr(result, 18) << reset
-            << " expected: " << color << std::setw(20) << abbr(std::string(expected), 18) << reset
+            << " expected: " << color << std::setw(20) << abbr(expected_s, 18) << reset
             << " time: "
             << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() << "us"
             << std::endl;
