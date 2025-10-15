@@ -13,6 +13,7 @@ int main() {
   long_string_complex_test();
   character_class_test();
   extended_alphabet_and_escape_test();
+  quantifier_test();
   divisible_test();
 
   replace_basic_test();
@@ -25,6 +26,7 @@ int main() {
   replace_long_string_complex_test();
   replace_character_class_test();
   replace_extended_alphabet_and_escape_test();
+  replace_quantifier_test();
   replace_longest_match_test();
 
   return 0;

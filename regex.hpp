@@ -486,7 +486,7 @@ template<FixedStringView Pattern, size_t Pos> struct ParseEscape;
 template<typename CharList>
 struct CharListToOrSequential {
   template<typename X, typename Y> struct BuildOr { using type = Or<X, Y>; };
-  using type = Simplify<typename RightFold<BuildOr, CharList, EmptySet>::type>::type;
+  using type = typename RightFold<BuildOr, CharList, EmptySet>::type;
 };
 
 template<typename CharList, typename Alphabet>
@@ -616,7 +616,7 @@ struct ParseEscape {
   static_assert(Pos + 1 < Pattern.length, "ParseEscape: cannot find escape character");
   static_assert(is_visible_char(Pattern[Pos + 1]), "ParseEscape: unknown character");
   using chosen = EscapeImpl<Pattern[Pos + 1], Pattern, Pos>;
-  using type = Simplify<typename chosen::type>::type;
+  using type = typename chosen::type;
   static constexpr size_t next = chosen::next;
 };
 
@@ -671,7 +671,7 @@ struct ParseCharSetAtom {
   static constexpr bool is_escape = Pattern[Pos] == '\\';
   static constexpr bool has_hyphen = Pos + 1 < Pattern.length && Pattern[Pos + 1] == '-';
   using chosen = std::conditional_t<is_escape, impl_escape, std::conditional_t<has_hyphen, impl_seq, impl_char>>;
-  using type = typename Simplify<typename chosen::type>::type;
+  using type = typename chosen::type;
   static constexpr size_t next = chosen::next;
 };
 
@@ -695,7 +695,7 @@ struct ParseCharSet {
 
   static constexpr bool run_on = CharSetAtom::next < Pattern.length && is_in_class_char(Pattern[CharSetAtom::next]);
   using chosen = std::conditional_t<run_on, impl_run_on, impl_stop>;
-  using type = typename Simplify<typename chosen::type>::type;
+  using type = typename chosen::type;
   static constexpr size_t next = chosen::next;
 };
 
@@ -721,13 +721,13 @@ struct ParseCharGroup {
 
   static constexpr bool is_neg = Pos + 1 < Pattern.length && Pattern[Pos + 1] == '^';
   using chosen = std::conditional_t<is_neg, impl_neg, impl_pos>;
-  using type = typename Simplify<typename chosen::type>::type;
+  using type = typename chosen::type;
   static constexpr size_t next = chosen::next;
 };
 
 template<typename Alphabet> struct FullMatch {
   template<typename X, typename Y> struct BuildOr { using type = Or<X, Y>; };
-  using type = Simplify<typename RightFold<BuildOr, Alphabet, EmptySet>::type>::type;
+  using type = typename RightFold<BuildOr, Alphabet, EmptySet>::type;
 };
 
 /* ParseAtom: '(' Regex ')' | '[' CharSet ']' |  CHAR | '.' */
@@ -789,36 +789,98 @@ struct ParseAtom {
       >
     >
   >;
-  using type = typename Simplify<typename chosen::type>::type;
+  using type = typename chosen::type;
   static constexpr size_t next = chosen::next;
   static constexpr size_t next_cap_idx = chosen::next_cap_idx;
 };
 
-/* ParseFactor: Atom ('*')? | Atom ('+')? | Atom ('?')? */
+template<typename AtomType, int64_t Min, int64_t Max> struct BuildQuantifier {
+  using type = Concat<AtomType, typename BuildQuantifier<AtomType, Min - 1, Max - 1>::type>;
+};
+template<typename AtomType, int64_t Max> struct BuildQuantifier<AtomType, 0, Max> {
+  struct inf {
+    using type = Closure<AtomType>;
+  };
+  struct non_inf {
+    using type = Or<Epsilon, Concat<AtomType, typename BuildQuantifier<AtomType, 0, Max - 1>::type>>;
+  };
+  using type = std::conditional_t<Max < 0, inf, non_inf>::type;
+};
+template<typename AtomType> struct BuildQuantifier<AtomType, 0, 0> {
+  using type = Epsilon;
+};
+
+/* ParseFactor: Atom ('*')? | Atom ('+')? | Atom ('?')?
+ *            | Atom '{' Number ',' '}' | Atom '{' Number ',' Number '}'
+ *            | Atom '{' ',' Number '}' | '{' Number '}'
+ */
 template<FixedStringView Pattern, size_t Pos, size_t CapIdx>
 struct ParseFactor {
   using Atom = ParseAtom<Pattern, Pos, CapIdx>;
 
   static_assert(Atom::next <= Pattern.length, "ParseFactor: atom parse overflow");
 
+  struct star {
+    using type = Closure<typename Atom::type>;
+    static constexpr size_t next = Atom::next + 1;
+  };
+
+  struct plus {
+    using type = Concat<typename Atom::type, Closure<typename Atom::type>>;
+    static constexpr size_t next = Atom::next + 1;
+  };
+
+  struct question {
+    using type = Or<Epsilon, typename Atom::type>;
+    static constexpr size_t next = Atom::next + 1;
+  };
+
+  struct curly {
+    static_assert(Atom::next + 1 < Pattern.length, "ParseFactor: incomplete quantifier");
+    using ParseMin = ParseDecimal<Pattern, Atom::next + 1>;
+    static constexpr int64_t Min = Pattern[Atom::next + 1] == ',' ? 0 : ParseMin::value;
+    static_assert(ParseMin::next < Pattern.length && (Pattern[ParseMin::next] == ',' || Pattern[ParseMin::next] == '}'),
+      "ParseFactor: incomplete quantifier");
+    struct single_num {
+      static constexpr int64_t Max = Min;
+      static constexpr size_t next = ParseMin::next + 1;
+    };
+    struct multiple_num {
+      using ParseMax = ParseDecimal<Pattern, ParseMin::next + 1>;
+      static constexpr int64_t Max = Pattern[ParseMin::next + 1] == '}' ? -1 : ParseMax::value;
+      static constexpr size_t next = ParseMax::next + 1;
+    };
+    using chosen = std::conditional_t<Pattern[ParseMin::next] == '}', single_num, multiple_num>;
+    static constexpr int64_t Max = chosen::Max;
+    static_assert(Max < 0 || Min <= Max, "ParseFactor: invalid quantifier");
+    using type = BuildQuantifier<typename Atom::type, Min, Max>::type;
+    static constexpr size_t next = chosen::next;
+  };
+
   static constexpr bool has_star = (Atom::next < Pattern.length && Pattern[Atom::next] == '*');
   static constexpr bool has_plus = (Atom::next < Pattern.length && Pattern[Atom::next] == '+');
   static constexpr bool has_question = (Atom::next < Pattern.length && Pattern[Atom::next] == '?');
+  static constexpr bool has_curly = (Atom::next < Pattern.length && Pattern[Atom::next] == '{');
 
-  using type = typename Simplify<std::conditional_t<
+  using chosen = std::conditional_t<
     has_star,
-    Closure<typename Atom::type>,
+    star,
     std::conditional_t<
       has_plus,
-      Concat<typename Atom::type, Closure<typename Atom::type>>,
+      plus,
       std::conditional_t<
         has_question,
-        Or<Epsilon, typename Atom::type>,
-        typename Atom::type
+        question,
+        std::conditional_t<
+          has_curly,
+          curly,
+          Atom
+        >
       >
     >
-  >>::type;
-  static constexpr size_t next = (has_star || has_plus || has_question) ? (Atom::next + 1) : Atom::next;
+  >;
+  using type = chosen::type;
+  static constexpr size_t next = chosen::next;
   static constexpr size_t next_cap_idx = Atom::next_cap_idx;
 };
 
@@ -847,7 +909,7 @@ struct ParseTerm {
     impl_empty,
     impl_nonempty
   >;
-  using type = typename Simplify<typename chosen::type>::type;
+  using type = typename chosen::type;
   static constexpr size_t next = chosen::next;
   static constexpr size_t next_cap_idx = chosen::next_cap_idx;
 };
@@ -874,7 +936,7 @@ struct ParseRegex {
 
   static constexpr bool has_bar = (Term::next < Pattern.length && Pattern[Term::next] == '|');
   using chosen = std::conditional_t<has_bar, impl_bar, impl_no_bar>;
-  using type = typename Simplify<typename chosen::type>::type;
+  using type = typename chosen::type;
   static constexpr size_t next = chosen::next;
   static constexpr size_t next_cap_idx = chosen::next_cap_idx;
 };
@@ -882,7 +944,7 @@ struct ParseRegex {
 template<FixedStringView Pattern>
 struct RegexScan {
   using Parse = ParseRegex<Pattern, 0, 1>;
-  using type = Concat<SetSlot<0>, Concat<typename Parse::type, SetSlot<1>>>;
+  using type = Simplify<Concat<SetSlot<0>, Concat<typename Parse::type, SetSlot<1>>>>::type;
   static_assert(Parse::next == Pattern.length, "RegexScan: pattern not fully consumed or contains unexpected trailing characters");
 };
 
