@@ -1418,10 +1418,12 @@ template<typename... States> struct MaxAcceptActionLength<TypeList<States...>> {
 
 template<size_t NrStates, typename EdgeList> struct BuildTransTable;
 template<size_t NrStates, typename... Edges> struct BuildTransTable<NrStates, TypeList<Edges...>> {
-  static constexpr std::array<std::array<std::array<bool, NrStates>, nr_ascii_char>, NrStates> make() {
-    std::array<std::array<std::array<bool, NrStates>, nr_ascii_char>, NrStates> result{};
-    for (auto& state_table : result) for (auto& char_table : state_table) char_table.fill(false);
-    ((result[Edges::from][static_cast<size_t>(Edges::ch)][Edges::to] = true), ...);
+  static constexpr std::array<std::array<std::array<int32_t, NrStates>, nr_ascii_char>, NrStates> make() {
+    std::array<std::array<std::array<int32_t, NrStates>, nr_ascii_char>, NrStates> result{};
+    for (auto& state_table : result) for (auto& char_table : state_table) char_table.fill(-1);
+    std::array<std::array<size_t, nr_ascii_char>, NrStates> idxes {};
+    for (auto& line : idxes) line.fill(0);
+    ((result[Edges::from][static_cast<size_t>(Edges::ch)][idxes[Edges::from][static_cast<size_t>(Edges::ch)]++] = Edges::to), ...);
     return result;
   }
 };
@@ -1614,7 +1616,7 @@ private:
 template<impl::FixedString Pattern>
 class Replace {
 public:
-  static std::string eval(std::string_view replace_rule, std::string_view str) {
+  static std::string eval(std::string_view replace_rule, std::string_view str) noexcept {
     if (!Match<Pattern>::eval(str)) {
       throw replacement_not_matched("failed to match");
     }
@@ -1633,8 +1635,8 @@ public:
       next_active_state->fill(false);
       for (size_t state = 0; state < nr_states; state++) {
         if (!(*cur_active_state)[state]) continue;
-        for (size_t next_state = 0; next_state < nr_states; next_state++) {
-          if (!trans_table[state][static_cast<size_t>(ch)][next_state]) continue;
+        for (const auto& next_state : trans_table[state][static_cast<size_t>(ch)]) {
+          if (next_state < 0) break;
           auto next_slot_line = apply_action(
             (*cur_slot_file)[state], trans_action_table[state][static_cast<size_t>(ch)][next_state], idx
           );
@@ -1686,9 +1688,7 @@ public:
         }
         int32_t l = open_time(final_line, group_idx), r = close_time(final_line, group_idx);
         if (l < 0 || r < 0) continue;
-        for (const auto& captured_char : str.substr(l, r - l)) {
-          result_buffer << captured_char;
-        }
+        result_buffer.write(str.data() + l, r - l);
       } else {
         throw invalid_replacement_rule("invalid argument for `$`");
       }
@@ -1708,7 +1708,7 @@ private:
   static constexpr std::size_t max_accept_action_length = impl::tnfa::MaxAcceptActionLength<StateList>::value;
   static constexpr std::size_t nr_capture_group = nr_used_slots / 2;
 
-  /* S x Alphabet x S -> bool */
+  /* S x Alphabet -> int32_t[], -1 represent no trans */
   static constexpr auto trans_table = impl::tnfa::BuildTransTable<nr_states, EdgeList>::make();
   /* S -> bool */
   static constexpr auto accept_table = impl::tnfa::BuildAcceptTable<StateList>::make();

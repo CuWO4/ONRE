@@ -21,38 +21,38 @@
 
 ```text
 === Match ===
-pattern: a*                          pattern_len: 2     str: aaaaaaaa....aaaaaaaa   str_len: 100000   result: true   expected: true   time: 127us
-pattern: a*b                         pattern_len: 3     str: aaaaaaaa....aaaaaaab   str_len: 100001   result: true   expected: true   time: 127us
-pattern: (ab)*                       pattern_len: 5     str: abababab....abababab   str_len: 100000   result: true   expected: true   time: 134us
-pattern: (a?b)+                      pattern_len: 6     str: abababab....abababab   str_len: 100000   result: true   expected: true   time: 128us
-pattern: [a-z]+                      pattern_len: 6     str: mmmmmmmm....mmmmmmmm   str_len: 100000   result: true   expected: true   time: 131us
-pattern: [a-z0-9]+                   pattern_len: 9     str: a1c3e5g7....w3y5a7c9   str_len: 100000   result: true   expected: true   time: 127us
-pattern: (a|b)*c                     pattern_len: 7     str: aaaaaaaa....aaaaaaaa   str_len: 10000    result: false  expected: false  time: 12us
-pattern: (a|b)*a(a|b)*a              pattern_len: 14    str: bbbbbbbb....bbbbbbba   str_len: 10001    result: false  expected: false  time: 13us
-pattern: (a*)*                       pattern_len: 5     str: aaaaaaaa....aaaaaaaa   str_len: 10000    result: true   expected: true   time: 12us
-pattern: (a*(b*)*)*                  pattern_len: 10    str: bbbbbbbb....bbbbbbbb   str_len: 10000    result: true   expected: true   time: 12us
-pattern: (a|b)*a(a|b)*b              pattern_len: 14    str: aaaaaaaa....bbbbbbbb   str_len: 20001    result: false  expected: false  time: 12us
-pattern: ([a-z])*z                   pattern_len: 9     str: xxxxxxxx....xxxxxxxx   str_len: 10000    result: false  expected: false  time: 12us
-pattern: ((((0*1)0)....((10*1)0)*    pattern_len: 321   str: 000000                 str_len: 6        result: false  expected: false  time: 0us
-pattern: ((((0*1)0)....((10*1)0)*    pattern_len: 321   str: 000001                 str_len: 6        result: false  expected: false  time: 0us
-pattern: ((((0*1)0)....((10*1)0)*    pattern_len: 321   str: 000010                 str_len: 6        result: true   expected: true   time: 0us
-pattern: ((((0*1)0)....((10*1)0)*    pattern_len: 321   str: 000011                 str_len: 6        result: false  expected: false  time: 0us
-pattern: ((((0*1)0)....((10*1)0)*    pattern_len: 321   str: 000100                 str_len: 6        result: false  expected: false  time: 0us
-pattern: ((((0*1)0)....((10*1)0)*    pattern_len: 321   str: 000101                 str_len: 6        result: false  expected: false  time: 0us
-pattern: ((((0*1)0)....((10*1)0)*    pattern_len: 321   str: 000110                 str_len: 6        result: false  expected: false  time: 0us
+pattern: a*                        pattern_len: 2    str: aaaaaaaa....aaaaaaaa  str_len: 100000  time: 127us
+pattern: a*b                       pattern_len: 3    str: aaaaaaaa....aaaaaaab  str_len: 100001  time: 127us
+pattern: (ab)*                     pattern_len: 5    str: abababab....abababab  str_len: 100000  time: 134us
+pattern: (a?b)+                    pattern_len: 6    str: abababab....abababab  str_len: 100000  time: 128us
+pattern: [a-z]+                    pattern_len: 6    str: mmmmmmmm....mmmmmmmm  str_len: 100000  time: 131us
+pattern: [a-z0-9]+                 pattern_len: 9    str: a1c3e5g7....w3y5a7c9  str_len: 100000  time: 127us
+pattern: (a|b)*c                   pattern_len: 7    str: aaaaaaaa....aaaaaaaa  str_len: 10000   time: 12us
+pattern: (a|b)*a(a|b)*a            pattern_len: 14   str: bbbbbbbb....bbbbbbba  str_len: 10001   time: 13us
+pattern: (a*)*                     pattern_len: 5    str: aaaaaaaa....aaaaaaaa  str_len: 10000   time: 12us
+pattern: (a*(b*)*)*                pattern_len: 10   str: bbbbbbbb....bbbbbbbb  str_len: 10000   time: 12us
+pattern: (a|b)*a(a|b)*b            pattern_len: 14   str: aaaaaaaa....bbbbbbbb  str_len: 20001   time: 12us
+pattern: ([a-z])*z                 pattern_len: 9    str: xxxxxxxx....xxxxxxxx  str_len: 10000   time: 12us
+pattern: ((((0*1)0)....((10*1)0)*  pattern_len: 321  str: 000000                str_len: 6       time: 0us
+pattern: ((((0*1)0)....((10*1)0)*  pattern_len: 321  str: 000001                str_len: 6       time: 0us
+pattern: ((((0*1)0)....((10*1)0)*  pattern_len: 321  str: 000010                str_len: 6       time: 0us
+pattern: ((((0*1)0)....((10*1)0)*  pattern_len: 321  str: 000011                str_len: 6       time: 0us
+pattern: ((((0*1)0)....((10*1)0)*  pattern_len: 321  str: 000100                str_len: 6       time: 0us
+pattern: ((((0*1)0)....((10*1)0)*  pattern_len: 321  str: 000101                str_len: 6       time: 0us
+pattern: ((((0*1)0)....((10*1)0)*  pattern_len: 321  str: 000110                str_len: 6       time: 0us
 
 === Replace ===
-pattern: a+Xb+                pattern_len: 5     replace_rule: $0mid$0              str: aaaaaaa....bbbbbbb   str_len: 200001   result: aaaaaaa....bbbbbbb   expected: aaaaaaa....bbbbbbb   time: 2438us
-pattern: (x*)end              pattern_len: 7     replace_rule: $1-END               str: xxxxxxx....xxxxend   str_len: 10003    result: xxxxxxx....xxx-END   expected: xxxxxxx....xxx-END   time: 103us
-pattern: start(x*)end         pattern_len: 12    replace_rule: $1                   str: startxx....xxxxend   str_len: 10008    result: xxxxxxx....xxxxxxx   expected: xxxxxxx....xxxxxxx   time: 146us
-pattern: (a|b)+               pattern_len: 6     replace_rule: $0                   str: aaaaaaa....aaaaaaa   str_len: 300000   result: aaaaaaa....aaaaaaa   expected: aaaaaaa....aaaaaaa   time: 5577us
-pattern: (a+)+b               pattern_len: 6     replace_rule: $0                   str: aaaaaaa....aaaaaab   str_len: 10001    result: aaaaaaa....aaaaaab   expected: aaaaaaa....aaaaaab   time: 265us
-pattern: (a?)+b               pattern_len: 6     replace_rule: $0                   str: aaaaaaa....aaaaaab   str_len: 10001    result: aaaaaaa....aaaaaab   expected: aaaaaaa....aaaaaab   time: 192us
-pattern: (a|b)+c              pattern_len: 7     replace_rule: $0                   str: aaaaaaa....aaaaaac   str_len: 10001    result: aaaaaaa....aaaaaac   expected: aaaaaaa....aaaaaac   time: 157us
-pattern: (ab|a)*c             pattern_len: 8     replace_rule: $0                   str: aaaaaaa....aaaaaac   str_len: 10001    result: aaaaaaa....aaaaaac   expected: aaaaaaa....aaaaaac   time: 210us
-pattern: (a+)(a+)b            pattern_len: 9     replace_rule: $1|$2                str: aaaaaaa....aaaaaab   str_len: 10001    result: aaaaaaa....aaaaa|a   expected: aaaaaaa....aaaaa|a   time: 177us
-pattern: (a|ab)+b             pattern_len: 8     replace_rule: OK                   str: aaaaaaa....aaaaaab   str_len: 10001    result: OK                   expected: OK                   time: 180us
-pattern: (a*)b                pattern_len: 5     replace_rule: $1B                  str: aaaaaaa....aaaaaab   str_len: 10001    result: aaaaaaa....aaaaaaB   expected: aaaaaaa....aaaaaaB   time: 165us
+pattern: a+Xb+         pattern_len: 5   replace_rule: $0mid$0  str: aaaaaaa....bbbbbbb  str_len: 200001  time: 1199us
+pattern: (x*)end       pattern_len: 7   replace_rule: $1-END   str: xxxxxxx....xxxxend  str_len: 10003   time: 83us
+pattern: start(x*)end  pattern_len: 12  replace_rule: $1       str: startxx....xxxxend  str_len: 10008   time: 100us
+pattern: (a|b)+        pattern_len: 6   replace_rule: $0       str: aaaaaaa....aaaaaaa  str_len: 300000  time: 3235us
+pattern: (a+)+b        pattern_len: 6   replace_rule: $0       str: aaaaaaa....aaaaaab  str_len: 10001   time: 76us
+pattern: (a?)+b        pattern_len: 6   replace_rule: $0       str: aaaaaaa....aaaaaab  str_len: 10001   time: 102us
+pattern: (a|b)+c       pattern_len: 7   replace_rule: $0       str: aaaaaaa....aaaaaac  str_len: 10001   time: 107us
+pattern: (ab|a)*c      pattern_len: 8   replace_rule: $0       str: aaaaaaa....aaaaaac  str_len: 10001   time: 136us
+pattern: (a+)(a+)b     pattern_len: 9   replace_rule: $1|$2    str: aaaaaaa....aaaaaab  str_len: 10001   time: 358us
+pattern: (a|ab)+b      pattern_len: 8   replace_rule: OK       str: aaaaaaa....aaaaaab  str_len: 10001   time: 145us
+pattern: (a*)b         pattern_len: 5   replace_rule: $1B      str: aaaaaaa....aaaaaab  str_len: 10001   time: 75us
 ```
 
 可以看到, 在超长串, 回溯地狱, 超长模式, 超复杂模式用例下, 引擎仍然十分稳定地取得了 O(n) 的结果, 同样的用例对于回溯引擎则几乎必然崩溃 (例如著名的 [Cloudflare 事件](https://www.reddit.com/r/sysadmin/comments/c8eymj/cloudflare_outage_caused_by_deploying_bad_regular/)).
