@@ -1,23 +1,26 @@
+[![en](https://img.shields.io/badge/lang-en-green)](README.md)
+[![zh-cn](https://img.shields.io/badge/lang-%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-green)](README.zh-cn.md)
+
 # ONRE
 
-单头文件的零成本抽象的 $O(n)$ 正则引擎.
+A header-only regex Engine with zero-cost abstraction and strictly O(n) time complexity.
 
 ---
 
-## ✨ 核心特征
+## ✨ Core features
 
-- ✔️ 严格 $O(|s|)$ 的匹配复杂度, $|s|$ 为待匹配串长度;
-- ✔️ 在编译期将常量字符串正则表达式构建为自动机, 无运行时开销;
-- ✔️ 单头文件, 仅需 `include` 即可使用;
-- ✔️ **支持捕获组**以及基于捕获组的替换;
-- ✔️ 使用 Brzozowski 导数进行基于类型体操的函数式元编程, 确保编译迅速且最终结果几乎总是最简自动机, 而且很酷!
-- ✔️ 支持所有可见 ASCII 字符作为字母表;
-- ✔️ 支持标准正则表达式(连接, 并 `|`, 闭包 `*`, 括号 `()`); 支持 `+`, `?`; 支持通配 `.`; 支持字符类 (形如 `[^a-z012]`); 支持字符转义 (`\n`, `\t`, `\d`, `\s`, `\w`, `\x[HEX]`, `\[`, `\]`, `\*`...); 支持量词 (`{n}`, `{n,}`, `{,m}`, `{n,m}`);
-- ❌️ 不支持零宽断言;
-- ❌️ 不支持反向引用;
-- ❌️ 捕获消歧规则不符合 POSIX 标准或 Perl 标准.
+* ✔️ Strict $O(|s|)$ matching complexity, where $|s|$ denotes the length of the subject string.
+* ✔️ Compile-time construction of automata for constant string regular expressions, leaving no runtime overhead.
+* ✔️ Single-header file; just `include` to use.
+* ✔️ **Supports capture groups** and replacement based on capture groups.
+* ✔️ Uses Brzozowski derivatives with type-level functional metaprogramming to ensure fast compilation and almost always produce minimal automata, and **it’s cool**!
+* ✔️ Supports all visible ASCII characters as the alphabet.
+* ✔️ Supports standard regular expressions (concatenation, alternation `|`, Kleene star `*`, parentheses `()`); supports `+` and `?`; supports wildcard `.`; supports character classes (like `[^a-z012]`); supports escapes (`\n`, `\t`, `\d`, `\s`, `\w`, `\x[HEX]`, `\[`, `\]`, `\*`, ...); supports quantifiers (`{n}`, `{n,}`, `{,m}`, `{n,m}`).
+* ❌️ Does not support zero-width assertions.
+* ❌️ Does not support backreferences.
+* ❌️ Capture disambiguation rules do not conform to POSIX or Perl standards.
 
-## ⏱️ 性能展示
+## ⏱️ Performance showcase
 
 ```text
 === Match ===
@@ -55,9 +58,9 @@ pattern: (a|ab)+b      pattern_len: 8   replace_rule: OK       str: aaaaaaa....a
 pattern: (a*)b         pattern_len: 5   replace_rule: $1B      str: aaaaaaa....aaaaaab  str_len: 10001   time: 61us
 ```
 
-可以看到, 在超长串, 回溯地狱, 超长模式, 超复杂模式用例下, 引擎仍然十分稳定地取得了 O(n) 的结果, 同样的用例对于回溯引擎则几乎必然崩溃 (例如著名的 [Cloudflare 事件](https://www.reddit.com/r/sysadmin/comments/c8eymj/cloudflare_outage_caused_by_deploying_bad_regular/)).
+For very long strings, catastrophic backtracking cases, very long patterns, and very complex patterns the engine still reliably achieves O(n) performance; the same test cases on backtracking engines almost always blow up (for example the famous [Cloudflare incident](https://www.reddit.com/r/sysadmin/comments/c8eymj/cloudflare_outage_caused_by_deploying_bad_regular/)).
 
-编译这些(总数远超过上面展示的, 详见 `tests/`)复杂模式的时间是完全可控且可接受的:
+Compiling all of these (many more than shown; see `{[...]}`) complex patterns is controllable and acceptable:
 
 ```sh
 > make clean && time make -j30
@@ -66,7 +69,7 @@ user    1m19.445s
 sys     0m3.850s
 ```
 
-## 🤔 用法
+## 🤔 Usage
 
 ```cpp
 #include "regex.hpp"
@@ -79,11 +82,11 @@ void f() {
 }
 ```
 
-替换规则中, 使用 `$N` 来引用第 $N$ 个捕获组 (按照捕获组左括号位置排序, 从 1 开始). `$0` 为串本身. 通过 `$$` 来表示 `$`.
+`onre::Replace` uses `$N` to refer to the N-th capture group (ordered by the position of the left parenthesis, starting from 1). `$0` denotes the whole string. Use `$$` to represent a literal `$`.
 
-若 `onre::Replace` 无法匹配, 则 `eval()`结果是未定义的; 如果替换规则不合法, 则 `eval()` 将会返回空串. 因此, 对于有可能匹配失败的场景, 应该先使用 `onre::Match` 检查是否匹配.
+If `onre::Replace` cannot match, the `eval()` result is undefined; if the replacement rule is invalid, `eval()` returns an empty string. Therefore, for cases where a match might fail, `onre::Match` should be invoked first to check.
 
-在代码的任何位置实例化 `onre::Match` 和 `onre::Replace`, 都会导致编译期展开, 增加编译时间, 即使动态运行时永远不可能运行到. 同一个编译单元中, 相同 pattern 的匹配器只会被实例化一次, 不同编译单元中的匹配器则在每个单元的编译中都会被实例化, 因此把复杂模式的匹配抽象到一个编译单元中会显著降低编译用时.
+Instantiating `onre::Match` or `onre::Replace` anywhere in the code will trigger compile-time expansion and increase compile time even if the instance can never be executed at runtime. The same pattern instantiated multiple times within one translation unit is instantiated only once; different translation units will each instantiate it separately, so moving complex patterns into a single translation unit can greatly reduce compile time.
 
 ```cpp
 #include "regex.hpp"
@@ -94,19 +97,19 @@ bool is_valid_email(std::string email) {
 }
 ```
 
-对于有复杂的表达式的程序, 编译选项应该加上 `-fbracket-depth=[A BIG NUMBER] -ftemplate-depth=[A BIG NUMBER]` 来允许编译期进行更深的编译期递归.
+For programs that use very complex expressions, the compile options should include large bracket/template depth limits `-fbracket-depth=[A BIG NUMBER] -ftemplate-depth=[A BIG NUMBER]` to allow deeper compile-time recursion.
 
-## ⚖️ 标准
+## ⚖️ Standard
 
-与 POSIX (IEEE Std 1003.1-2001) 最左最长 (Leftmost-Longest) 标准不同, ONRE 遵循最右最长匹配. 具体来说, 闭包内的捕获组将匹配最后一个可以完成匹配的串. 例如使用 `((a*)(a*)b)*` 匹配 `aaababaaaab`, 有结果:
+Unlike POSIX (IEEE Std 1003.1-2001) leftmost-longest semantics, ONRE follows a rightmost-longest disambiguation rule. Concretely, captures inside closures match the last possible substring that completes the match. For example, when matching `((a*)(a*)b)*` against `aaababaaaab`, the results are:
 
-| 捕获组 | POSIX | ONRE |
+| Capture | POSIX | ONRE |
 | - | - | - |
 | `$1` (`((a*)(a*)b)`) | `aaab` | `aaaab` |
-| `$2` (第一个 `(a*)`) | `aaa` | `aaaa` |
-| `$3` (第二个 `(a*)`) | | |
+| `$2` (first `(a*)`) | `aaa` | `aaaa` |
+| `$3` (second `(a*)`) | | |
 
-相当于
+Equivalently:
 
 ```text
  .-- $1 --.
@@ -122,22 +125,22 @@ bool is_valid_email(std::string email) {
                    `-----$1----`
 ```
 
-其他例子:
+Other examples:
 
 ```cpp
 onre::Replace<"((a*)b)*">::eval("$2", "aabb") => "" // aab-()-b
 onre::Replace<"(a|ab)+b">::eval("$1", "abab") => "a" // ab-(a)-b
 ```
 
-## 🤯 理论基础
+## 🤯 Theoretical Foundation
 
-### Brzozowski 导数
+### Brzozowski Derivative
 
-对于正则表达式 $R$ 和 字符 $x$, 我们记正则表达式 $\frac{\partial R}{\partial x}$ 为 $R$ 对 $x$ 的 Brzozowski 导数 (下简称导数), 其表示的语言为
+For a regular expression $R$ and a character $x$, we denote the Brzozowski derivative of $R$ with respect to $x$ as $\frac{\partial R}{\partial x}$ (hereafter abbreviated as the derivative). The language represented by this derivative is:
 
 $$L(\frac{\partial R}{\partial x}) = \lbrace w \in \Sigma^*: xw \in L(R)\rbrace$$
 
-, 即在接受 $x$ 后, 所有可以使 $R$ 完成匹配的串. 其递归定义为
+—that is, after consuming $x$, it represents all strings $w$ that allow $R$ to complete a match. Its recursive definition is as follows:
 
 $$\frac{\partial \emptyset}{\partial x} = \emptyset$$
 
@@ -154,14 +157,14 @@ $$\frac{\partial (RS)}{\partial x} = \frac{\partial R}{\partial x} S | \delta(R)
 
 $$\frac{\partial (R^{\ast})}{\partial x} = \frac{\partial R}{\partial x} R^{\ast}$$
 
-, 其中 $\delta(\cdot)$ 为可空函数, 其定义为
+where $\delta(\cdot)$ is the nullability function, defined as:
 
 $$\delta(R) = \begin{cases}
 \epsilon,\qquad \epsilon \in L(R) \\
 \emptyset,\qquad \text{otherwise}
 \end{cases}$$
 
-, 其递归定义为
+with recursive definition:
 
 $$\delta(\emptyset) = \emptyset$$
 
@@ -175,7 +178,7 @@ $$\delta(RS) = \delta(R)\delta(S)$$
 
 $$\delta(R^*) = \epsilon$$
 
-. 基于此, 我们可以构建表达式 $R$ 的确定有穷自动机 $M = (Q, \Sigma, \delta, q_0, Q_{\text{accept}})$, 其中
+Based on this, we can construct a deterministic finite automaton (DFA) for expression $R$, denoted as $M = (Q, \Sigma, \delta, q_0, Q_{\text{accept}})$, where
 
 $$Q \subset \text{RE}$$
 
@@ -185,27 +188,29 @@ $$q_0 = R$$
 
 $$Q_\text{accept} = \lbrace R \in RE: \epsilon \in L(R)\rbrace$$
 
-. 我们递归地对正则表达式求导, 直至没有新正则表达式生成, 即完成构建.
+We recursively compute the derivatives of the regular expression until no new expressions are generated, completing the construction.
 
-### 动作代数
+### Action Algebra
 
-我们考虑存在 $N$ 个槽 $s_0, s_1, s_2, ..., s_{N-1}$, 每个槽可以储存一个自然数或 -1 (表示未被初始化过). 我们记录将第 $i$ 个槽设置为 $x$ 为 $\text{set}(i, x)$. 如果有两个动作, 我们定义两个动作 $\alpha, \beta$ 的连接 $\alpha \cdot \beta$ 为先做 $\alpha$ 中的动作, 再做 $\beta$ 中的动作. 我们再定义 $\omega$ 为空动作, 表示什么都不做, 且 $\alpha \cdot \omega = \omega \cdot \alpha = \alpha$. 我们把这样的结构称为动作代数.
+Consider $N$ slots $s_0, s_1, s_2, \ldots, s_{N-1}$, each capable of storing a natural number or -1 (indicating uninitialized). We denote setting slot $i$ to $x$ as $\text{set}(i, x)$.
 
-形式化地, 我们称一个槽格局为 $N$ 元组 $(s_0, s_1, ..., s_{N-1}), s_i \in \mathbb N \cup \lbrace -1 \rbrace$, 把 $N$ 元槽格局集合记作 $S_N = (\mathbb N \cup \lbrace -1 \rbrace)^N$.
+If there are two actions, we define their concatenation $\alpha \cdot \beta$ as performing $\alpha$ first, followed by $\beta$. We also define $\omega$ as the empty action, meaning "do nothing", and $\alpha \cdot \omega = \omega \cdot \alpha = \alpha$. Such a structure is called an action algebra.
 
-若一个集合 $A_N \subset S_N\,^{S_N}$ 满足:
+Formally, a slot configuration is an $N$-tuple $(s_0, s_1, \ldots, s_{N-1})$, where $s_i \in \mathbb N \cup {-1}$. The set of all slot configurations is $S_N = (\mathbb N \cup {-1})^N$.
+
+If a set $A_N \subset S_N\,^{S_N}$ satisfies:
 
 1. $\omega \in A, \text{where } \omega(S) = S$;
 1. $\text{set}(i, x) \in A, \forall i \in \lbrace 0, 1, ..., N-1 \rbrace, x \in \mathbb N, \text{where } \text{set}(i, x)(s_0, s_1, ..., s_i, ..., s_{N-1}) = (s_0, s_1, ..., x, ..., s_{N-1})$;
 1. $\alpha \cdot \beta \in A, \forall \alpha, \beta \in A, \text{where } \alpha \cdot \beta (T) = \beta(\alpha(T)) $,
 
-那么我们称 $A_N$ 为动作集.
+then $A_N$ is called an action set.
 
-### 扩展正则表达式
+### Extended Regular Expressions
 
-如果我们允许正则表达式中有符号 `<i>`, 表示一个零宽 (不消耗字符) 匹配, 并且在匹配时, 执行动作 $set(i, p)$, 其中 $p$ 为当前已消耗字符的数量 (即当前"光标"在待匹配串中的位置的索引), 那么我们把这样的正则表达式称为扩展正则表达式.
+If we allow a symbol `<i>` to appear in a regular expression, representing a zero-width (non-consuming) match that executes the action $\text{set}(i, p)$—where $p$ is the current consumed character count (i.e., the "cursor" position)—then we call such an expression an extended regular expression.
 
-形式化地, 给定自然数 $N$ 和字母表 $\Sigma$, 如果集合 $E$ 满足:
+Formally, given a natural number $N$ and an alphabet $\Sigma$, if a set $E$ satisfies:
 
 1. $\emptyset \in E$;
 1. $\epsilon \in E$;
@@ -215,17 +220,17 @@ $$Q_\text{accept} = \lbrace R \in RE: \epsilon \in L(R)\rbrace$$
 1. $RS \in E, \forall R, S \in E$;
 1. $R^\ast \in E, \forall R$,
 
-那么我们称 $E$ 为字母表 $\Sigma$ 上带有 $N$ 个槽的扩展正则表达式.
+then $E$ is called the extended regular expression set with $N$ slots over alphabet $\Sigma$.
 
-每个扩展正则表达式定义一个语言, $L(\langle i\rangle) = \lbrace \epsilon \rbrace$, 其他规则与标准正则表达式一致.
+Each extended regular expression defines a language, with $L(\langle i\rangle) = \lbrace \epsilon \rbrace$; all other rules follow the same semantics as standard regular expressions.
 
-我们在扩展正则表达式开始匹配时, 置初始槽状态为 $(-1, -1, ..., -1)$. 匹配时, 每一个子表达式完成匹配时, 执行其动作, 那么在完成匹配时, 将产生一个槽状态, 称为这个正则表达式对这串的输出. 输出不是唯一的 (存在多种可能的路径), 我们不考虑消除歧义的问题.
+At the start of matching, we initialize the slot state as $(-1, -1, \ldots, -1)$. When matching, each subexpression executes its corresponding action upon completion. The resulting slot configuration after a full match is the output of the expression for that string. The output may not be unique (multiple paths may exist), and we do not attempt to disambiguate.
 
-例如对于 POSIX 正则表达式 `a(a*)a`, 它尝试捕获去除首字母和尾字母的串, 它可以看作扩展正则表达式 $\langle 0\rangle a^\ast\langle 1\rangle a$, 那么在完成匹配时, 将给出输出 $(s_0, s_1)$, 即为捕获组在待匹配串的起止索引(左开右闭).
+For example, the POSIX regular expression `a(a*)a`, which captures the substring excluding the first and last characters, can be viewed as the extended expression $\langle 0\rangle a^\ast\langle 1\rangle a$. Upon completion, it yields an output $(s_0, s_1)$, representing the start and end indices (left-open, right-closed) of the captured group.
 
-### $v$ 记号
+### The $v$ Function
 
-对于扩展正则表达式 $R$, $v(R)$ 给出当 $R$ 接受空串时可能的动作集合, 若 $R$ 不接受空串, 则为空. $v$ 可以递归定义:
+For an extended regular expression $R$, $v(R)$ gives the set of possible actions when $R$ accepts the empty string. If $R$ does not accept the empty string, $v(R)$ is empty. The recursive definition is:
 
 $$ v(\emptyset) = \emptyset $$
 
@@ -241,9 +246,9 @@ $$ v(RS) = \lbrace \alpha \cdot \beta : \alpha \in v(R), \beta \in v(S) \rbrace$
 
 $$ v(R^\ast) = \lbrace \omega \rbrace $$
 
-### 扩展 Brzozowski 导数
+### Extended Brzozowski Derivative
 
-对于扩展正则表达式 $R$ 和字符 $x$, 我们称 $\frac{\partial R}{\partial x}$ 为扩展 Brzozowski 导数. 扩展 Brzozowski 导数, 给出所有可能二元对 $(S, \alpha)$ 的集合, 其中 $(S, \alpha)$ 表示 $R$ 可以执行动作 $\alpha$, 然后消耗字符 $x$, 然后使用 $S$ 完成匹配. 我们可以递归定义:
+For an extended regular expression $R$ and a character $x$, the **extended Brzozowski derivative** $\frac{\partial R}{\partial x}$ is defined as the set of all possible pairs ((S, \alpha)), where each ((S, \alpha)) means that $R$ can first execute action $\alpha$, then consume $x$, and finally continue matching using $S$. The recursive definition is:
 
 $$\frac{\partial \emptyset}{\partial x} = \emptyset$$
 
@@ -262,17 +267,23 @@ $$\frac{\partial (RS)}{\partial x} = \lbrace (R'S, \alpha) : (R', \alpha) \in \f
 
 $$\frac{\partial (R^{\ast})}{\partial x} = \lbrace (R' R^{\ast}, \alpha) : (R', \alpha) \in \frac{\partial R}{\partial x} \rbrace$$
 
-### TNFA 与导数构造
+### TNFA and Derivative Construction
 
-在 NFA 的基础上, 我们为每一条边都分配一个动作, 在采取这个转移时, 先执行动作, 再消耗字符, 再转移到新状态, 那么这种自动机称为 Tagged Nondeterministic Finite Automata (TNFA). TNFA 的接收状态还会有一个接受动作, 当自动机在此处接受串时, 则执行该接受节点的接受动作.
+Building upon the NFA, if we assign an *action* to every transition—executed before consuming the character and performing the state transition—we obtain a Tagged Nondeterministic Finite Automaton (TNFA).
+The accepting states also have associated *accept actions*, executed when the automaton accepts a string.
 
-形式化地，我们称 TNFA 是七元组 $(Q, \Sigma, N, \delta, q_0, Q_\text{accept}, A_\text{accept})$, 其中 $Q$ 是状态集, $\Sigma$ 是字符表, $N$ 是槽数, $\delta: Q \times \Sigma \rightarrow 2 ^ {Q \times A_N} $ 表示在某节点接受了某个字符后, 可到达的状态, 以及转移时的动作, $q_0$ 表示初始状态, $Q_\text{accept}$ 表示接受状态集合, $A_\text{accept} = Q_\text{accept} \rightarrow A_N$ 表示接受动作.
+Formally, a TNFA is a 7-tuple
+$(Q, \Sigma, N, \delta, q_0, Q_\text{accept}, A_\text{accept})$,
+where $Q$ is the set of states, $\Sigma$ the alphabet, $N$ the number of slots,
+$\delta: Q \times \Sigma \to 2^{Q \times A_N}$ describes transitions and their actions,
+$q_0$ is the initial state, $Q_\text{accept}$ is the accepting state set,
+and $A_\text{accept}: Q_\text{accept} \to A_N$ gives the accepting actions.
 
-我们可以利用扩展 Brzozowski 来构造一个与扩展正则表达式 R 等价的 TNFA $M = (Q, \Sigma, N, \delta, q_0, Q_\text{accept}, A_\text{accept})$. 与 Brzozowski 构造 DFA 类似, 我们置
+We can construct a TNFA equivalent to an extended regular expression $R$ using the extended Brzozowski derivative, setting:
 
 $$Q \subset \text{Extended RE}$$
 
-$$N = \text{Number of Unique Slots in R}$$
+$$N = \text{Number of Unique Slots in } R$$
 
 $$\delta(q, x) = \frac{\partial q}{\partial x}$$
 
@@ -282,17 +293,22 @@ $$Q_\text{accept} = \lbrace q : \epsilon \in L(q) \rbrace$$
 
 $$A_\text{accept}(q) = v(q)$$
 
-对于 $A_\text{accept}$, 我们的构造有歧义 (可能有多种可能动作) 并不符合 TNFA 的定义, 但是我们先这样, 让接收状态有多种可选动作, 我们在下文中介绍如何从中选取一个.
+Note that $A_\text{accept}$ may contain ambiguities (multiple possible actions), which technically violates the TNFA definition, but we temporarily allow it. We will later discuss how to select one among them.
 
-### 活跃状态 TNFA 模拟捕获捕获组
+### Active-State TNFA Simulation for Capturing Groups
 
-回溯地模拟 TNFA 复杂度是指数的, 和回溯引擎没有区别(甚至潜在地更慢). 为了约束复杂度, 我们使用类活跃变量 NFA 模拟法的方法, 并引入一个启发式仲裁来解决歧义.
+Backtracking simulation of a TNFA has exponential complexity—no better than a backtracking regex engine (and potentially slower). To constrain complexity, we use an *active-state NFA simulation method* and introduce a heuristic arbitration mechanism to resolve ambiguities.
 
-现在我们先考虑叙述, 给定 TNFA, 对于一个接受串, 沿着任何一条从起始状态到终止状态的路径, 得到的槽状态都是原扩展正则表达式的一个可能输出. 换而言之, 对于 `(a*)(a*)` (即 $\langle 0\rangle a^\ast\langle 1\rangle\langle 2\rangle a^\ast\langle 3\rangle$), 沿着不同路径存在多种可能的输出, 但是对于任何一个输出, 都可以保证 $\langle 0\rangle, \langle 1\rangle$ 分别标记了第一个 `a*` 的左右端点, $\langle 2\rangle, \langle 3\rangle$ 分别标记了第二个 `a*` 的左右端点, 且不会重叠. 我认为这是显然的, 但给出一个形式化的证明是困难的.
+Conceptually, given a TNFA and an accepted string, every path from the start to an accepting state corresponds to one possible slot configuration—the output of the extended regular expression for that string.
 
-那么我们考虑算法: TNFA 有 $S$ 个结点, 分别标号为 $q_0, q_1, q_2, ..., q_{S-1}$, 其中 $q_0$ 为开始状态, $N$ 个槽. 那么我们置容器 `bool is_active[S]` 和 `number slots[S][N]`. `slots[i]` 是第 $i$ 个状态的槽格局.
+For instance, in `(a*)(a*)` (i.e., $\langle 0\rangle a^\ast\langle 1\rangle\langle 2\rangle a^\ast\langle 3\rangle$, different paths yield different outputs, but for each output, $\langle 0\rangle, \langle 1\rangle$ correctly mark the boundaries of the first `a*`, and $\langle 2\rangle, \langle 3\rangle$ those of the second, without overlap. This is intuitively evident, though giving a formal proof is difficult.
 
-开始时,
+Now, consider the algorithm:
+The TNFA has $S$ states labeled $q_0, q_1, \ldots, q_{S-1}$, with $q_0$ as the start state and $N$ slots.
+We maintain `bool is_active[S]` and `number slots[S][N]`,
+where `slots[i]` stores the slot configuration of state $i$.
+
+Initially:
 
 ```text
 is_active <- all false
@@ -300,7 +316,7 @@ is_active[0] <- true
 slots[i][j] <- all -1
 ```
 
-接下来, 消耗一个字符 `c`, 并
+Then, for each consumed character `c`:
 
 ```text
 bool new_active[S] <- all false
@@ -323,7 +339,7 @@ active <- new_active
 slots <- new_slots
 ```
 
-如果无字符可消耗, 则:
+If no characters remain:
 
 ```text
 number result_slots[N] = null
@@ -340,32 +356,34 @@ if result_slots = null
   failed to match
 ```
 
-. 从代码可以读出, 这个算法不断推进活跃集, 并为每一个状态维护一个槽格局. 当传播时, 标记目标节点为活跃, 并把目标节点的槽格局更新为当前槽格局执行动作后的格局. 关键点在于交汇时, 当节点可以被多条路径激活(多条路径在此交汇)时, 算法通过一个仲裁函数 `arbitration` 选取哪一个, 并永远舍弃另一个.
+From the code, we see that the algorithm continually advances the active set and maintains a slot configuration for each state. During propagation, the destination state is marked active, and its slots are updated by executing the transition’s action.
+At convergence points (when multiple paths activate the same state), an arbitration function decides which configuration to keep, permanently discarding others.
 
-我们先考虑算法的正确性. 算法是否会给出一个不可能的槽格局输出? 我们注意到每一个节点对应的槽格局一定是某条从开始节点到当前节点的路径, 如果槽格局被输出, 那么根据我们之前的叙述, 这个槽格局一定是可能的. 所以算法是正确和一致的.
+Consider the correctness first. Each state’s slot configuration corresponds to some valid path from the start to that state. Therefore, any output slot configuration must correspond to a valid path and is thus consistent with the original extended regular expression—ensuring correctness.
 
-我们再考虑仲裁函数的性质. 根据前文我们直到, 即使仲裁函数永远选第一个或者第二个, 或者随机选择, 算法最后也会给出可能的槽格局. 那么当可能槽格局数为1时(原表达式无歧义), 给出的输出总能正确匹配捕获组; 对于有歧义的情况, 由于 TNFA 和原表达式高度异构, 我们难以通过仲裁函数使得 TNFA 输出完全兼容消除歧义标准(例如贪心最长). 但我们可以通过一系列启发式指标和算法来尽可能匹配最长.
+On the arbitration function, even if the arbitration function always picks the first, the second, or randomly, the final slot configuration will still represent a possible match.
+Thus, when there is only one possible configuration (i.e., the expression is unambiguous), the output always correctly represents capture groups.
+For ambiguous expressions, because the TNFA structure does not fully mirror the original regex semantics, it is difficult to design an arbitration rule perfectly matching disambiguation criteria (e.g., greedy longest).
+However, we can approximate it through heuristic indicators and algorithms to favor the longest possible match.
 
-## 🧪 测试
+## 🧪 Tests
 
 ```sh
 make test -j20
 ```
 
-## 🔗 依赖
+## 🔗 Dependencies
 
-已验证支持版本:
+Verified supported versions:
 
 ## Clang++
 
-版本 >= 12
+Version >= 12
 
-`--std=c++20` 或更高 (如果支持).
+`--std=c++20` or higher (if supported). If recursion depth causes compile failures, add `-fbracket-depth=[A BIG NUMBER] -ftemplate-depth=[A BIG NUMBER]` to allow deeper compile-time recursion.
 
-如果展开深度过深导致编译失败, 添加 `-fbracket-depth=[A BIG NUMBER] -ftemplate-depth=[A BIG NUMBER]`.
+## 😭 Known issues
 
-## 😭 已知问题
+❗ To keep compilation time acceptable, the current implementation does not use semantic equivalence when merging states; it uses syntactic equivalence instead. As a result it does not support some expressions that have multiple interpretations inside closures, examples include `(ab|ababab|c)*`, `(aa|aaa)*`, `(a*|aa)*`, or `(a*aa)*`. Instead, equivalent forms like `(ab|c)*`, `|aaa*`, `a*`, or `(aa)*` are preferred; otherwise compilation may fail. An Exact mode might be added in future to relax this, but compilation time will predictably become unacceptable.
 
-❗ 现有实现为了可接受的编译时间, 不使用语义等价, 而使用语法等价来合并状态, 代价是不支持写存在多种可能解释的闭包, 例如 `(ab|ababab|c)*`, `(aa|aaa)*`, `(a*|aa)*` 或 `(a*aa)*`, 而应等价地写作 `(ab|c)*`, `|aaa*`, `a*` 或 `(aa)*`, 否则会导致编译失败. 或许未来会添加 Exact 模式来使得这种表达式的编译变得可能, 但可以预见编译时间将变得不可接受.
-
-🩹 以上问题涉及的表达式几乎不会在正常使用中出现, 并且由于模式字符串是静态的, 所以也不会被外部利用攻击. 暂时不考虑修复.
+🩹 The expressions that cause the issue are rarely used in normal circumstances, and because patterns are static they are not exploitable for attack vectors. Fixing this is not currently planned.
