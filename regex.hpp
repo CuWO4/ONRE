@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <cstdio>
 #include <string>
-#include <stdexcept>
 #include <sstream>
 #include <tuple>
 
@@ -206,7 +205,8 @@ template<size_t Length>
 struct FixedStringView {
   const char* data;
 
-  constexpr FixedStringView(const char* str) : data(str) {}
+  constexpr FixedStringView(const char (&str)[Length + 1]) : data(str) {}
+  constexpr FixedStringView(const FixedString<Length + 1>& str) : data(str.c_str()) {}
 
   constexpr FixedStringView(const FixedStringView&) noexcept = default;
   constexpr FixedStringView(FixedStringView&&) noexcept = default;
@@ -217,6 +217,10 @@ struct FixedStringView {
   constexpr const char* c_str() const { return data; }
   constexpr char operator[](size_t i) const { return data[i]; }
 };
+template<size_t N>
+FixedStringView(const char (&str)[N]) -> FixedStringView<N - 1>;
+template<size_t N>
+FixedStringView(const FixedString<N>&) -> FixedStringView<N - 1>;
 
 /* === extended regular expression tree representation with zero-width action === */
 struct EmptySet {};
@@ -1590,8 +1594,7 @@ public:
   }
 
 private:
-  static constexpr auto pattern_view = impl::FixedStringView<Pattern.length>(Pattern.c_str());
-  using Re = typename impl::RegexScan<pattern_view>::type;
+  using Re = typename impl::RegexScan<Pattern>::type;
   using NoActionRe = typename impl::dfa::RemoveAllAction<Re>::type;
   using DFAStatesList = impl::dfa::AllStatesList<NoActionRe>;
   using DFAEdgesList  = impl::dfa::AllEdgesList<NoActionRe>;
@@ -1681,8 +1684,7 @@ public:
   }
 
 private:
-  static constexpr auto pattern_view = impl::FixedStringView<Pattern.length>(Pattern.c_str());
-  using Re = typename impl::RegexScan<pattern_view>::type;
+  using Re = typename impl::RegexScan<Pattern>::type;
   using StateList = impl::tnfa::AllStatesList<Re>;
   using EdgeList  = impl::tnfa::RemoveConflictEdge<impl::tnfa::AllEdgesList<Re>>::type;
   static constexpr std::size_t nr_states = StateList::length;
