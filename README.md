@@ -354,11 +354,15 @@ make test -j20
 
 ## 🔗 依赖
 
-```text
-Ubuntu clang version 18.1.8 (++20240731024944+3b5b5c1ec4a3-1~exp1~20240731145000.144)
+已验证支持版本:
 
---std=c++23
-```
+## Clang++
+
+版本 >= 12
+
+`--std=c++20` 或更高 (如果支持).
+
+如果展开深度过深导致编译失败, 添加 `-fbracket-depth=[A BIG NUMBER] -ftemplate-depth=[A BIG NUMBER]`.
 
 ## 😭 已知问题
 
