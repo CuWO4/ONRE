@@ -111,7 +111,7 @@ struct Map<Func, TypeList<Ts...>> {
 template<template<typename> typename IsKeep, typename List, typename Acc> struct FilterImpl;
 template<template<typename> typename IsKeep, typename Head, typename... Tails, typename Acc>
 struct FilterImpl<IsKeep, TypeList<Head, Tails...>, Acc> {
-  using type = std::conditional_t<
+  using type = typename std::conditional_t<
     IsKeep<Head>::value,
     FilterImpl<IsKeep, TypeList<Tails...>, typename PushBack<Acc, Head>::type>,
     FilterImpl<IsKeep, TypeList<Tails...>, Acc>
@@ -122,7 +122,7 @@ struct FilterImpl<IsKeep, TypeList<>, Acc> {
   using type = Acc;
 };
 template<template<typename> typename IsKeep, typename List> struct Filter {
-  using type = FilterImpl<IsKeep, List, TypeList<>>::type;
+  using type = typename FilterImpl<IsKeep, List, TypeList<>>::type;
 };
 
 template<template<typename, typename> typename MergeFunc, typename List, typename Begin> struct RightFold;
@@ -138,8 +138,8 @@ struct RightFold<MergeFunc, TypeList<>, Begin> {
 template<template<typename, typename> typename MergeFunc, typename List, typename Acc> struct LeftFoldImpl;
 template<template<typename, typename> typename MergeFunc, typename Head, typename... Tails, typename Acc>
 struct LeftFoldImpl<MergeFunc, TypeList<Head, Tails...>, Acc> {
-  using TmpAcc = MergeFunc<Acc, Head>::type;
-  using type = LeftFoldImpl<MergeFunc, TypeList<Tails...>, TmpAcc>::type;
+  using TmpAcc = typename MergeFunc<Acc, Head>::type;
+  using type = typename LeftFoldImpl<MergeFunc, TypeList<Tails...>, TmpAcc>::type;
 };
 template<template<typename, typename> typename MergeFunc, typename Acc>
 struct LeftFoldImpl<MergeFunc, TypeList<>, Acc> {
@@ -147,7 +147,7 @@ struct LeftFoldImpl<MergeFunc, TypeList<>, Acc> {
 };
 
 template<template<typename, typename> typename MergeFunc, typename List, typename Begin> struct LeftFold {
-  using type = LeftFoldImpl<MergeFunc, List, Begin>::type;
+  using type = typename LeftFoldImpl<MergeFunc, List, Begin>::type;
 };
 
 template<template<typename, typename> typename IsLess, typename List, typename T>
@@ -158,7 +158,7 @@ struct InsertElem<IsLess, TypeList<>, T> {
 };
 template<template<typename, typename> typename IsLess, typename Head, typename... Tails, typename T>
 struct InsertElem<IsLess, TypeList<Head, Tails...>, T> {
-  using type = std::conditional_t<
+  using type = typename std::conditional_t<
     IsLess<T, Head>::value,
     std::type_identity<TypeList<T, Head, Tails...>>,
     PushFront<typename InsertElem<IsLess, TypeList<Tails...>, T>::type, Head>
@@ -167,12 +167,12 @@ struct InsertElem<IsLess, TypeList<Head, Tails...>, T> {
 template<template<typename, typename> typename IsLess, typename List> struct InsertSort {
   template<typename Acc, typename Head>
   struct Merge { using type = typename InsertElem<IsLess, Acc, Head>::type; };
-  using type = LeftFold<Merge, List, TypeList<>>::type;
+  using type = typename LeftFold<Merge, List, TypeList<>>::type;
 };
 
 template<template<typename, typename> typename IsLess, typename List>
 struct Sort {
-  using type = std::conditional_t<
+  using type = typename std::conditional_t<
     List::template IsInOrder<IsLess>,
     std::type_identity<List>,
     InsertSort<IsLess, List>
@@ -453,7 +453,7 @@ struct BuildCharList {
     using type = TypeList<Char<Start + Is>...>;
   };
 
-  using type = Impl<std::make_index_sequence<End - Start + 1>>::type;
+  using type = typename Impl<std::make_index_sequence<End - Start + 1>>::type;
 };
 
 using Alphabet = typename BuildCharList<visible_ascii_start, visible_ascii_end>::type;
@@ -499,7 +499,7 @@ struct CharListNegation {
   struct NotInList {
     static constexpr bool value = !CharList::template Contains<Char>;
   };
-  using type = Filter<NotInList, Alphabet>::type;
+  using type = typename Filter<NotInList, Alphabet>::type;
 };
 
 template<FixedStringView Pattern, size_t Pos, int64_t Acc = 0> struct ParseDecimal {
@@ -634,7 +634,7 @@ struct ParseCHAR {
 
   struct impl_escape {
     using EscapeParse = ParseEscape<Pattern, Pos>;
-    using type = EscapeParse::type;
+    using type = typename EscapeParse::type;
     static constexpr size_t next = ParseEscape<Pattern, Pos>::next;
   };
 
@@ -808,7 +808,7 @@ template<typename AtomType, int64_t Max> struct BuildQuantifier<AtomType, 0, Max
   struct non_inf {
     using type = Or<Epsilon, Concat<AtomType, typename BuildQuantifier<AtomType, 0, Max - 1>::type>>;
   };
-  using type = std::conditional_t<Max < 0, inf, non_inf>::type;
+  using type = typename std::conditional_t<Max < 0, inf, non_inf>::type;
 };
 template<typename AtomType> struct BuildQuantifier<AtomType, 0, 0> {
   using type = Epsilon;
@@ -857,7 +857,7 @@ struct ParseFactor {
     using chosen = std::conditional_t<Pattern[ParseMin::next] == '}', single_num, multiple_num>;
     static constexpr int64_t Max = chosen::Max;
     static_assert(Max < 0 || Min <= Max, "ParseFactor: invalid quantifier");
-    using type = BuildQuantifier<typename Atom::type, Min, Max>::type;
+    using type = typename BuildQuantifier<typename Atom::type, Min, Max>::type;
     static constexpr size_t next = chosen::next;
   };
 
@@ -883,7 +883,7 @@ struct ParseFactor {
       >
     >
   >;
-  using type = chosen::type;
+  using type = typename chosen::type;
   static constexpr size_t next = chosen::next;
   static constexpr size_t next_cap_idx = Atom::next_cap_idx;
 };
@@ -948,7 +948,7 @@ struct ParseRegex {
 template<FixedStringView Pattern>
 struct RegexScan {
   using Parse = ParseRegex<Pattern, 0, 1>;
-  using type = Simplify<Concat<SetSlot<0>, Concat<typename Parse::type, SetSlot<1>>>>::type;
+  using type = typename Simplify<Concat<SetSlot<0>, Concat<typename Parse::type, SetSlot<1>>>>::type;
   static_assert(Parse::next == Pattern.length, "RegexScan: pattern not fully consumed or contains unexpected trailing characters");
 };
 
@@ -1037,7 +1037,7 @@ template<typename Acc, typename S> struct DerivNewStates<Acc, S, TypeList<>> {
 template<typename Acc, typename S, char C, typename... Tails>
 struct DerivNewStates<Acc, S, TypeList<Char<C>, Tails...>> {
   using Der = typename Derivative<typename S::re, C>::type;
-  using type = std::conditional_t<
+  using type = typename std::conditional_t<
     std::is_same_v<Der, EmptySet>,
     std::type_identity<Acc>,
     DerivNewStates<
@@ -1062,8 +1062,8 @@ struct PushNewStates<SA, EA, TBP, StartState, TypeList<HeadPair, TailPairs...>> 
   using ToState = typename HeadPair::state;
   static constexpr char C = HeadPair::c;
   static constexpr bool IsStateNew = !SA::template Contains<ToState>;
-  using NextStateAcc = PushBackUnique<SA, ToState>::type;
-  using NextToBeProcessList = std::conditional_t<IsStateNew, PushBack<TBP, ToState>, std::type_identity<TBP>>::type;
+  using NextStateAcc = typename PushBackUnique<SA, ToState>::type;
+  using NextToBeProcessList = typename std::conditional_t<IsStateNew, PushBack<TBP, ToState>, std::type_identity<TBP>>::type;
   using NextEdgeAcc = typename PushBack<
     EA,
     Edge<
@@ -1085,11 +1085,11 @@ template<typename StateAcc, typename EdgeAcc> struct BuildDFA<StateAcc, EdgeAcc,
 };
 template<typename StateAcc, typename EdgeAcc, typename StateHead, typename... StateTails>
 struct BuildDFA<StateAcc, EdgeAcc, TypeList<StateHead, StateTails...>> {
-  using NewCharStates = DerivNewStates<TypeList<>, StateHead, typename First<typename StateHead::re, TypeList<>>::type>::type;
+  using NewCharStates = typename DerivNewStates<TypeList<>, StateHead, typename First<typename StateHead::re, TypeList<>>::type>::type;
   using Processed = PushNewStates<StateAcc, EdgeAcc, TypeList<StateTails...>, StateHead, NewCharStates>;
   using NextIt = BuildDFA<typename Processed::StateAcc, typename Processed::EdgeAcc, typename Processed::ToBeProcessList>;
-  using States = NextIt::States;
-  using Edges = NextIt::Edges;
+  using States = typename NextIt::States;
+  using Edges = typename NextIt::Edges;
 };
 
 template<typename RE>
@@ -1160,20 +1160,20 @@ template<size_t I, typename... As> struct CatAction<Set<I>, Seq<As...>> { using 
 template<typename... As> struct CatAction<Seq<As...>, Omega> { using type = Seq<As...>; };
 template<typename... As, size_t I> struct CatAction<Seq<As...>, Set<I>> { using type = Seq<As..., Set<I>>; };
 template<typename... As1, typename... As2> struct CatAction<Seq<As1...>, Seq<As2...>> { using type = Seq<As1..., As2...>; };
-template<typename Seq, typename A> using CarAction_t = CatAction<Seq, A>::type;
+template<typename Seq, typename A> using CarAction_t = typename CatAction<Seq, A>::type;
 
 
 namespace tnfa {
 
 /* === v notation === */
 template<typename List, typename Action> struct ProductAction {
-  template <typename A> struct AddAction { using type = CatAction<A, Action>::type; };
-  using type = Map<AddAction, List>::type;
+  template <typename A> struct AddAction { using type = typename CatAction<A, Action>::type; };
+  using type = typename Map<AddAction, List>::type;
 };
 template<typename List1, typename List2, typename Acc> struct Product;
 template<typename List1, typename Head, typename... Tails, typename Acc> struct Product<List1, TypeList<Head, Tails...>, Acc> {
-  using TmpAcc = ProductAction<List1, Head>::type;
-  using type = Product<List1, TypeList<Tails...>, TmpAcc>::type;
+  using TmpAcc = typename ProductAction<List1, Head>::type;
+  using type = typename Product<List1, TypeList<Tails...>, TmpAcc>::type;
 };
 template<typename List1, typename Acc> struct Product<List1, TypeList<>, Acc> {
   using type = Acc;
@@ -1185,10 +1185,10 @@ template<> struct v<Epsilon> { using type = TypeList<Omega>; };
 template<char C> struct v<Char<C>> { using type = TypeList<>; };
 template<size_t I> struct v<SetSlot<I>> { using type = TypeList<Set<I>>; };
 template<typename R, typename S> struct v<Or<R, S>> {
-  using type = JoinUnique<typename v<R>::type, typename v<S>::type>::type;
+  using type = typename JoinUnique<typename v<R>::type, typename v<S>::type>::type;
 };
 template<typename R, typename S> struct v<Concat<R, S>> {
-  using type = Product<typename v<R>::type, typename v<S>::type, TypeList<>>::type;
+  using type = typename Product<typename v<R>::type, typename v<S>::type, TypeList<>>::type;
 };
 template<typename R> struct v<Closure<R>> { using type = TypeList<Omega>; };
 
@@ -1216,9 +1216,9 @@ struct Derivative<Char<y>, C> {
 /* d(R|S)/dx = dR/dx U dS/dx */
 template <typename R, typename S, char C>
 struct Derivative<Or<R, S>, C> {
-  using dr = Derivative<R, C>::type;
-  using ds = Derivative<S, C>::type;
-  using type = JoinUnique<dr, ds>::type;
+  using dr = typename Derivative<R, C>::type;
+  using ds = typename Derivative<S, C>::type;
+  using type = typename JoinUnique<dr, ds>::type;
 };
 /* d(RS)/dx = {(R'S, a):(R',a) in dR/dx} U {(S', ab):a in v(R), (S', b) in dS/dx} */
 template <typename R, typename S, char C>
@@ -1230,7 +1230,7 @@ struct Derivative<Concat<R, S>, C> {
       typename Pair::action
     >;
   };
-  using Part1 = Map<MapFunc1, typename Derivative<R, C>::type>::type;
+  using Part1 = typename Map<MapFunc1, typename Derivative<R, C>::type>::type;
 
   template <typename Acc, typename vRList, typename SDList> struct Part2Generator;
   template <typename Acc, typename SDList>
@@ -1246,15 +1246,15 @@ struct Derivative<Concat<R, S>, C> {
         typename CatAction<vRHead, typename Pair::action>::type
       >;
     };
-    using type = Part2Generator<
+    using type = typename Part2Generator<
       typename JoinUnique<Acc, typename Map<MapFunc2, SDList>::type>::type,
       TypeList<vRTails...>,
       SDList
     >::type;
   };
-  using Part2 = Part2Generator<TypeList<>, typename v<R>::type, typename Derivative<S, C>::type>::type;
+  using Part2 = typename Part2Generator<TypeList<>, typename v<R>::type, typename Derivative<S, C>::type>::type;
 
-  using type = JoinUnique<Part1, Part2>::type;
+  using type = typename JoinUnique<Part1, Part2>::type;
 };
 /* d(R*)/dx = {(R'R*,a):(R',a) in dR/dx} */
 template <typename R, char C>
@@ -1267,7 +1267,7 @@ struct Derivative<Closure<R>, C> {
     >;
   };
 
-  using type = Map<MapFunc, typename Derivative<R, C>::type>::type;
+  using type = typename Map<MapFunc, typename Derivative<R, C>::type>::type;
 };
 
 
@@ -1276,7 +1276,7 @@ template<typename R>
 struct State {
   using re = R;
   static constexpr bool accepting = Nullable<R>::value;
-  using AcceptActions = v<R>::type;
+  using AcceptActions = typename v<R>::type;
 };
 
 template<size_t From, char C, typename Action, size_t To>
@@ -1311,7 +1311,7 @@ struct DerivNewStates<Acc, S, TypeList<Char<C>, Tails...>> {
   };
 
   using Der = typename Derivative<typename S::re, C>::type;
-  using type = std::conditional_t<
+  using type = typename std::conditional_t<
     std::is_same_v<Der, TypeList<>>,
     std::type_identity<Acc>,
     DerivNewStates<
@@ -1335,10 +1335,10 @@ struct PushNewStates<SA, EA, TBP, StartState, TypeList<HeadTuple, TailPairs...>>
   using FromState = StartState;
   using ToState = typename HeadTuple::state;
   static constexpr char C = HeadTuple::c;
-  using Action = HeadTuple::action;
+  using Action = typename HeadTuple::action;
   static constexpr bool IsStateNew = !SA::template Contains<ToState>;
-  using NextStateAcc = PushBackUnique<SA, ToState>::type;
-  using NextToBeProcessList = std::conditional_t<IsStateNew, PushBack<TBP, ToState>, std::type_identity<TBP>>::type;
+  using NextStateAcc = typename PushBackUnique<SA, ToState>::type;
+  using NextToBeProcessList = typename std::conditional_t<IsStateNew, PushBack<TBP, ToState>, std::type_identity<TBP>>::type;
   using NextEdgeAcc = typename PushBack<
     EA,
     Edge<
@@ -1365,11 +1365,11 @@ struct BuildTNFA<StateAcc, EdgeAcc, TypeList<>> {
 
 template<typename StateAcc, typename EdgeAcc, typename StateHead, typename... StateTails>
 struct BuildTNFA<StateAcc, EdgeAcc, TypeList<StateHead, StateTails...>> {
-  using NewCharStates = DerivNewStates<TypeList<>, StateHead, typename First<typename StateHead::re, TypeList<>>::type>::type;
+  using NewCharStates = typename DerivNewStates<TypeList<>, StateHead, typename First<typename StateHead::re, TypeList<>>::type>::type;
   using Processed = PushNewStates<StateAcc, EdgeAcc, TypeList<StateTails...>, StateHead, NewCharStates>;
   using NextIt = BuildTNFA<typename Processed::StateAcc, typename Processed::EdgeAcc, typename Processed::ToBeProcessList>;
-  using States = NextIt::States;
-  using Edges = NextIt::Edges;
+  using States = typename NextIt::States;
+  using Edges = typename NextIt::Edges;
 };
 
 template<typename RE>
@@ -1451,7 +1451,7 @@ template<typename EdgeList> struct RemoveConflictEdge {
     static constexpr bool value = IsEdgeNeedRetainImpl<Edge, EdgeList>::value;
   };
 
-  using type = Filter<IsEdgeNeedRetain, EdgeList>::type;
+  using type = typename Filter<IsEdgeNeedRetain, EdgeList>::type;
 };
 
 template<typename StateList> struct BuildAcceptTable;
@@ -1487,7 +1487,7 @@ struct BuildTransActionTable<NrStates, MaxTransActionLength, TypeList<Edges...>>
           ((action_list[idx++] = static_cast<int32_t>(As::i)), ...);
         }(Action{});
       } else {
-        static_assert(!std::is_same<Edges, Edges>::value, "unknown action type");
+        static_assert(!std::is_same<Action, Action>::value, "unknown action type");
       }
     }(Edges{})), ...);
 
@@ -1529,7 +1529,7 @@ struct BuildAcceptActionTable<MaxAcceptActionLength, TypeList<States...>> {
   };
   template<typename HeadAction, typename... TailActions, typename CurLongestAction, size_t CurShortestLen>
   struct LongestAction<TypeList<HeadAction, TailActions...>, CurLongestAction, CurShortestLen> {
-    using type = std::conditional_t<
+    using type = typename std::conditional_t<
       (HeadAction::length > CurShortestLen),
       LongestAction<TypeList<TailActions...>, HeadAction, HeadAction::length>,
       LongestAction<TypeList<TailActions...>, CurLongestAction, CurShortestLen>
@@ -1544,22 +1544,22 @@ template<typename Acc, FixedStringView Pattern, size_t Idx, size_t NrSeenGroup, 
     struct Open {
       static constexpr size_t OpenedIdx = NrSeenGroup;
       template<typename ClosedIdx> struct MapFunc { using type = NumPair<ClosedIdx::value, OpenedIdx>; };
-      using NextAcc = JoinUnique<Acc, typename Map<MapFunc, ClosedGroups>::type>::type;
-      using NextOpeningGroupsIdx = PushFront<OpeningGroupsIdx, Num<OpenedIdx>>::type;
-      using type = MutualGroups<NextAcc, Pattern, Idx + 1, NrSeenGroup + 1, NextOpeningGroupsIdx, ClosedGroups>::type;
+      using NextAcc = typename JoinUnique<Acc, typename Map<MapFunc, ClosedGroups>::type>::type;
+      using NextOpeningGroupsIdx = typename PushFront<OpeningGroupsIdx, Num<OpenedIdx>>::type;
+      using type = typename MutualGroups<NextAcc, Pattern, Idx + 1, NrSeenGroup + 1, NextOpeningGroupsIdx, ClosedGroups>::type;
     };
     struct Close {
       static constexpr size_t ClosedIdx = OpeningGroupsIdx::template At<0>::value;
-      using NextOpeningGroupsIdx = PopFront<OpeningGroupsIdx>::type;
-      using NextClosedGroups = PushBack<ClosedGroups, Num<ClosedIdx>>::type;
-      using type = MutualGroups<Acc, Pattern, Idx + 1, NrSeenGroup, NextOpeningGroupsIdx, NextClosedGroups>::type;
+      using NextOpeningGroupsIdx = typename PopFront<OpeningGroupsIdx>::type;
+      using NextClosedGroups = typename PushBack<ClosedGroups, Num<ClosedIdx>>::type;
+      using type = typename MutualGroups<Acc, Pattern, Idx + 1, NrSeenGroup, NextOpeningGroupsIdx, NextClosedGroups>::type;
     };
     struct Other {
-      using type = MutualGroups<Acc, Pattern, Idx + 1, NrSeenGroup, OpeningGroupsIdx, ClosedGroups>::type;
+      using type = typename MutualGroups<Acc, Pattern, Idx + 1, NrSeenGroup, OpeningGroupsIdx, ClosedGroups>::type;
     };
-    using type = std::conditional_t<Pattern[Idx] == '(', Open, std::conditional_t<Pattern[Idx] == ')', Close, Other>>::type;
+    using type = typename std::conditional_t<Pattern[Idx] == '(', Open, std::conditional_t<Pattern[Idx] == ')', Close, Other>>::type;
   };
-  using type = std::conditional_t<Idx >= Pattern.length, std::type_identity<Acc>, Impl>::type;
+  using type = typename std::conditional_t<Idx >= Pattern.length, std::type_identity<Acc>, Impl>::type;
 };
 
 template<size_t NrGroups, typename MutualPairList> struct BuildMutualTable;
@@ -1686,7 +1686,7 @@ public:
 private:
   using Re = typename impl::RegexScan<Pattern>::type;
   using StateList = impl::tnfa::AllStatesList<Re>;
-  using EdgeList  = impl::tnfa::RemoveConflictEdge<impl::tnfa::AllEdgesList<Re>>::type;
+  using EdgeList  = typename impl::tnfa::RemoveConflictEdge<impl::tnfa::AllEdgesList<Re>>::type;
   static constexpr std::size_t nr_states = StateList::length;
   static constexpr std::size_t nr_used_slots = impl::tnfa::NrUsedSlots<Re>::value;
   static constexpr std::size_t max_trans_action_length = impl::tnfa::MaxTransActionLength<EdgeList>::value;
