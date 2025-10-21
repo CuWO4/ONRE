@@ -43,4 +43,6 @@ void basic_test() {
   test_match_and_log<".">("a", true);
   test_match_and_log<"..">("ab", true);
   test_match_and_log<"..">("a", false);
+  test_match_and_log<".*">("aad12*(1)", true);
+  test_match_and_log<".*">("aad1\n2*(1)", false);
 }

@@ -709,7 +709,11 @@ struct ParseCharGroup {
 };
 
 template<typename Alphabet> struct FullMatch {
-  template<typename X, typename Y> struct BuildOr { using type = Or<X, Y>; };
+  template<typename Char> struct IsLF : std::false_type {};
+  template<> struct IsLF<Char<'\n'>> : std::true_type {};
+  template<typename X, typename Y> struct BuildOr {
+    using type = std::conditional_t<IsLF<X>::value, Y, Or<X, Y>>;
+  };
   using type = typename RightFold<BuildOr, Alphabet, EmptySet>::type;
 };
 
