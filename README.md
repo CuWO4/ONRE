@@ -374,13 +374,25 @@ make test -j20
 
 ## 🔗 Dependencies
 
-Verified supported versions:
+Verified lowest compiler versions:
 
 ## Clang++
 
 Version >= 12
 
-`--std=c++20` or higher (if supported). If recursion depth causes compile failures, add `-fbracket-depth=[A BIG NUMBER] -ftemplate-depth=[A BIG NUMBER]` to allow deeper compile-time recursion.
+`--std=c++20` or higher (if supported).
+
+If recursion depth causes compile failures, add `-fbracket-depth=[A BIG NUMBER] -ftemplate-depth=[A BIG NUMBER]` to allow deeper compile-time recursion.
+
+## g++
+
+Version >= 12
+
+`--std=c++20` or higher (if supported).
+
+If recursion depth causes compile failures, add `-ftemplate-depth=[A BIG NUMBER]` to allow deeper compile-time recursion.
+
+**Note that g++ compiles significantly slower than clang++ when compiling complex patterns.**
 
 ## 😭 Known issues
 

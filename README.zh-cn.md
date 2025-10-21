@@ -357,7 +357,7 @@ make test -j20
 
 ## 🔗 依赖
 
-已验证支持版本:
+已验证的编译器最低版本:
 
 ## Clang++
 
@@ -366,6 +366,16 @@ make test -j20
 `--std=c++20` 或更高 (如果支持).
 
 如果展开深度过深导致编译失败, 添加 `-fbracket-depth=[A BIG NUMBER] -ftemplate-depth=[A BIG NUMBER]`.
+
+## g++
+
+版本 >= 12
+
+`--std=c++20` 或更高 (如果支持).
+
+如果展开深度过深导致编译失败, 添加 `-ftemplate-depth=[A BIG NUMBER]`.
+
+**注意, 编译复杂模式时, g++ 编译速度显著地比 clang++ 慢.**
 
 ## 😭 已知问题
 
