@@ -72,7 +72,7 @@ sys     0m3.850s
 ## 🤔 用法
 
 ```cpp
-#include "regex.hpp"
+#include "onre.hpp"
 #include <string>
 
 void f() {
@@ -89,7 +89,7 @@ void f() {
 在代码的任何位置实例化 `onre::Match` 和 `onre::Replace`, 都会导致编译期展开, 增加编译时间, 即使动态运行时永远不可能运行到. 同一个编译单元中, 相同 pattern 的匹配器只会被实例化一次, 不同编译单元中的匹配器则在每个单元的编译中都会被实例化, 因此把复杂模式的匹配抽象到一个编译单元中会显著降低编译用时.
 
 ```cpp
-#include "regex.hpp"
+#include "onre.hpp"
 
 bool is_valid_email(std::string email) {
   // only compiled once

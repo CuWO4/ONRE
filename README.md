@@ -72,7 +72,7 @@ sys     0m3.850s
 ## 🤔 Usage
 
 ```cpp
-#include "regex.hpp"
+#include "onre.hpp"
 #include <string>
 
 void f() {
@@ -89,7 +89,7 @@ If `onre::Replace` cannot match, the `eval()` result is undefined; if the replac
 Instantiating `onre::Match` or `onre::Replace` anywhere in the code will trigger compile-time expansion and increase compile time even if the instance can never be executed at runtime. The same pattern instantiated multiple times within one translation unit is instantiated only once; different translation units will each instantiate it separately, so moving complex patterns into a single translation unit can greatly reduce compile time.
 
 ```cpp
-#include "regex.hpp"
+#include "onre.hpp"
 
 bool is_valid_email(std::string email) {
   // only compiled once
