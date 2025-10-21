@@ -10,6 +10,7 @@
 #include <string>
 #include <sstream>
 #include <tuple>
+#include <memory>
 
 namespace onre {
 namespace impl {
@@ -1590,18 +1591,17 @@ template<impl::FixedString Pattern>
 class Replace {
 public:
   static std::string eval(std::string_view replace_rule, std::string_view str) noexcept {
-    auto slot_file1 = new_slot_file(), slot_file2 = new_slot_file();
-    std::array<bool, nr_states> active_states1 {}, active_states2 {};
-    active_states1.fill(false); active_states2.fill(false);
-
-    auto* cur_slot_file = &slot_file1, * next_slot_file = &slot_file2;
-    auto* cur_active_state = &active_states1, * next_active_state = &active_states2;
+    auto&& cur_slot_file = new_slot_file(),
+           nxt_slot_file = new_slot_file();
+    auto cur_active_state = std::make_unique<std::array<bool, nr_states>>(),
+         nxt_active_state = std::make_unique<std::array<bool, nr_states>>();
+    cur_active_state->fill(false); nxt_active_state->fill(false);
 
     (*cur_active_state)[0] = true;
     for (size_t idx = 0; idx < str.size(); idx++) {
       char ch = str[idx];
       if (ch == '\0') break;
-      next_active_state->fill(false);
+      nxt_active_state->fill(false);
       for (size_t state = 0; state < nr_states; state++) {
         if (!(*cur_active_state)[state]) continue;
         for (const auto& next_state : trans_table[state][static_cast<size_t>(ch)]) {
@@ -1609,14 +1609,14 @@ public:
           auto next_slot_line = apply_action(
             (*cur_slot_file)[state], trans_action_table[state][static_cast<size_t>(ch)][next_state], idx
           );
-          if (!(*next_active_state)[next_state] || need_change((*next_slot_file)[next_state], next_slot_line)) {
-            (*next_slot_file)[next_state] = next_slot_line;
+          if (!(*nxt_active_state)[next_state] || need_change((*nxt_slot_file)[next_state], next_slot_line)) {
+            (*nxt_slot_file)[next_state] = next_slot_line;
           }
-          (*next_active_state)[next_state] = true;
+          (*nxt_active_state)[next_state] = true;
         }
       }
-      std::swap(cur_slot_file, next_slot_file);
-      std::swap(cur_active_state, next_active_state);
+      std::swap(cur_slot_file, nxt_slot_file);
+      std::swap(cur_active_state, nxt_active_state);
     }
 
     bool is_final_line_updated = false;
@@ -1697,9 +1697,9 @@ private:
 
   using SlotFile = std::array<SlotLine, nr_states>;
 
-  static SlotFile new_slot_file() {
-    SlotFile res {};
-    for (auto& line : res) line.fill(-1);
+  static std::unique_ptr<SlotFile> new_slot_file() {
+    auto res = std::make_unique<SlotFile>();
+    for (auto& line : *res) line.fill(-1);
     return res;
   }
 
