@@ -60,7 +60,7 @@ pattern: (a*)b         pattern_len: 5   replace_rule: $1B      str: aaaaaaa....a
 
 For very long strings, catastrophic backtracking cases, very long patterns, and very complex patterns the engine still reliably achieves O(n) performance; the same test cases on backtracking engines almost always blow up (for example the famous [Cloudflare incident](https://www.reddit.com/r/sysadmin/comments/c8eymj/cloudflare_outage_caused_by_deploying_bad_regular/)).
 
-Compiling all of these (many more than shown; see `{[...]}`) complex patterns is controllable and acceptable:
+Compiling all of these (many more than shown; see `tests/`) complex patterns is controllable and acceptable:
 
 ```sh
 > make clean && time make -j30
