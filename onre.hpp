@@ -187,7 +187,7 @@ struct FixedString {
   char data[N]; /* include '\0' */
 
   constexpr FixedString(const char (&str)[N]) {
-    std::copy_n(str, N, data);
+    for (size_t i = 0; i < N; i++) data[i] = str[i];
   }
 
   constexpr FixedString(const FixedString&) noexcept = default;
@@ -709,9 +709,9 @@ struct ParseCharGroup {
   static constexpr size_t next = chosen::next;
 };
 
+template<typename Char> struct IsLF : std::false_type {};
+template<> struct IsLF<Char<'\n'>> : std::true_type {};
 template<typename Alphabet> struct FullMatch {
-  template<typename Char> struct IsLF : std::false_type {};
-  template<> struct IsLF<Char<'\n'>> : std::true_type {};
   template<typename X, typename Y> struct BuildOr {
     using type = std::conditional_t<IsLF<X>::value, Y, Or<X, Y>>;
   };
