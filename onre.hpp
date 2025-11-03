@@ -1696,34 +1696,29 @@ inline std::string replace(std::string_view replace_rule, std::string_view str) 
 
   std::ostringstream result_buffer;
 
+  auto find_dollar = [](std::string_view str, size_t start_pos) {
+    return std::find(str.begin() + start_pos, str.end(), '$') - str.begin();
+  };
+
   for (size_t idx = 0; idx < replace_rule.size(); idx++) {
-    char ch = replace_rule[idx];
-    if (ch != '$') {
-      result_buffer << ch;
-      continue;
-    }
-    if (idx + 1 >= replace_rule.size()) {
-      return "";
-    }
-    idx++;
-    if (replace_rule[idx] == '$') {
-      result_buffer << '$';
-      continue;
-    } else if (is_digit(replace_rule[idx])) {
+    size_t nxt_dollar_idx = find_dollar(replace_rule, idx);
+    result_buffer.write(replace_rule.data() + idx, nxt_dollar_idx - idx);
+    idx = nxt_dollar_idx;
+    if (idx >= replace_rule.size()) break;
+    if (++idx >= replace_rule.size()) return "";
+    if (replace_rule[idx] == '$') result_buffer << '$';
+    else if (is_digit(replace_rule[idx])) {
       size_t group_idx = replace_rule[idx] - '0';
       while (idx + 1 < replace_rule.size() && is_digit(replace_rule[idx + 1])) {
         idx++;
         group_idx = 10 * group_idx + replace_rule[idx] - '0';
       }
-      if (group_idx >= nr_capture_group) {
-        return "";
-      }
+      if (group_idx >= nr_capture_group) return "";
       int32_t l = open_time(final_line, group_idx), r = close_time(final_line, group_idx);
       if (l < 0 || r < 0) continue;
       result_buffer.write(str.data() + l, r - l);
-    } else {
-      return "";
     }
+    else return "";
   }
 
   return result_buffer.str();
