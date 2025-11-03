@@ -76,24 +76,24 @@ sys     0m3.850s
 #include <string>
 
 void f() {
-  bool result = onre::Match<"((ab)*|c*|b)(@\\.)?">::eval("abab");
-  std::string replaced = onre::Replace<"ab(.*)ab">::eval("$0, $1, $$", "ababab");
+  bool result = onre::match<"((ab)*|c*|b)(@\\.)?">("abab");
+  std::string replaced = onre::replace<"ab(.*)ab">("$0, $1, $$", "ababab");
   // result = true; replaced = "ababab, ab, $"
 }
 ```
 
-`onre::Replace` uses `$N` to refer to the N-th capture group (ordered by the position of the left parenthesis, starting from 1). `$0` denotes the whole string. Use `$$` to represent a literal `$`.
+`onre::replace` uses `$N` to refer to the N-th capture group (ordered by the position of the left parenthesis, starting from 1). `$0` denotes the whole string. Use `$$` to represent a literal `$`.
 
-If `onre::Replace` cannot match, the `eval()` result is undefined; if the replacement rule is invalid, `eval()` returns an empty string. Therefore, for cases where a match might fail, `onre::Match` should be invoked first to check.
+If `onre::replace` cannot match, the result is undefined; if the replacement rule is invalid, `onre::replace` returns an empty string. Therefore, for cases where a match might fail, `onre::match` should be invoked first to check.
 
-Instantiating `onre::Match` or `onre::Replace` anywhere in the code will trigger compile-time expansion and increase compile time even if the instance can never be executed at runtime. The same pattern instantiated multiple times within one translation unit is instantiated only once; different translation units will each instantiate it separately, so moving complex patterns into a single translation unit can greatly reduce compile time.
+Instantiating `onre::match` or `onre::replace` anywhere in the code will trigger compile-time expansion and increase compile time even if the instance can never be executed at runtime. The same pattern instantiated multiple times within one translation unit is instantiated only once; different translation units will each instantiate it separately, so moving complex patterns into a single translation unit can greatly reduce compile time.
 
 ```cpp
 #include "onre.hpp"
 
 bool is_valid_email(std::string email) {
   // only compiled once
-  return onre::Match<"[-a-zA-Z0-9.]+@([-a-zA-Z0-9]+.)+[-a-zA-Z0-9]+">::eval(email);
+  return onre::match<"[-a-zA-Z0-9.]+@([-a-zA-Z0-9]+.)+[-a-zA-Z0-9]+">(email);
 }
 ```
 
@@ -128,8 +128,8 @@ Equivalently:
 Other examples:
 
 ```cpp
-onre::Replace<"((a*)b)*">::eval("$2", "aabb") => "" // aab-()-b
-onre::Replace<"(a|ab)+b">::eval("$1", "abab") => "a" // ab-(a)-b
+onre::replace<"((a*)b)*">("$2", "aabb") => "" // aab-()-b
+onre::replace<"(a|ab)+b">("$1", "abab") => "a" // ab-(a)-b
 ```
 
 ## 🤯 Theoretical Foundation

@@ -76,24 +76,24 @@ sys     0m3.850s
 #include <string>
 
 void f() {
-  bool result = onre::Match<"((ab)*|c*|b)(@\\.)?">::eval("abab");
-  std::string replaced = onre::Replace<"ab(.*)ab">::eval("$0, $1, $$", "ababab");
+  bool result = onre::match<"((ab)*|c*|b)(@\\.)?">("abab");
+  std::string replaced = onre::replace<"ab(.*)ab">("$0, $1, $$", "ababab");
   // result = true; replaced = "ababab, ab, $"
 }
 ```
 
-替换规则中, 使用 `$N` 来引用第 $N$ 个捕获组 (按照捕获组左括号位置排序, 从 1 开始). `$0` 为串本身. 通过 `$$` 来表示 `$`.
+`onre::replace` 中, 使用 `$N` 来引用第 $N$ 个捕获组 (按照捕获组左括号位置排序, 从 1 开始). `$0` 为串本身. 通过 `$$` 来表示 `$`.
 
-若 `onre::Replace` 无法匹配, 则 `eval()`结果是未定义的; 如果替换规则不合法, 则 `eval()` 将会返回空串. 因此, 对于有可能匹配失败的场景, 应该先使用 `onre::Match` 检查是否匹配.
+若 `onre::replace` 无法匹配, 则结果是未定义的; 如果替换规则不合法, 则 `onre::replace` 将会返回空串. 因此, 对于有可能匹配失败的场景, 应该先使用 `onre::match` 检查是否匹配.
 
-在代码的任何位置实例化 `onre::Match` 和 `onre::Replace`, 都会导致编译期展开, 增加编译时间, 即使动态运行时永远不可能运行到. 同一个编译单元中, 相同 pattern 的匹配器只会被实例化一次, 不同编译单元中的匹配器则在每个单元的编译中都会被实例化, 因此把复杂模式的匹配抽象到一个编译单元中会显著降低编译用时.
+在代码的任何位置实例化 `onre::match` 和 `onre::replace`, 都会导致编译期展开, 增加编译时间, 即使动态运行时永远不可能运行到. 同一个编译单元中, 相同 pattern 的匹配器只会被实例化一次, 不同编译单元中的匹配器则在每个单元的编译中都会被实例化, 因此把复杂模式的匹配抽象到一个编译单元中会显著降低编译用时.
 
 ```cpp
 #include "onre.hpp"
 
 bool is_valid_email(std::string email) {
   // only compiled once
-  return onre::Match<"[-a-zA-Z0-9.]+@([-a-zA-Z0-9]+.)+[-a-zA-Z0-9]+">::eval(email);
+  return onre::match<"[-a-zA-Z0-9.]+@([-a-zA-Z0-9]+.)+[-a-zA-Z0-9]+">(email);
 }
 ```
 
@@ -128,8 +128,8 @@ bool is_valid_email(std::string email) {
 其他例子:
 
 ```cpp
-onre::Replace<"((a*)b)*">::eval("$2", "aabb") => "" // aab-()-b
-onre::Replace<"(a|ab)+b">::eval("$1", "abab") => "a" // ab-(a)-b
+onre::replace<"((a*)b)*">("$2", "aabb") => "" // aab-()-b
+onre::replace<"(a|ab)+b">("$1", "abab") => "a" // ab-(a)-b
 ```
 
 ## 🤯 理论基础
