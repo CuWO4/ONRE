@@ -1566,7 +1566,7 @@ template<size_t NrGroups, typename... MutualPairs> struct BuildMutualTable<NrGro
 template<impl::FixedString Pattern>
 inline bool match(std::string_view str) noexcept;
 template<impl::FixedString Pattern>
-inline std::string replace(std::string_view replace_rule, std::string_view str) noexcept;
+class replace;
 
 template<impl::FixedString Pattern>
 inline bool match(std::string_view str) noexcept {
@@ -1589,7 +1589,87 @@ inline bool match(std::string_view str) noexcept {
 }
 
 template<impl::FixedString Pattern>
-inline std::string replace(std::string_view replace_rule, std::string_view str) noexcept {
+class replace {
+public:
+  replace() noexcept {
+    /* empty */
+  }
+
+  std::string operator()(std::string_view replace_rule, std::string_view str) noexcept {
+    SlotFile* cur_slot_file = &slot_file1;
+    SlotFile* nxt_slot_file = &slot_file2;
+    for (auto& line : slot_file1) line.fill(-1);
+    for (auto& line : slot_file2) line.fill(-1);
+    auto* cur_active_state = &active_states1;
+    auto* nxt_active_state = &active_states2;
+    active_states1.fill(false);
+    active_states2.fill(false);
+
+    (*cur_active_state)[0] = true;
+    for (size_t idx = 0; idx < str.size(); idx++) {
+      char ch = str[idx];
+      if (ch == '\0') break;
+      nxt_active_state->fill(false);
+      for (size_t state = 0; state < nr_states; state++) {
+        if (!(*cur_active_state)[state]) continue;
+        for (const auto& next_state : trans_table[state][static_cast<size_t>(ch)]) {
+          if (next_state < 0) break;
+          auto next_slot_line = apply_action(
+            (*cur_slot_file)[state], trans_action_table[state][static_cast<size_t>(ch)][next_state], idx
+          );
+          if (!(*nxt_active_state)[next_state] || need_change((*nxt_slot_file)[next_state], next_slot_line)) {
+            (*nxt_slot_file)[next_state] = next_slot_line;
+          }
+          (*nxt_active_state)[next_state] = true;
+        }
+      }
+      std::swap(cur_slot_file, nxt_slot_file);
+      std::swap(cur_active_state, nxt_active_state);
+    }
+
+    bool is_final_line_updated = false;
+    SlotLine final_line {};
+    for (size_t state = 0; state < nr_states; state++) {
+      if (!(*cur_active_state)[state]) continue;
+      if (!accept_table[state]) continue;
+      auto after_accept = apply_action((*cur_slot_file)[state], accept_action_table[state], str.size());
+      if (!is_final_line_updated || need_change(final_line, after_accept)) {
+        is_final_line_updated = true;
+        final_line = after_accept;
+      }
+    }
+
+    std::ostringstream result_buffer;
+
+    auto find_dollar = [](std::string_view str, size_t start_pos) {
+      return std::find(str.begin() + start_pos, str.end(), '$') - str.begin();
+    };
+
+    for (size_t idx = 0; idx < replace_rule.size(); idx++) {
+      size_t nxt_dollar_idx = find_dollar(replace_rule, idx);
+      result_buffer.write(replace_rule.data() + idx, nxt_dollar_idx - idx);
+      idx = nxt_dollar_idx;
+      if (idx >= replace_rule.size()) break;
+      if (++idx >= replace_rule.size()) return "";
+      if (replace_rule[idx] == '$') result_buffer << '$';
+      else if (is_digit(replace_rule[idx])) {
+        size_t group_idx = replace_rule[idx] - '0';
+        while (idx + 1 < replace_rule.size() && is_digit(replace_rule[idx + 1])) {
+          idx++;
+          group_idx = 10 * group_idx + replace_rule[idx] - '0';
+        }
+        if (group_idx >= nr_capture_group) return "";
+        int32_t l = open_time(final_line, group_idx), r = close_time(final_line, group_idx);
+        if (l < 0 || r < 0) continue;
+        result_buffer.write(str.data() + l, r - l);
+      }
+      else return "";
+    }
+
+    return result_buffer.str();
+  }
+
+private:
   using Re = typename impl::RegexScan<Pattern>::type;
   using StateList = impl::tnfa::AllStatesList<Re>;
   using EdgeList  = typename impl::tnfa::RemoveConflictEdge<impl::tnfa::AllEdgesList<Re>>::type;
@@ -1611,30 +1691,26 @@ inline std::string replace(std::string_view replace_rule, std::string_view str) 
   using SlotLine = std::array<int32_t, nr_used_slots>;
   using SlotFile = std::array<SlotLine, nr_states>;
 
-  #define open_time(line, group_idx) ((line)[(group_idx) << 1])
-  #define close_time(line, group_idx) ((line)[(group_idx) << 1 | 1])
-  #define is_opened(line, group_idx) (open_time((line), (group_idx)) >= 0)
-  #define is_closed(line, group_idx) (close_time((line), (group_idx)) >= 0)
-  #define group_len(line, group_idx) (close_time((line), (group_idx)) - open_time((line), (group_idx)))
+  static auto open_time(const SlotLine& line, size_t group_idx) { return line[group_idx << 1]; }
+  static auto close_time(const SlotLine& line, size_t group_idx) { return line[group_idx << 1 | 1]; }
+  static auto is_opened(const SlotLine& line, size_t group_idx) { return open_time(line, group_idx) >= 0; }
+  static auto is_closed(const SlotLine& line, size_t group_idx) { return close_time(line, group_idx) >= 0; }
+  static auto group_len(const SlotLine& line, size_t group_idx) { return close_time(line, group_idx) - open_time(line, group_idx); }
 
-  static auto is_digit = [](char ch) { return '0' <= ch && ch <= '9'; };
-  static auto new_slot_file = []{
-    auto res = std::make_unique<SlotFile>();
-    for (auto& line : *res) line.fill(-1);
-    return res;
-  };
+  static bool is_digit(char ch) { return '0' <= ch && ch <= '9'; }
 
-  static auto apply_action = []<size_t N>(const SlotLine& old_line, const std::array<int32_t, N>& actions, int32_t p) {
+  template<size_t N>
+  static SlotLine apply_action(const SlotLine& old_line, const std::array<int32_t, N>& actions, int32_t p) {
     SlotLine new_line{old_line};
     for (const auto& action : actions) {
       if (action < 0) break;
       new_line[action] = p;
     }
     return new_line;
-  };
+  }
 
   // heuristically choose a slot configuration to try to get longest match
-  static auto need_change = [](const SlotLine& old_line, const SlotLine& new_line) {
+  static bool need_change(const SlotLine& old_line, const SlotLine& new_line) {
     for (size_t k = 0; k < nr_capture_group; k++) {
       if (!is_opened(old_line, k) && !is_opened(new_line, k)) continue;
       if (is_opened(old_line, k) && !is_opened(new_line, k)) return false;
@@ -1652,77 +1728,11 @@ inline std::string replace(std::string_view replace_rule, std::string_view str) 
       if (open_time(old_line, k) < open_time(new_line, k)) return true;
     }
     return false;
-  };
-
-  auto&& cur_slot_file = new_slot_file(),
-         nxt_slot_file = new_slot_file();
-  auto cur_active_state = std::make_unique<std::array<bool, nr_states>>(),
-       nxt_active_state = std::make_unique<std::array<bool, nr_states>>();
-  cur_active_state->fill(false); nxt_active_state->fill(false);
-
-  (*cur_active_state)[0] = true;
-  for (size_t idx = 0; idx < str.size(); idx++) {
-    char ch = str[idx];
-    if (ch == '\0') break;
-    nxt_active_state->fill(false);
-    for (size_t state = 0; state < nr_states; state++) {
-      if (!(*cur_active_state)[state]) continue;
-      for (const auto& next_state : trans_table[state][static_cast<size_t>(ch)]) {
-        if (next_state < 0) break;
-        auto next_slot_line = apply_action(
-          (*cur_slot_file)[state], trans_action_table[state][static_cast<size_t>(ch)][next_state], idx
-        );
-        if (!(*nxt_active_state)[next_state] || need_change((*nxt_slot_file)[next_state], next_slot_line)) {
-          (*nxt_slot_file)[next_state] = next_slot_line;
-        }
-        (*nxt_active_state)[next_state] = true;
-      }
-    }
-    std::swap(cur_slot_file, nxt_slot_file);
-    std::swap(cur_active_state, nxt_active_state);
   }
 
-  bool is_final_line_updated = false;
-  SlotLine final_line {};
-  for (size_t state = 0; state < nr_states; state++) {
-    if (!(*cur_active_state)[state]) continue;
-    if (!accept_table[state]) continue;
-    auto after_accept = apply_action((*cur_slot_file)[state], accept_action_table[state], str.size());
-    if (!is_final_line_updated || need_change(final_line, after_accept)) {
-      is_final_line_updated = true;
-      final_line = after_accept;
-    }
-  }
-
-  std::ostringstream result_buffer;
-
-  auto find_dollar = [](std::string_view str, size_t start_pos) {
-    return std::find(str.begin() + start_pos, str.end(), '$') - str.begin();
-  };
-
-  for (size_t idx = 0; idx < replace_rule.size(); idx++) {
-    size_t nxt_dollar_idx = find_dollar(replace_rule, idx);
-    result_buffer.write(replace_rule.data() + idx, nxt_dollar_idx - idx);
-    idx = nxt_dollar_idx;
-    if (idx >= replace_rule.size()) break;
-    if (++idx >= replace_rule.size()) return "";
-    if (replace_rule[idx] == '$') result_buffer << '$';
-    else if (is_digit(replace_rule[idx])) {
-      size_t group_idx = replace_rule[idx] - '0';
-      while (idx + 1 < replace_rule.size() && is_digit(replace_rule[idx + 1])) {
-        idx++;
-        group_idx = 10 * group_idx + replace_rule[idx] - '0';
-      }
-      if (group_idx >= nr_capture_group) return "";
-      int32_t l = open_time(final_line, group_idx), r = close_time(final_line, group_idx);
-      if (l < 0 || r < 0) continue;
-      result_buffer.write(str.data() + l, r - l);
-    }
-    else return "";
-  }
-
-  return result_buffer.str();
-}
+  SlotFile slot_file1, slot_file2;
+  std::array<bool, nr_states> active_states1, active_states2;
+};
 
 } /* namespace onre */
 
