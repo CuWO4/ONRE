@@ -71,20 +71,35 @@ sys     0m3.850s
 
 ## 🤔 Usage
 
+Prototype:
+
+```cpp
+template<onre::impl::FixedString Pattern>
+inline bool onre::match(std::string_view str) noexcept;
+
+template<onre::impl::FixedString Pattern>
+class onre::replace;
+std::string onre::replace::operator()(std::string_view replace_rule, std::string_view str) noexcept;
+```
+
+`onre::match` will return whether `str` can be matched by `Pattern`; `onre::replace` is a callable object — if `str` can be matched by `Pattern`, it will return the string obtained after performing replacements according to `replace_rule`. The rule for `replace_rule` is: `$N` denotes the $N$-th capture group (ordered by the position of the left parenthesis, starting from 1); `$0` denotes the string itself; `$$` denotes `$`.
+
+If `onre::replace` cannot match, the result is undefined; if the replacement rule is invalid, `onre::replace` returns an empty string. For scenarios where a match might fail, you should first use `onre::match` to check whether it matches.
+
+Usage example:
+
 ```cpp
 #include "onre.hpp"
 #include <string>
 
 void f() {
   bool result = onre::match<"((ab)*|c*|b)(@\\.)?">("abab");
-  std::string replaced = onre::replace<"ab(.*)ab">("$0, $1, $$", "ababab");
+  std::string replaced = onre::replace<"ab(.*)ab">()("$0, $1, $$", "ababab");
   // result = true; replaced = "ababab, ab, $"
 }
 ```
 
-`onre::replace` uses `$N` to refer to the N-th capture group (ordered by the position of the left parenthesis, starting from 1). `$0` denotes the whole string. Use `$$` to represent a literal `$`.
-
-If `onre::replace` cannot match, the result is undefined; if the replacement rule is invalid, `onre::replace` returns an empty string. Therefore, for cases where a match might fail, `onre::match` should be invoked first to check.
+`onre::match` is thread-safe. Each `onre::replace` instance is thread-safe.
 
 Instantiating `onre::match` or `onre::replace` anywhere in the code will trigger compile-time expansion and increase compile time even if the instance can never be executed at runtime. The same pattern instantiated multiple times within one translation unit is instantiated only once; different translation units will each instantiate it separately, so moving complex patterns into a single translation unit can greatly reduce compile time.
 
@@ -128,8 +143,8 @@ Equivalently:
 Other examples:
 
 ```cpp
-onre::replace<"((a*)b)*">("$2", "aabb") => "" // aab-()-b
-onre::replace<"(a|ab)+b">("$1", "abab") => "a" // ab-(a)-b
+onre::replace<"((a*)b)*">()("$2", "aabb") => "" // aab-()-b
+onre::replace<"(a|ab)+b">()("$1", "abab") => "a" // ab-(a)-b
 ```
 
 ## 🤯 Theoretical Foundation
