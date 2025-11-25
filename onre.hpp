@@ -15,7 +15,8 @@ namespace onre {
 namespace impl {
 
 /* === type list, a linear container of types === */
-template<typename... Ts> struct TypeList {
+template<typename... Ts>
+struct TypeList {
   template<typename T>
   static constexpr bool Contains = (std::is_same_v<T, Ts> || ...);
 
@@ -46,34 +47,42 @@ template<typename... Ts> struct TypeList {
       using Tuple = std::tuple<Ts...>;
       return []<std::size_t... Is>(std::index_sequence<Is...>) {
         return ((!IsLess<std::tuple_element_t<Is + 1, Tuple>,
-                      std::tuple_element_t<Is, Tuple>>::value) && ...);
+          std::tuple_element_t<Is, Tuple>>::value) && ...);
       }(std::make_index_sequence<length - 1>{});
     }
   }();
 };
 
-template<typename T> struct IsTypeList : std::false_type {};
-template<typename... Es> struct IsTypeList<TypeList<Es...>> : std::true_type {};
+template<typename T>
+struct IsTypeList : std::false_type {};
+template<typename... Es>
+struct IsTypeList<TypeList<Es...>> : std::true_type {};
 
-template<typename List1, typename List2> struct CatList;
+template<typename List1, typename List2>
+struct CatList;
 template<typename... Ts1, typename... Ts2>
 struct CatList<TypeList<Ts1...>, TypeList<Ts2...>> {
   using type = TypeList<Ts1..., Ts2...>;
 };
 
-template<typename List, typename T> struct PushFront;
+template<typename List, typename T>
+struct PushFront;
 template<typename... Ts, typename T>
 struct PushFront<TypeList<Ts...>, T> {
   using type = TypeList<T, Ts...>;
 };
 
-template<typename List, typename T> struct PushBack;
+template<typename List, typename T>
+struct PushBack;
 template<typename... Ts, typename T>
 struct PushBack<TypeList<Ts...>, T> {
   using type = TypeList<Ts..., T>;
 };
 
-template<typename List> struct PopFront { using type = List; };
+template<typename List>
+struct PopFront {
+  using type = List;
+};
 template<typename Head, typename... Tails>
 struct PopFront<TypeList<Head, Tails...>> {
   using type = TypeList<Tails...>;
@@ -102,13 +111,15 @@ struct JoinUnique<List1, TypeList<>> {
   using type = List1;
 };
 
-template<template<typename> typename Func, typename List> struct Map;
+template<template<typename> typename Func, typename List>
+struct Map;
 template<template<typename> typename Func, typename... Ts>
 struct Map<Func, TypeList<Ts...>> {
   using type = TypeList<typename Func<Ts>::type...>;
 };
 
-template<template<typename> typename IsKeep, typename List, typename Acc> struct FilterImpl;
+template<template<typename> typename IsKeep, typename List, typename Acc>
+struct FilterImpl;
 template<template<typename> typename IsKeep, typename Head, typename... Tails, typename Acc>
 struct FilterImpl<IsKeep, TypeList<Head, Tails...>, Acc> {
   using type = typename std::conditional_t<
@@ -121,22 +132,38 @@ template<template<typename> typename IsKeep, typename Acc>
 struct FilterImpl<IsKeep, TypeList<>, Acc> {
   using type = Acc;
 };
-template<template<typename> typename IsKeep, typename List> struct Filter {
+template<template<typename> typename IsKeep, typename List>
+struct Filter {
   using type = typename FilterImpl<IsKeep, List, TypeList<>>::type;
 };
 
-template<template<typename, typename> typename MergeFunc, typename List, typename Begin> struct RightFold;
-template<template<typename, typename> typename MergeFunc, typename Head, typename... Tails, typename Begin>
+template<template<typename, typename> typename MergeFunc, typename List, typename Begin>
+struct RightFold;
+template<
+  template<typename, typename> typename MergeFunc,
+  typename Head,
+  typename... Tails,
+  typename Begin
+>
 struct RightFold<MergeFunc, TypeList<Head, Tails...>, Begin> {
-  using type = typename MergeFunc<Head, typename RightFold<MergeFunc, TypeList<Tails...>, Begin>::type>::type;
+  using type = typename MergeFunc<
+    Head, typename RightFold<MergeFunc, TypeList<Tails...>, Begin>::type
+  >::type;
 };
 template<template<typename, typename> typename MergeFunc, typename Begin>
 struct RightFold<MergeFunc, TypeList<>, Begin> {
   using type = Begin;
 };
 
-template<template<typename, typename> typename MergeFunc, typename List, typename Acc> struct LeftFoldImpl;
-template<template<typename, typename> typename MergeFunc, typename Head, typename... Tails, typename Acc>
+template<template<typename, typename> typename MergeFunc, typename List, typename Acc>
+struct LeftFoldImpl;
+template<
+  template<typename, typename>
+  typename MergeFunc,
+  typename Head,
+  typename... Tails,
+  typename Acc
+>
 struct LeftFoldImpl<MergeFunc, TypeList<Head, Tails...>, Acc> {
   using TmpAcc = typename MergeFunc<Acc, Head>::type;
   using type = typename LeftFoldImpl<MergeFunc, TypeList<Tails...>, TmpAcc>::type;
@@ -146,7 +173,8 @@ struct LeftFoldImpl<MergeFunc, TypeList<>, Acc> {
   using type = Acc;
 };
 
-template<template<typename, typename> typename MergeFunc, typename List, typename Begin> struct LeftFold {
+template<template<typename, typename> typename MergeFunc, typename List, typename Begin>
+struct LeftFold {
   using type = typename LeftFoldImpl<MergeFunc, List, Begin>::type;
 };
 
@@ -164,9 +192,12 @@ struct InsertElem<IsLess, TypeList<Head, Tails...>, T> {
     PushFront<typename InsertElem<IsLess, TypeList<Tails...>, T>::type, Head>
   >::type;
 };
-template<template<typename, typename> typename IsLess, typename List> struct InsertSort {
+template<template<typename, typename> typename IsLess, typename List>
+struct InsertSort {
   template<typename Acc, typename Head>
-  struct Merge { using type = typename InsertElem<IsLess, Acc, Head>::type; };
+  struct Merge {
+    using type = typename InsertElem<IsLess, Acc, Head>::type;
+  };
   using type = typename LeftFold<Merge, List, TypeList<>>::type;
 };
 
@@ -195,8 +226,12 @@ struct FixedString {
   constexpr FixedString& operator=(FixedString&&) noexcept = default;
 
   static constexpr size_t length = N - 1;
-  constexpr const char* c_str() const { return data; }
-  constexpr char operator[](size_t i) const { return data[i]; }
+  constexpr const char* c_str() const {
+    return data;
+  }
+  constexpr char operator[](size_t i) const {
+    return data[i];
+  }
 };
 template<size_t N>
 FixedString(const char (&str)[N]) -> FixedString<N>;
@@ -204,24 +239,51 @@ FixedString(const char (&str)[N]) -> FixedString<N>;
 /* === extended regular expression tree representation with zero-width action === */
 struct EmptySet {};
 struct Epsilon {};
-template<char C> struct Char { static constexpr char c = C; };
-template<std::size_t I> struct SetSlot { static constexpr char i = I; };
-template<typename R, typename S> struct Or { using left = R; using right = S; };
-template<typename R, typename S> struct Concat {using left = R; using right = S; };
-template<typename R> struct Closure { using inner = R; };
+template<char C>
+struct Char {
+  static constexpr char c = C;
+};
+template<std::size_t I>
+struct SetSlot {
+  static constexpr char i = I;
+};
+template<typename R, typename S>
+struct Or {
+  using left = R; using right = S;
+};
+template<typename R, typename S>
+struct Concat {
+  using left = R; using right = S;
+};
+template<typename R>
+struct Closure {
+  using inner = R;
+};
 
-template<typename R> struct is_empty_set : std::is_same<R, EmptySet> {};
-template<typename R> struct is_epsilon : std::is_same<R, Epsilon> {};
-template<typename R> struct is_char : std::false_type {};
-template<char C> struct is_char<Char<C>> : std::true_type {};
-template<typename R> struct is_setslot : std::false_type {};
-template<size_t I> struct is_setslot<SetSlot<I>> : std::true_type {};
-template<typename> struct is_or : std::false_type {};
-template<typename L, typename R> struct is_or<Or<L, R>> : std::true_type {};
-template<typename> struct is_concat : std::false_type {};
-template<typename L, typename R> struct is_concat<Concat<L, R>> : std::true_type {};
-template<typename> struct is_closure : std::false_type {};
-template<typename T> struct is_closure<Closure<T>> : std::true_type {};
+template<typename R>
+struct is_empty_set : std::is_same<R, EmptySet> {};
+template<typename R>
+struct is_epsilon : std::is_same<R, Epsilon> {};
+template<typename R>
+struct is_char : std::false_type {};
+template<char C>
+struct is_char<Char<C>> : std::true_type {};
+template<typename R>
+struct is_setslot : std::false_type {};
+template<size_t I>
+struct is_setslot<SetSlot<I>> : std::true_type {};
+template<typename>
+struct is_or : std::false_type {};
+template<typename L, typename R>
+struct is_or<Or<L, R>> : std::true_type {};
+template<typename>
+struct is_concat : std::false_type {};
+template<typename L, typename R>
+struct is_concat<Concat<L, R>> : std::true_type {};
+template<typename>
+struct is_closure : std::false_type {};
+template<typename T>
+struct is_closure<Closure<T>> : std::true_type {};
 
 template<typename T> static constexpr auto is_empty_set_v = is_empty_set<T>::value;
 template<typename T> static constexpr auto is_epsilon_v = is_epsilon<T>::value;
@@ -233,26 +295,47 @@ template<typename T> static constexpr auto is_closure_v = is_closure<T>::value;
 
 
 /* === nullable testing, testing whether epsilon in L(R) === */
-template<typename R> struct Nullable {};
-template<> struct Nullable<EmptySet> : std::false_type {};
-template<> struct Nullable<Epsilon> : std::true_type {};
-template<char C> struct Nullable<Char<C>> : std::false_type {};
-template<size_t I> struct Nullable<SetSlot<I>> : std::true_type {};
-template<typename L, typename R> struct Nullable<Or<L, R>> : std::bool_constant<Nullable<L>::value || Nullable<R>::value> {};
-template<typename L, typename R> struct Nullable<Concat<L, R>> : std::bool_constant<Nullable<L>::value && Nullable<R>::value> {};
-template<typename R> struct Nullable<Closure<R>> : std::true_type {};
+template<typename R>
+struct Nullable {};
+template<>
+struct Nullable<EmptySet> : std::false_type {};
+template<>
+struct Nullable<Epsilon> : std::true_type {};
+template<char C>
+struct Nullable<Char<C>> : std::false_type {};
+template<size_t I>
+struct Nullable<SetSlot<I>> : std::true_type {};
+template<typename L, typename R>
+struct Nullable<Or<L, R>>
+  : std::bool_constant<Nullable<L>::value || Nullable<R>::value> {};
+template<typename L, typename R>
+struct Nullable<Concat<L, R>>
+  : std::bool_constant<Nullable<L>::value && Nullable<R>::value> {};
+template<typename R>
+struct Nullable<Closure<R>> : std::true_type {};
 
 
-/* === First notation, get TypeList<Char...> of possible character occurring in the head of string in RE language === */
+/*                        First notation,                           *
+ * === get TypeList<Char...> of possible character occurring in === *
+ *               the head of string in RE language                  */
 template <typename RE, typename Acc>
 struct First;
-template <typename Acc> struct First<EmptySet, Acc> { using type = Acc; };
-template <typename Acc> struct First<Epsilon, Acc> { using type = Acc; };
+template <typename Acc>
+struct First<EmptySet, Acc> {
+  using type = Acc;
+};
+template <typename Acc>
+struct First<Epsilon, Acc> {
+  using type = Acc;
+};
 template <char C, typename Acc>
 struct First<Char<C>, Acc> {
   using type = typename PushBackUnique<Acc, Char<C>>::type;
 };
-template <size_t I, typename Acc> struct First<SetSlot<I>, Acc> { using type = Acc; };
+template <size_t I, typename Acc>
+struct First<SetSlot<I>, Acc> {
+  using type = Acc;
+};
 template <typename R, typename S, typename Acc>
 struct First<Or<R, S>, Acc> {
   using TmpAcc = typename First<R, Acc>::type;
@@ -267,7 +350,11 @@ struct First<Concat<R, S>, Acc> {
   struct impl_r_non_nullable {
     using type = typename First<R, Acc>::type;
   };
-  using type = typename std::conditional_t<Nullable<R>::value, impl_r_nullable, impl_r_non_nullable>::type;
+  using type = typename std::conditional_t<
+    Nullable<R>::value,
+    impl_r_nullable,
+    impl_r_non_nullable
+  >::type;
 };
 template <typename R, typename Acc>
 struct First<Closure<R>, Acc> {
@@ -276,92 +363,227 @@ struct First<Closure<R>, Acc> {
 
 
 /* === simplify and standard ordering rules, significantly reduce complexity === */
-template<typename R> struct Simplify { using type = R; };
+template<typename R>
+struct Simplify {
+  using type = R;
+};
 /* 0|R <=> R|0 <=> R */
-template<typename R> struct Simplify<Or<EmptySet, R>> { using type = typename Simplify<R>::type; };
-template<typename R> struct Simplify<Or<R, EmptySet>> { using type = typename Simplify<R>::type; };
+template<typename R>
+struct Simplify<Or<EmptySet, R>> {
+  using type = typename Simplify<R>::type;
+};
+template<typename R>
+struct Simplify<Or<R, EmptySet>> {
+  using type = typename Simplify<R>::type;
+};
 /* R|R <=> R */
-template<typename T> struct Simplify<Or<T, T>> { using type = typename Simplify<T>::type; };
-template<> struct Simplify<Or<EmptySet, EmptySet>> { using type = EmptySet; };
+template<typename T>
+struct Simplify<Or<T, T>> {
+  using type = typename Simplify<T>::type;
+};
+template<>
+struct Simplify<Or<EmptySet, EmptySet>> {
+  using type = EmptySet;
+};
 
 /* 0R <=> R0 <=> 0 */
-template<typename R> struct Simplify<Concat<EmptySet, R>> { using type = EmptySet; };
-template<typename L> struct Simplify<Concat<L, EmptySet>> { using type = EmptySet; };
-template<> struct Simplify<Concat<EmptySet, EmptySet>> { using type = EmptySet; };
+template<typename R>
+struct Simplify<Concat<EmptySet, R>> {
+  using type = EmptySet;
+};
+template<typename L>
+struct Simplify<Concat<L, EmptySet>> {
+  using type = EmptySet;
+};
+template<>
+struct Simplify<Concat<EmptySet, EmptySet>> {
+  using type = EmptySet;
+};
 /* eR <=> Re <=> R */
-template<typename R> struct Simplify<Concat<Epsilon, R>> { using type = typename Simplify<R>::type; };
-template<typename L> struct Simplify<Concat<L, Epsilon>> { using type = typename Simplify<L>::type; };
-template<> struct Simplify<Concat<Epsilon, EmptySet>> { using type = EmptySet; };
-template<> struct Simplify<Concat<EmptySet, Epsilon>> { using type = EmptySet; };
-template<> struct Simplify<Concat<Epsilon, Epsilon>> { using type = Epsilon; };
+template<typename R>
+struct Simplify<Concat<Epsilon, R>> {
+  using type = typename Simplify<R>::type;
+};
+template<typename L>
+struct Simplify<Concat<L, Epsilon>> {
+  using type = typename Simplify<L>::type;
+};
+template<>
+struct Simplify<Concat<Epsilon, EmptySet>> {
+  using type = EmptySet;
+};
+template<>
+struct Simplify<Concat<EmptySet, Epsilon>> {
+  using type = EmptySet;
+};
+template<>
+struct Simplify<Concat<Epsilon, Epsilon>> {
+  using type = Epsilon;
+};
 
 /* e* <=> e */
-template<> struct Simplify<Closure<EmptySet>> { using type = Epsilon; };
+template<>
+struct Simplify<Closure<EmptySet>> {
+  using type = Epsilon;
+};
 /* 0* <=> 0 */
-template<> struct Simplify<Closure<Epsilon>> { using type = EmptySet; };
+template<>
+struct Simplify<Closure<Epsilon>> {
+  using type = EmptySet;
+};
 
 /* R** <=> R* */
-template<typename R> struct Simplify<Closure<Closure<R>>> { using type = typename Simplify<Closure<R>>::type; };
+template<typename R>
+struct Simplify<Closure<Closure<R>>> {
+  using type = typename Simplify<Closure<R>>::type;
+};
 
 /* (e|R)* <=> (R|e)* <=> R* */
-template<typename R> struct Simplify<Closure<Or<Epsilon, R>>> { using type = typename Simplify<Closure<R>>::type; };
-template<typename R> struct Simplify<Closure<Or<R, Epsilon>>> { using type = typename Simplify<Closure<R>>::type; };
-template<> struct Simplify<Closure<Or<Epsilon, Epsilon>>> { using type = Epsilon; };
+template<typename R>
+struct Simplify<Closure<Or<Epsilon, R>>> {
+  using type = typename Simplify<Closure<R>>::type;
+};
+template<typename R>
+struct Simplify<Closure<Or<R, Epsilon>>> {
+  using type = typename Simplify<Closure<R>>::type;
+};
+template<>
+struct Simplify<Closure<Or<Epsilon, Epsilon>>> {
+  using type = Epsilon;
+};
 /* e|RR* <=> RR*|e <=> R* */
-template<typename R> struct Simplify<Or<Epsilon, Concat<R, Closure<R>>>> { using type = typename Simplify<Closure<R>>::type; };
-template<typename R> struct Simplify<Or<Concat<R, Closure<R>>, Epsilon>> { using type = typename Simplify<Closure<R>>::type; };
+template<typename R>
+struct Simplify<Or<Epsilon, Concat<R, Closure<R>>>> {
+  using type = typename Simplify<Closure<R>>::type;
+};
+template<typename R>
+struct Simplify<Or<Concat<R, Closure<R>>, Epsilon>> {
+  using type = typename Simplify<Closure<R>>::type;
+};
 /* RR*|R* <=> R*R|R <=> R*|RR* <=> R*|R*R <=> RR* */
-template<typename R> struct Simplify<Or<Concat<R, Closure<R>>, Closure<R>>> { using type = typename Simplify<Concat<R, Closure<R>>>::type; };
-template<typename R> struct Simplify<Or<Concat<Closure<R>, R>, Closure<R>>> { using type = typename Simplify<Concat<R, Closure<R>>>::type; };
-template<typename R> struct Simplify<Or<Closure<R>, Concat<R, Closure<R>>>> { using type = typename Simplify<Concat<R, Closure<R>>>::type; };
-template<typename R> struct Simplify<Or<Closure<R>, Concat<Closure<R>, R>>> { using type = typename Simplify<Concat<R, Closure<R>>>::type; };
+template<typename R>
+struct Simplify<Or<Concat<R, Closure<R>>, Closure<R>>> {
+  using type = typename Simplify<Concat<R, Closure<R>>>::type;
+};
+template<typename R>
+struct Simplify<Or<Concat<Closure<R>, R>, Closure<R>>> {
+  using type = typename Simplify<Concat<R, Closure<R>>>::type;
+};
+template<typename R>
+struct Simplify<Or<Closure<R>, Concat<R, Closure<R>>>> {
+  using type = typename Simplify<Concat<R, Closure<R>>>::type;
+};
+template<typename R>
+struct Simplify<Or<Closure<R>, Concat<Closure<R>, R>>> {
+  using type = typename Simplify<Concat<R, Closure<R>>>::type;
+};
 
 /* standard ordering */
 template<typename A, typename B>
 struct is_less : std::false_type {};
 /* Or < Concat < Closure < EmptySet < Epsilon < Char < SetSlot */
-template <typename R1, typename S1, typename R2, typename S2> struct is_less<Or<R1, S1>, Concat<R2, S2>> : std::true_type {};
-template <typename R1, typename S1, typename R2> struct is_less<Or<R1, S1>, Closure<R2>> : std::true_type {};
-template <typename R, typename S> struct is_less<Or<R, S>, EmptySet> : std::true_type {};
-template <typename R, typename S> struct is_less<Or<R, S>, Epsilon> : std::true_type {};
-template <typename R, typename S, char C> struct is_less<Or<R, S>, Char<C>> : std::true_type {};
-template <typename R, typename S, size_t I> struct is_less<Or<R, S>, SetSlot<I>> : std::true_type {};
-template <typename R1, typename S1, typename R2> struct is_less<Concat<R1, S1>, Closure<R2>> : std::true_type {};
-template <typename R, typename S> struct is_less<Concat<R, S>, EmptySet> : std::true_type {};
-template <typename R, typename S> struct is_less<Concat<R, S>, Epsilon> : std::true_type {};
-template <typename R, typename S, char C> struct is_less<Concat<R, S>, Char<C>> : std::true_type {};
-template <typename R, typename S, size_t I> struct is_less<Concat<R, S>, SetSlot<I>> : std::true_type {};
-template <typename R> struct is_less<Closure<R>, EmptySet> : std::true_type {};
-template <typename R> struct is_less<Closure<R>, Epsilon> : std::true_type {};
-template <typename R, char C> struct is_less<Closure<R>, Char<C>> : std::true_type {};
-template <typename R, size_t I> struct is_less<Closure<R>, SetSlot<I>> : std::true_type {};
-template <> struct is_less<EmptySet, Epsilon> : std::true_type {};
-template <char C> struct is_less<EmptySet, Char<C>> : std::true_type {};
-template <size_t I> struct is_less<EmptySet, SetSlot<I>> : std::true_type {};
-template <char C> struct is_less<Epsilon, Char<C>> : std::true_type {};
-template <size_t I> struct is_less<Epsilon, SetSlot<I>> : std::true_type {};
-template <char C, size_t I> struct is_less<Char<C>, SetSlot<I>> : std::true_type {};
+template <typename R1, typename S1, typename R2, typename S2>
+struct is_less<Or<R1, S1>, Concat<R2, S2>> : std::true_type {};
+template <typename R1, typename S1, typename R2>
+struct is_less<Or<R1, S1>, Closure<R2>> : std::true_type {};
+template <typename R, typename S>
+struct is_less<Or<R, S>, EmptySet> : std::true_type {};
+template <typename R, typename S>
+struct is_less<Or<R, S>, Epsilon> : std::true_type {};
+template <typename R, typename S, char C>
+struct is_less<Or<R, S>, Char<C>> : std::true_type {};
+template <typename R, typename S, size_t I>
+struct is_less<Or<R, S>, SetSlot<I>> : std::true_type {};
+template <typename R1, typename S1, typename R2>
+struct is_less<Concat<R1, S1>, Closure<R2>> : std::true_type {};
+template <typename R, typename S>
+struct is_less<Concat<R, S>, EmptySet> : std::true_type {};
+template <typename R, typename S>
+struct is_less<Concat<R, S>, Epsilon> : std::true_type {};
+template <typename R, typename S, char C>
+struct is_less<Concat<R, S>, Char<C>> : std::true_type {};
+template <typename R, typename S, size_t I>
+struct is_less<Concat<R, S>, SetSlot<I>> : std::true_type {};
+template <typename R>
+struct is_less<Closure<R>, EmptySet> : std::true_type {};
+template <typename R>
+struct is_less<Closure<R>, Epsilon> : std::true_type {};
+template <typename R, char C>
+struct is_less<Closure<R>, Char<C>> : std::true_type {};
+template <typename R, size_t I>
+struct is_less<Closure<R>, SetSlot<I>> : std::true_type {};
+template <>
+struct is_less<EmptySet, Epsilon> : std::true_type {};
+template <char C>
+struct is_less<EmptySet, Char<C>> : std::true_type {};
+template <size_t I>
+struct is_less<EmptySet, SetSlot<I>> : std::true_type {};
+template <char C>
+struct is_less<Epsilon, Char<C>> : std::true_type {};
+template <size_t I>
+struct is_less<Epsilon, SetSlot<I>> : std::true_type {};
+template <char C, size_t I>
+struct is_less<Char<C>, SetSlot<I>> : std::true_type {};
 
 template <char C1, char C2>
-struct is_less<Char<C1>, Char<C2>> { static constexpr bool value = C1 < C2; };
+struct is_less<Char<C1>, Char<C2>> {
+  static constexpr bool value = C1 < C2;
+};
 template <size_t I1, size_t I2>
-struct is_less<SetSlot<I1>, SetSlot<I2>> { static constexpr bool value = I1 < I2; };
+struct is_less<SetSlot<I1>, SetSlot<I2>> {
+  static constexpr bool value = I1 < I2;
+};
 template<typename R1, typename S1, typename R2, typename S2>
-struct is_less<Or<R1, S1>, Or<R2, S2>> { static constexpr bool value = is_less<R1, R2>::value || (!is_less<R1, R2>::value && is_less<S1, S2>::value); };
+struct is_less<Or<R1, S1>, Or<R2, S2>> {
+  static constexpr bool value = is_less<R1, R2>::value
+    || (!is_less<R1, R2>::value && is_less<S1, S2>::value);
+};
 template<typename R1, typename S1, typename R2, typename S2>
-struct is_less<Concat<R1, S1>, Concat<R2, S2>> { static constexpr bool value = is_less<R1, R2>::value || (!is_less<R1, R2>::value && is_less<S1, S2>::value); };
+struct is_less<Concat<R1, S1>, Concat<R2, S2>> {
+  static constexpr bool value = is_less<R1, R2>::value
+    || (!is_less<R1, R2>::value && is_less<S1, S2>::value);
+};
 template<typename R1, typename R2>
-struct is_less<Closure<R1>, Closure<R2>> { static constexpr bool value = is_less<R1, R2>::value; };
+struct is_less<Closure<R1>, Closure<R2>> {
+  static constexpr bool value = is_less<R1, R2>::value;
+};
 
-template<typename R, typename S, typename T> struct Simplify<Or<Or<R, S>, T>> { using type = typename Simplify<Or<R, Or<S, T>>>::type; };
-template<typename R, typename S> struct Simplify<Or<Or<R, S>, Or<R, S>>> { using type = typename Simplify<Or<R, S>>::type; };
-template<typename R, typename S> struct Simplify<Or<Or<R, S>, EmptySet>> { using type = typename Simplify<Or<R, S>>::type; };
-template<typename R, typename S, typename T> struct Simplify<Concat<Concat<R, S>, T>> { using type = typename Simplify<Concat<R, Concat<S, T>>>::type; };
-template<typename R, typename S> struct Simplify<Concat<Concat<R, S>, EmptySet>> { using type = EmptySet; };
-template<typename R, typename S> struct Simplify<Concat<Concat<R, S>, Epsilon>> { using type = typename Simplify<Concat<R, S>>::type; };
-template<typename R> struct Simplify<Concat<Closure<R>, R>> { using type = typename Simplify<Concat<R, Closure<R>>>::type; };
-template<typename R> struct Simplify<Concat<Closure<R>, Epsilon>> { using type = typename Simplify<Closure<R>>::type; };
-template<typename R> struct Simplify<Concat<Closure<R>, EmptySet>> { using type = EmptySet; };
+template<typename R, typename S, typename T>
+struct Simplify<Or<Or<R, S>, T>> {
+  using type = typename Simplify<Or<R, Or<S, T>>>::type;
+};
+template<typename R, typename S>
+struct Simplify<Or<Or<R, S>, Or<R, S>>> {
+  using type = typename Simplify<Or<R, S>>::type;
+};
+template<typename R, typename S>
+struct Simplify<Or<Or<R, S>, EmptySet>> {
+  using type = typename Simplify<Or<R, S>>::type;
+};
+template<typename R, typename S, typename T>
+struct Simplify<Concat<Concat<R, S>, T>> {
+  using type = typename Simplify<Concat<R, Concat<S, T>>>::type;
+};
+template<typename R, typename S>
+struct Simplify<Concat<Concat<R, S>, EmptySet>> {
+  using type = EmptySet;
+};
+template<typename R, typename S>
+struct Simplify<Concat<Concat<R, S>, Epsilon>> {
+  using type = typename Simplify<Concat<R, S>>::type;
+};
+template<typename R>
+struct Simplify<Concat<Closure<R>, R>> {
+  using type = typename Simplify<Concat<R, Closure<R>>>::type;
+};
+template<typename R>
+struct Simplify<Concat<Closure<R>, Epsilon>> {
+  using type = typename Simplify<Closure<R>>::type;
+};
+template<typename R>
+struct Simplify<Concat<Closure<R>, EmptySet>> {
+  using type = EmptySet;
+};
 
 /* recursive */
 template<typename Expr, typename Simplified, bool IsSame>
@@ -427,8 +649,10 @@ template <char Start, char End>
 struct BuildCharList {
   static_assert(Start <= End, "invalid char range");
 
-  template <typename Indices> struct Impl;
-  template <size_t... Is> struct Impl<std::index_sequence<Is...>> {
+  template <typename Indices>
+  struct Impl;
+  template <size_t... Is>
+  struct Impl<std::index_sequence<Is...>> {
     using type = TypeList<Char<Start + Is>...>;
   };
 
@@ -456,19 +680,31 @@ using Alphabet = typename BuildCharList<visible_ascii_start, visible_ascii_end>:
 */
 
 /* forward declarations */
-template<FixedString Pattern, size_t Pos, size_t CapIdx> struct ParseRegex;
-template<FixedString Pattern, size_t Pos, size_t CapIdx> struct ParseTerm;
-template<FixedString Pattern, size_t Pos, size_t CapIdx> struct ParseFactor;
-template<FixedString Pattern, size_t Pos, size_t CapIdx> struct ParseAtom;
-template<FixedString Pattern, size_t Pos> struct ParseCharGroup;
-template<FixedString Pattern, size_t Pos> struct ParseCharSet;
-template<FixedString Pattern, size_t Pos> struct ParseCharSetAtom;
-template<FixedString Pattern, size_t Pos> struct ParseCHAR;
-template<FixedString Pattern, size_t Pos> struct ParseEscape;
+template<FixedString Pattern, size_t Pos, size_t CapIdx>
+struct ParseRegex;
+template<FixedString Pattern, size_t Pos, size_t CapIdx>
+struct ParseTerm;
+template<FixedString Pattern, size_t Pos, size_t CapIdx>
+struct ParseFactor;
+template<FixedString Pattern, size_t Pos, size_t CapIdx>
+struct ParseAtom;
+template<FixedString Pattern, size_t Pos>
+struct ParseCharGroup;
+template<FixedString Pattern, size_t Pos>
+struct ParseCharSet;
+template<FixedString Pattern, size_t Pos>
+struct ParseCharSetAtom;
+template<FixedString Pattern, size_t Pos>
+struct ParseCHAR;
+template<FixedString Pattern, size_t Pos>
+struct ParseEscape;
 
 template<typename CharList>
 struct CharListToOrSequential {
-  template<typename X, typename Y> struct BuildOr { using type = Or<X, Y>; };
+  template<typename X, typename Y>
+  struct BuildOr {
+    using type = Or<X, Y>;
+  };
   using type = typename RightFold<BuildOr, CharList, EmptySet>::type;
 };
 
@@ -481,7 +717,8 @@ struct CharListNegation {
   using type = typename Filter<NotInList, Alphabet>::type;
 };
 
-template<FixedString Pattern, size_t Pos, int64_t Acc = 0> struct ParseDecimal {
+template<FixedString Pattern, size_t Pos, int64_t Acc = 0>
+struct ParseDecimal {
   struct is_digit_impl {
     using next_parse = ParseDecimal<Pattern, Pos + 1, 10 * Acc + (Pattern[Pos] - '0')>;
     static constexpr int64_t value = next_parse::value;
@@ -500,7 +737,8 @@ template<FixedString Pattern, size_t Pos, int64_t Acc = 0> struct ParseDecimal {
   static constexpr size_t next = chosen::next;
 };
 
-template<FixedString Pattern, size_t Pos, size_t N, int64_t Acc = 0> struct ParseHexN {
+template<FixedString Pattern, size_t Pos, size_t N, int64_t Acc = 0>
+struct ParseHexN {
   struct is_digit_impl {
     static constexpr char ch = Pattern[Pos];
     static constexpr int64_t digit_value = (ch >= '0' && ch <= '9')
@@ -542,45 +780,60 @@ using WordList = JoinUnique<
     typename PushBack<typename BuildCharList<'0', '9'>::type, Char<'_'>>::type
   >::type
 >::type;
-template<FixedString Pattern, size_t Pos> struct EscapeImpl<'w', Pattern, Pos> {
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'w', Pattern, Pos> {
   using type = CharListToOrSequential<WordList>::type;
   static constexpr size_t next = Pos + 2;
 };
-template<FixedString Pattern, size_t Pos> struct EscapeImpl<'W', Pattern, Pos> {
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'W', Pattern, Pos> {
   using type = CharListToOrSequential<typename CharListNegation<WordList, Alphabet>::type>::type;
   static constexpr size_t next = Pos + 2;
 };
 using DigitList = BuildCharList<'0', '9'>::type;
-template<FixedString Pattern, size_t Pos> struct EscapeImpl<'d', Pattern, Pos> {
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'d', Pattern, Pos> {
   using type = CharListToOrSequential<DigitList>::type;
   static constexpr size_t next = Pos + 2;
 };
-template<FixedString Pattern, size_t Pos> struct EscapeImpl<'D', Pattern, Pos> {
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'D', Pattern, Pos> {
   using type = CharListToOrSequential<typename CharListNegation<DigitList, Alphabet>::type>::type;
   static constexpr size_t next = Pos + 2;
 };
-using WhitespaceList = TypeList<Char<' '>, Char<'\t'>, Char<'\x0B'>, Char<'\n'>, Char<'\f'>, Char<'\r'>>;
-template<FixedString Pattern, size_t Pos> struct EscapeImpl<'s', Pattern, Pos> {
+using WhitespaceList = TypeList<
+  Char<' '>, Char<'\t'>, Char<'\x0B'>, Char<'\n'>, Char<'\f'>, Char<'\r'>
+>;
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'s', Pattern, Pos> {
   using type = CharListToOrSequential<WhitespaceList>::type;
   static constexpr size_t next = Pos + 2;
 };
-template<FixedString Pattern, size_t Pos> struct EscapeImpl<'S', Pattern, Pos> {
-  using type = CharListToOrSequential<typename CharListNegation<WhitespaceList, Alphabet>::type>::type;
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'S', Pattern, Pos> {
+  using type = CharListToOrSequential<
+    typename CharListNegation<WhitespaceList, Alphabet>::type
+  >::type;
   static constexpr size_t next = Pos + 2;
 };
-template<FixedString Pattern, size_t Pos> struct EscapeImpl<'n', Pattern, Pos> {
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'n', Pattern, Pos> {
   using type = Char<'\n'>; static constexpr size_t next = Pos + 2;
 };
-template<FixedString Pattern, size_t Pos> struct EscapeImpl<'t', Pattern, Pos> {
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'t', Pattern, Pos> {
   using type = Char<'\t'>; static constexpr size_t next = Pos + 2;
 };
-template<FixedString Pattern, size_t Pos> struct EscapeImpl<'f', Pattern, Pos> {
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'f', Pattern, Pos> {
   using type = Char<'\f'>; static constexpr size_t next = Pos + 2;
 };
-template<FixedString Pattern, size_t Pos> struct EscapeImpl<'r', Pattern, Pos> {
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'r', Pattern, Pos> {
   using type = Char<'\r'>; static constexpr size_t next = Pos + 2;
 };
-template<FixedString Pattern, size_t Pos> struct EscapeImpl<'x', Pattern, Pos> {
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'x', Pattern, Pos> {
   static_assert(
     Pos + 2 < Pattern.length && (
       (Pattern[Pos + 2] >= '0' && Pattern[Pos + 2] <= '9')
@@ -635,7 +888,8 @@ struct ParseCharSetAtom {
   static_assert(is_in_class_char(Pattern[Pos]), "ParseCharSetAtom: unknown character");
 
   struct impl_seq {
-    static_assert(Pos + 2 < Pattern.length && is_in_class_char(Pattern[Pos + 2]), "ParseCharSetAtom: `-` has no ending");
+    static_assert(Pos + 2 < Pattern.length && is_in_class_char(Pattern[Pos + 2]),
+      "ParseCharSetAtom: `-` has no ending");
     using type = typename BuildCharList<Pattern[Pos], Pattern[Pos + 2]>::type;
     static constexpr size_t next = Pos + 3;
   };
@@ -653,7 +907,11 @@ struct ParseCharSetAtom {
 
   static constexpr bool is_escape = Pattern[Pos] == '\\';
   static constexpr bool has_hyphen = Pos + 1 < Pattern.length && Pattern[Pos + 1] == '-';
-  using chosen = std::conditional_t<is_escape, impl_escape, std::conditional_t<has_hyphen, impl_seq, impl_char>>;
+  using chosen = std::conditional_t<
+    is_escape,
+    impl_escape,
+    std::conditional_t<has_hyphen, impl_seq, impl_char>
+  >;
   using type = typename chosen::type;
   static constexpr size_t next = chosen::next;
 };
@@ -662,7 +920,8 @@ struct ParseCharSetAtom {
 template<FixedString Pattern, size_t Pos>
 struct ParseCharSet {
   using CharSetAtom = ParseCharSetAtom<Pattern, Pos>;
-  static_assert(CharSetAtom::next <= Pattern.length, "ParseCharSet: char set atom parsing overflow");
+  static_assert(CharSetAtom::next <= Pattern.length,
+    "ParseCharSet: char set atom parsing overflow");
 
   struct impl_run_on {
     using Next = ParseCharSet<Pattern, CharSetAtom::next>;
@@ -676,7 +935,8 @@ struct ParseCharSet {
     static constexpr size_t next = CharSetAtom::next;
   };
 
-  static constexpr bool run_on = CharSetAtom::next < Pattern.length && is_in_class_char(Pattern[CharSetAtom::next]);
+  static constexpr bool run_on = CharSetAtom::next < Pattern.length
+    && is_in_class_char(Pattern[CharSetAtom::next]);
   using chosen = std::conditional_t<run_on, impl_run_on, impl_stop>;
   using type = typename chosen::type;
   static constexpr size_t next = chosen::next;
@@ -688,7 +948,8 @@ struct ParseCharGroup {
   struct impl_pos {
     using CharSet = ParseCharSet<Pattern, Pos + 1>;
     static_assert(CharSet::next <= Pattern.length, "ParseCharGroup: char set parsing overflow");
-    static_assert(CharSet::next < Pattern.length && Pattern[CharSet::next] == ']', "ParseCharGroup: ']' not closed");
+    static_assert(CharSet::next < Pattern.length && Pattern[CharSet::next] == ']',
+      "ParseCharGroup: ']' not closed");
     using type = typename CharListToOrSequential<typename CharSet::type>::type;
     static constexpr size_t next = CharSet::next + 1;
   };
@@ -696,7 +957,8 @@ struct ParseCharGroup {
   struct impl_neg {
     using CharSet = ParseCharSet<Pattern, Pos + 2>;
     static_assert(CharSet::next <= Pattern.length, "ParseCharGroup: char set parsing overflow");
-    static_assert(CharSet::next < Pattern.length && Pattern[CharSet::next] == ']', "ParseCharGroup: ']' not closed");
+    static_assert(CharSet::next < Pattern.length && Pattern[CharSet::next] == ']',
+      "ParseCharGroup: ']' not closed");
     using NegCharList = typename CharListNegation<typename CharSet::type, Alphabet>::type;
     using type = typename CharListToOrSequential<NegCharList>::type;
     static constexpr size_t next = CharSet::next + 1;
@@ -708,10 +970,14 @@ struct ParseCharGroup {
   static constexpr size_t next = chosen::next;
 };
 
-template<typename Char> struct IsLF : std::false_type {};
-template<> struct IsLF<Char<'\n'>> : std::true_type {};
-template<typename Alphabet> struct FullMatch {
-  template<typename X, typename Y> struct BuildOr {
+template<typename Char>
+struct IsLF : std::false_type {};
+template<>
+struct IsLF<Char<'\n'>> : std::true_type {};
+template<typename Alphabet>
+struct FullMatch {
+  template<typename X, typename Y>
+  struct BuildOr {
     using type = std::conditional_t<IsLF<X>::value, Y, Or<X, Y>>;
   };
   using type = typename RightFold<BuildOr, Alphabet, EmptySet>::type;
@@ -733,7 +999,10 @@ struct ParseAtom {
     static_assert(Regex::next <= Pattern.length, "ParseAtom: regex parse overflow");
     static_assert(Regex::next < Pattern.length && Pattern[Regex::next] == ')',
       "ParseAtom impl_paren: missing closing ')' in pattern");
-    using type = Concat<SetSlot<2 * CapIdx>, Concat<typename Regex::type, SetSlot<2 * CapIdx + 1>>>;
+    using type = Concat<
+      SetSlot<2 * CapIdx>,
+      Concat<typename Regex::type, SetSlot<2 * CapIdx + 1>>
+    >;
     static constexpr size_t next = Regex::next + 1;
     static constexpr size_t next_cap_idx = Regex::next_cap_idx;
   };
@@ -781,19 +1050,25 @@ struct ParseAtom {
   static constexpr size_t next_cap_idx = chosen::next_cap_idx;
 };
 
-template<typename AtomType, int64_t Min, int64_t Max> struct BuildQuantifier {
+template<typename AtomType, int64_t Min, int64_t Max>
+struct BuildQuantifier {
   using type = Concat<AtomType, typename BuildQuantifier<AtomType, Min - 1, Max - 1>::type>;
 };
-template<typename AtomType, int64_t Max> struct BuildQuantifier<AtomType, 0, Max> {
+template<typename AtomType, int64_t Max>
+struct BuildQuantifier<AtomType, 0, Max> {
   struct inf {
     using type = Closure<AtomType>;
   };
   struct non_inf {
-    using type = Or<Epsilon, Concat<AtomType, typename BuildQuantifier<AtomType, 0, Max - 1>::type>>;
+    using type = Or<
+      Epsilon,
+      Concat<AtomType, typename BuildQuantifier<AtomType, 0, Max - 1>::type>
+    >;
   };
   using type = typename std::conditional_t<Max < 0, inf, non_inf>::type;
 };
-template<typename AtomType> struct BuildQuantifier<AtomType, 0, 0> {
+template<typename AtomType>
+struct BuildQuantifier<AtomType, 0, 0> {
   using type = Epsilon;
 };
 
@@ -826,7 +1101,8 @@ struct ParseFactor {
     static_assert(Atom::next + 1 < Pattern.length, "ParseFactor: incomplete quantifier");
     using ParseMin = ParseDecimal<Pattern, Atom::next + 1>;
     static constexpr int64_t Min = Pattern[Atom::next + 1] == ',' ? 0 : ParseMin::value;
-    static_assert(ParseMin::next < Pattern.length && (Pattern[ParseMin::next] == ',' || Pattern[ParseMin::next] == '}'),
+    static_assert(ParseMin::next < Pattern.length
+      && (Pattern[ParseMin::next] == ',' || Pattern[ParseMin::next] == '}'),
       "ParseFactor: incomplete quantifier");
     struct single_num {
       static constexpr int64_t Max = Min;
@@ -931,19 +1207,29 @@ struct ParseRegex {
 template<FixedString Pattern>
 struct RegexScan {
   using Parse = ParseRegex<Pattern, 0, 1>;
-  using type = typename Simplify<Concat<SetSlot<0>, Concat<typename Parse::type, SetSlot<1>>>>::type;
-  static_assert(Parse::next == Pattern.length, "RegexScan: pattern not fully consumed or contains unexpected trailing characters");
+  using type = typename Simplify<
+    Concat<SetSlot<0>, Concat<typename Parse::type, SetSlot<1>>>
+  >::type;
+  static_assert(Parse::next == Pattern.length,
+    "RegexScan: pattern not fully consumed or contains unexpected trailing characters");
 };
 
 /* for fast O(|s|) bool matching with little O(1) */
 namespace dfa {
 
 /* === classic brzozowski derivative === */
-template<typename R, char C> struct Derivative;
+template<typename R, char C>
+struct Derivative;
 /* d0/dc = 0 */
-template<char C> struct Derivative<EmptySet, C> { using type = EmptySet; };
+template<char C>
+struct Derivative<EmptySet, C> {
+  using type = EmptySet;
+};
 /* de/dc = 0 */
-template<char C> struct Derivative<Epsilon, C> { using type = EmptySet; };
+template<char C>
+struct Derivative<Epsilon, C> {
+  using type = EmptySet;
+};
 /* dx/dc = x == c ? e : 0 */
 template<char X, char C>
 struct Derivative<Char<X>, C> {
@@ -952,7 +1238,9 @@ struct Derivative<Char<X>, C> {
 /* d(R|S)/dc = dR/dc | dS/dc */
 template<typename R, typename S, char C>
 struct Derivative<Or<R, S>, C> {
-  using type = typename Simplify<Or<typename Derivative<R, C>::type, typename Derivative<S, C>::type>>::type;
+  using type = typename Simplify<
+    Or<typename Derivative<R, C>::type, typename Derivative<S, C>::type>
+  >::type;
 };
 /* d(RS)/dc = dR/dc S | (delta(R) ? dS/dc : 0)*/
 template<typename L, typename R, char C>
@@ -973,22 +1261,38 @@ struct Derivative<Closure<R>, C> {
 
 
 /* === DFA builder === */
-template<typename R> struct RemoveAllAction;
-template<> struct RemoveAllAction<EmptySet> { using type = EmptySet; };
-template<> struct RemoveAllAction<Epsilon> { using type = Epsilon; };
-template<char C> struct RemoveAllAction<Char<C>> { using type = Char<C>; };
-template<size_t I> struct RemoveAllAction<SetSlot<I>> { using type = Epsilon; };
-template<typename L, typename R> struct RemoveAllAction<Or<L, R>> {
+template<typename R>
+struct RemoveAllAction;
+template<>
+struct RemoveAllAction<EmptySet> {
+  using type = EmptySet;
+};
+template<>
+struct RemoveAllAction<Epsilon> {
+  using type = Epsilon;
+};
+template<char C>
+struct RemoveAllAction<Char<C>> {
+  using type = Char<C>;
+};
+template<size_t I>
+struct RemoveAllAction<SetSlot<I>> {
+  using type = Epsilon;
+};
+template<typename L, typename R>
+struct RemoveAllAction<Or<L, R>> {
   using type = typename Simplify<
     Or<typename RemoveAllAction<L>::type, typename RemoveAllAction<R>::type>
   >::type;
 };
-template<typename L, typename R> struct RemoveAllAction<Concat<L, R>> {
+template<typename L, typename R>
+struct RemoveAllAction<Concat<L, R>> {
   using type = typename Simplify<
     Concat<typename RemoveAllAction<L>::type, typename RemoveAllAction<R>::type>
   >::type;
 };
-template<typename R> struct RemoveAllAction<Closure<R>> : std::true_type {
+template<typename R>
+struct RemoveAllAction<Closure<R>> : std::true_type {
   using type = typename Simplify<
     Closure<typename RemoveAllAction<R>::type>
   >::type;
@@ -1013,8 +1317,10 @@ struct CharStatePair {
   using state = State;
 };
 
-template<typename CharStatePairAcc, typename State, typename Alphabet> struct DerivNewStates;
-template<typename Acc, typename S> struct DerivNewStates<Acc, S, TypeList<>> {
+template<typename CharStatePairAcc, typename State, typename Alphabet>
+struct DerivNewStates;
+template<typename Acc, typename S>
+struct DerivNewStates<Acc, S, TypeList<>> {
   using type = Acc;
 };
 template<typename Acc, typename S, char C, typename... Tails>
@@ -1031,7 +1337,13 @@ struct DerivNewStates<Acc, S, TypeList<Char<C>, Tails...>> {
   >::type;
 };
 
-template<typename StateAcc, typename EdgeAcc, typename ToBeProcessList, typename StartState, typename NewCharStates>
+template<
+  typename StateAcc,
+  typename EdgeAcc,
+  typename ToBeProcessList,
+  typename StartState,
+  typename NewCharStates
+>
 struct PushNewStates;
 template<typename SA, typename EA, typename TBP, typename StartState>
 struct PushNewStates<SA, EA, TBP, StartState, TypeList<>> {
@@ -1039,14 +1351,25 @@ struct PushNewStates<SA, EA, TBP, StartState, TypeList<>> {
   using EdgeAcc = EA;
   using ToBeProcessList = TBP;
 };
-template<typename SA, typename EA, typename TBP, typename StartState, typename HeadPair, typename... TailPairs>
+template<
+  typename SA,
+  typename EA,
+  typename TBP,
+  typename StartState,
+  typename HeadPair,
+  typename... TailPairs
+>
 struct PushNewStates<SA, EA, TBP, StartState, TypeList<HeadPair, TailPairs...>> {
   using FromState = StartState;
   using ToState = typename HeadPair::state;
   static constexpr char C = HeadPair::c;
   static constexpr bool IsStateNew = !SA::template Contains<ToState>;
   using NextStateAcc = typename PushBackUnique<SA, ToState>::type;
-  using NextToBeProcessList = typename std::conditional_t<IsStateNew, PushBack<TBP, ToState>, std::type_identity<TBP>>::type;
+  using NextToBeProcessList = typename std::conditional_t<
+    IsStateNew,
+    PushBack<TBP, ToState>,
+    std::type_identity<TBP>
+  >::type;
   using NextEdgeAcc = typename PushBack<
     EA,
     Edge<
@@ -1055,22 +1378,44 @@ struct PushNewStates<SA, EA, TBP, StartState, TypeList<HeadPair, TailPairs...>> 
       NextStateAcc::template IndexOf<ToState>
     >
   >::type;
-  using NextIt = PushNewStates<NextStateAcc, NextEdgeAcc, NextToBeProcessList, StartState, TypeList<TailPairs...>>;
+  using NextIt = PushNewStates<
+    NextStateAcc,
+    NextEdgeAcc,
+    NextToBeProcessList,
+    StartState,
+    TypeList<TailPairs...>
+  >;
   using StateAcc = typename NextIt::StateAcc;
   using EdgeAcc = typename NextIt::EdgeAcc;
   using ToBeProcessList = typename NextIt::ToBeProcessList;
 };
 
-template<typename StateAcc, typename EdgeAcc, typename ToBeProcessList> struct BuildDFA;
-template<typename StateAcc, typename EdgeAcc> struct BuildDFA<StateAcc, EdgeAcc, TypeList<>> {
+template<typename StateAcc, typename EdgeAcc, typename ToBeProcessList>
+struct BuildDFA;
+template<typename StateAcc, typename EdgeAcc>
+struct BuildDFA<StateAcc, EdgeAcc, TypeList<>> {
   using States = StateAcc;
   using Edges = EdgeAcc;
 };
 template<typename StateAcc, typename EdgeAcc, typename StateHead, typename... StateTails>
 struct BuildDFA<StateAcc, EdgeAcc, TypeList<StateHead, StateTails...>> {
-  using NewCharStates = typename DerivNewStates<TypeList<>, StateHead, typename First<typename StateHead::re, TypeList<>>::type>::type;
-  using Processed = PushNewStates<StateAcc, EdgeAcc, TypeList<StateTails...>, StateHead, NewCharStates>;
-  using NextIt = BuildDFA<typename Processed::StateAcc, typename Processed::EdgeAcc, typename Processed::ToBeProcessList>;
+  using NewCharStates = typename DerivNewStates<
+    TypeList<>,
+    StateHead,
+    typename First<typename StateHead::re, TypeList<>>::type
+  >::type;
+  using Processed = PushNewStates<
+    StateAcc,
+    EdgeAcc,
+    TypeList<StateTails...>,
+    StateHead,
+    NewCharStates
+  >;
+  using NextIt = BuildDFA<
+    typename Processed::StateAcc,
+    typename Processed::EdgeAcc,
+    typename Processed::ToBeProcessList
+  >;
   using States = typename NextIt::States;
   using Edges = typename NextIt::Edges;
 };
@@ -1122,71 +1467,153 @@ struct BuildAccepts<TypeList<Ss...>> {
  */
 
 /* === action algebra === */
-struct Omega { static constexpr size_t length = 0;};
-template<size_t I> struct Set { static constexpr size_t i = I, length = 1; };
-template<typename... As> struct Seq { static constexpr size_t length = (As::length + ...); };
+struct Omega {
+  static constexpr size_t length = 0;
+};
+template<size_t I>
+struct Set {
+  static constexpr size_t i = I, length = 1;
+};
+template<typename... As>
+struct Seq {
+  static constexpr size_t length = (As::length + ...);
+};
 
-template<typename A> struct is_omega : std::false_type {};
-template<> struct is_omega<Omega> : std::true_type {};
-template<typename A> struct is_set : std::false_type {};
-template<size_t I> struct is_set<Set<I>> : std::true_type {};
-template<typename A> struct is_seq : std::false_type {};
-template<typename... As> struct is_seq<Seq<As...>> : std::true_type {};
+template<typename A>
+struct is_omega : std::false_type {};
+template<>
+struct is_omega<Omega> : std::true_type {};
+template<typename A>
+struct is_set : std::false_type {};
+template<size_t I>
+struct is_set<Set<I>> : std::true_type {};
+template<typename A>
+struct is_seq : std::false_type {};
+template<typename... As>
+struct is_seq<Seq<As...>> : std::true_type {};
 
-template<typename A1, typename A2> struct CatAction;
-template<> struct CatAction<Omega, Omega> { using type = Omega; };
-template<size_t I> struct CatAction<Omega, Set<I>> { using type = Set<I>; };
-template<typename... As> struct CatAction<Omega, Seq<As...>> { using type = Seq<As...>; };
-template<size_t I> struct CatAction<Set<I>, Omega> { using type = Set<I>; };
-template<size_t I1, size_t I2> struct CatAction<Set<I1>, Set<I2>> { using type = Seq<Set<I1>, Set<I2>>; };
-template<size_t I, typename... As> struct CatAction<Set<I>, Seq<As...>> { using type = Seq<Set<I>, As...>; };
-template<typename... As> struct CatAction<Seq<As...>, Omega> { using type = Seq<As...>; };
-template<typename... As, size_t I> struct CatAction<Seq<As...>, Set<I>> { using type = Seq<As..., Set<I>>; };
-template<typename... As1, typename... As2> struct CatAction<Seq<As1...>, Seq<As2...>> { using type = Seq<As1..., As2...>; };
+template<typename A1, typename A2>
+struct CatAction;
+template<>
+struct CatAction<Omega, Omega> {
+  using type = Omega;
+};
+template<size_t I>
+struct CatAction<Omega, Set<I>> {
+  using type = Set<I>;
+};
+template<typename... As>
+struct CatAction<Omega, Seq<As...>> {
+  using type = Seq<As...>;
+};
+template<size_t I>
+struct CatAction<Set<I>, Omega> {
+  using type = Set<I>;
+};
+template<size_t I1, size_t I2>
+struct CatAction<Set<I1>, Set<I2>> {
+  using type = Seq<Set<I1>, Set<I2>>;
+};
+template<size_t I, typename... As>
+struct CatAction<Set<I>, Seq<As...>> {
+  using type = Seq<Set<I>, As...>;
+};
+template<typename... As>
+struct CatAction<Seq<As...>, Omega> {
+  using type = Seq<As...>;
+};
+template<typename... As, size_t I>
+struct CatAction<Seq<As...>, Set<I>> {
+  using type = Seq<As..., Set<I>>;
+};
+template<typename... As1, typename... As2>
+struct CatAction<Seq<As1...>, Seq<As2...>> {
+  using type = Seq<As1..., As2...>;
+};
 template<typename Seq, typename A> using CarAction_t = typename CatAction<Seq, A>::type;
 
 
 namespace tnfa {
 
 /* === v notation === */
-template<typename List, typename Action> struct ProductAction {
-  template <typename A> struct AddAction { using type = typename CatAction<A, Action>::type; };
+template<typename List, typename Action>
+struct ProductAction {
+  template <typename A>
+  struct AddAction {
+    using type = typename CatAction<A, Action>::type;
+  };
   using type = typename Map<AddAction, List>::type;
 };
-template<typename List1, typename List2, typename Acc> struct Product;
-template<typename List1, typename Head, typename... Tails, typename Acc> struct Product<List1, TypeList<Head, Tails...>, Acc> {
+template<typename List1, typename List2, typename Acc>
+struct Product;
+template<
+  typename List1,
+  typename Head,
+  typename... Tails,
+  typename Acc
+>
+struct Product<List1, TypeList<Head, Tails...>, Acc> {
   using TmpAcc = typename ProductAction<List1, Head>::type;
   using type = typename Product<List1, TypeList<Tails...>, TmpAcc>::type;
 };
-template<typename List1, typename Acc> struct Product<List1, TypeList<>, Acc> {
+template<typename List1, typename Acc>
+struct Product<List1, TypeList<>, Acc> {
   using type = Acc;
 };
 
-template<typename RE> struct v;
-template<> struct v<EmptySet> { using type = TypeList<>; };
-template<> struct v<Epsilon> { using type = TypeList<Omega>; };
-template<char C> struct v<Char<C>> { using type = TypeList<>; };
-template<size_t I> struct v<SetSlot<I>> { using type = TypeList<Set<I>>; };
-template<typename R, typename S> struct v<Or<R, S>> {
+template<typename RE>
+struct v;
+template<>
+struct v<EmptySet> {
+  using type = TypeList<>;
+};
+template<>
+struct v<Epsilon> {
+  using type = TypeList<Omega>;
+};
+template<char C>
+struct v<Char<C>> {
+  using type = TypeList<>;
+};
+template<size_t I>
+struct v<SetSlot<I>> {
+  using type = TypeList<Set<I>>;
+};
+template<typename R, typename S>
+struct v<Or<R, S>> {
   using type = typename JoinUnique<typename v<R>::type, typename v<S>::type>::type;
 };
-template<typename R, typename S> struct v<Concat<R, S>> {
+template<typename R, typename S>
+struct v<Concat<R, S>> {
   using type = typename Product<typename v<R>::type, typename v<S>::type, TypeList<>>::type;
 };
-template<typename R> struct v<Closure<R>> { using type = TypeList<Omega>; };
+template<typename R>
+struct v<Closure<R>> {
+  using type = TypeList<Omega>;
+};
 
 
 /* === extended brzozowski derivative === */
-template <typename Remain, typename Action> struct DerivedPair {
+template <typename Remain, typename Action>
+struct DerivedPair {
   using remain = Remain; using action = Action;
 };
 
-template <typename RE, char C> struct Derivative;
+template <typename RE, char C>
+struct Derivative;
 /* d0/dx de/dx = d<i>/dx = 0 */
-template <char C> struct Derivative<EmptySet, C> { using type = TypeList<>; };
 template <char C>
-struct Derivative<Epsilon, C> { using type = TypeList<>; };
-template <size_t I, char C> struct Derivative<SetSlot<I>, C> { using type = TypeList<>; };
+struct Derivative<EmptySet, C> {
+  using type = TypeList<>;
+};
+template <char C>
+struct Derivative<Epsilon, C> {
+  using type = TypeList<>;
+};
+template <size_t I, char C>
+struct Derivative<SetSlot<I>, C> {
+  using type = TypeList<>;
+};
 /* dy/dx = x == y ? {(e, o)} : 0 */
 template <char y, char C>
 struct Derivative<Char<y>, C> {
@@ -1215,7 +1642,8 @@ struct Derivative<Concat<R, S>, C> {
   };
   using Part1 = typename Map<MapFunc1, typename Derivative<R, C>::type>::type;
 
-  template <typename Acc, typename vRList, typename SDList> struct Part2Generator;
+  template <typename Acc, typename vRList, typename SDList>
+  struct Part2Generator;
   template <typename Acc, typename SDList>
   struct Part2Generator<Acc, TypeList<>, SDList> {
     using type = Acc;
@@ -1235,7 +1663,11 @@ struct Derivative<Concat<R, S>, C> {
       SDList
     >::type;
   };
-  using Part2 = typename Part2Generator<TypeList<>, typename v<R>::type, typename Derivative<S, C>::type>::type;
+  using Part2 = typename Part2Generator<
+    TypeList<>,
+    typename v<R>::type,
+    typename Derivative<S, C>::type
+  >::type;
 
   using type = typename JoinUnique<Part1, Part2>::type;
 };
@@ -1277,8 +1709,10 @@ struct CharStateAction {
   using action = Action;
 };
 
-template<typename CharStateActionAcc, typename State, typename Alphabet> struct DerivNewStates;
-template<typename Acc, typename S> struct DerivNewStates<Acc, S, TypeList<>> {
+template<typename CharStateActionAcc, typename State, typename Alphabet>
+struct DerivNewStates;
+template<typename Acc, typename S>
+struct DerivNewStates<Acc, S, TypeList<>> {
   using type = Acc;
 };
 
@@ -1305,7 +1739,13 @@ struct DerivNewStates<Acc, S, TypeList<Char<C>, Tails...>> {
   >::type;
 };
 
-template<typename StateAcc, typename EdgeAcc, typename ToBeProcessList, typename StartState, typename NewCharStates>
+template<
+  typename StateAcc,
+  typename EdgeAcc,
+  typename ToBeProcessList,
+  typename StartState,
+  typename NewCharStates
+>
 struct PushNewStates;
 template<typename SA, typename EA, typename TBP, typename StartState>
 struct PushNewStates<SA, EA, TBP, StartState, TypeList<>> {
@@ -1313,7 +1753,14 @@ struct PushNewStates<SA, EA, TBP, StartState, TypeList<>> {
   using EdgeAcc = EA;
   using ToBeProcessList = TBP;
 };
-template<typename SA, typename EA, typename TBP, typename StartState, typename HeadTuple, typename... TailPairs>
+template<
+  typename SA,
+  typename EA,
+  typename TBP,
+  typename StartState,
+  typename HeadTuple,
+  typename... TailPairs
+>
 struct PushNewStates<SA, EA, TBP, StartState, TypeList<HeadTuple, TailPairs...>> {
   using FromState = StartState;
   using ToState = typename HeadTuple::state;
@@ -1321,7 +1768,11 @@ struct PushNewStates<SA, EA, TBP, StartState, TypeList<HeadTuple, TailPairs...>>
   using Action = typename HeadTuple::action;
   static constexpr bool IsStateNew = !SA::template Contains<ToState>;
   using NextStateAcc = typename PushBackUnique<SA, ToState>::type;
-  using NextToBeProcessList = typename std::conditional_t<IsStateNew, PushBack<TBP, ToState>, std::type_identity<TBP>>::type;
+  using NextToBeProcessList = typename std::conditional_t<
+    IsStateNew,
+    PushBack<TBP, ToState>,
+    std::type_identity<TBP>
+  >::type;
   using NextEdgeAcc = typename PushBack<
     EA,
     Edge<
@@ -1331,7 +1782,9 @@ struct PushNewStates<SA, EA, TBP, StartState, TypeList<HeadTuple, TailPairs...>>
       NextStateAcc::template IndexOf<ToState>
     >
   >::type;
-  using NextIt = PushNewStates<NextStateAcc, NextEdgeAcc, NextToBeProcessList, StartState, TypeList<TailPairs...>>;
+  using NextIt = PushNewStates<
+    NextStateAcc, NextEdgeAcc, NextToBeProcessList, StartState, TypeList<TailPairs...>
+  >;
   using StateAcc = typename NextIt::StateAcc;
   using EdgeAcc = typename NextIt::EdgeAcc;
   using ToBeProcessList = typename NextIt::ToBeProcessList;
@@ -1348,9 +1801,19 @@ struct BuildTNFA<StateAcc, EdgeAcc, TypeList<>> {
 
 template<typename StateAcc, typename EdgeAcc, typename StateHead, typename... StateTails>
 struct BuildTNFA<StateAcc, EdgeAcc, TypeList<StateHead, StateTails...>> {
-  using NewCharStates = typename DerivNewStates<TypeList<>, StateHead, typename First<typename StateHead::re, TypeList<>>::type>::type;
-  using Processed = PushNewStates<StateAcc, EdgeAcc, TypeList<StateTails...>, StateHead, NewCharStates>;
-  using NextIt = BuildTNFA<typename Processed::StateAcc, typename Processed::EdgeAcc, typename Processed::ToBeProcessList>;
+  using NewCharStates = typename DerivNewStates<
+    TypeList<>,
+    StateHead,
+    typename First<typename StateHead::re, TypeList<>>::type
+  >::type;
+  using Processed = PushNewStates<
+    StateAcc, EdgeAcc, TypeList<StateTails...>, StateHead, NewCharStates
+  >;
+  using NextIt = BuildTNFA<
+    typename Processed::StateAcc,
+    typename Processed::EdgeAcc,
+    typename Processed::ToBeProcessList
+  >;
   using States = typename NextIt::States;
   using Edges = typename NextIt::Edges;
 };
@@ -1368,57 +1831,96 @@ template<typename RE> using AllStateEdgePair = typename AllStatesAndEdgesGenerat
 template<typename RE> using AllStatesList = typename AllStatesAndEdgesGenerator<RE>::States;
 template<typename RE> using AllEdgesList  = typename AllStatesAndEdgesGenerator<RE>::Edges;
 
-/* === table builder, convert sparse graph representation into jump table, action list and other auxiliary structure === */
-template<typename RE> struct NrUsedSlots {
+/*                         table builder                        *
+ * === convert sparse graph representation into jump table, === *
+ *           action list and other auxiliary structure          */
+template<typename RE>
+struct NrUsedSlots {
   static constexpr size_t value = 0;
 };
-template<size_t I> struct NrUsedSlots<SetSlot<I>> {
+template<size_t I>
+struct NrUsedSlots<SetSlot<I>> {
   static constexpr size_t value = I + 1;
 };
-template<typename R, typename S> struct NrUsedSlots<Or<R, S>> {
+template<typename R, typename S>
+struct NrUsedSlots<Or<R, S>> {
   static constexpr size_t value = std::max(NrUsedSlots<R>::value, NrUsedSlots<S>::value);
 };
-template<typename R, typename S> struct NrUsedSlots<Concat<R, S>> {
+template<typename R, typename S>
+struct NrUsedSlots<Concat<R, S>> {
   static constexpr size_t value = std::max(NrUsedSlots<R>::value, NrUsedSlots<S>::value);
 };
-template<typename R> struct NrUsedSlots<Closure<R>> {
+template<typename R>
+struct NrUsedSlots<Closure<R>> {
   static constexpr size_t value = NrUsedSlots<R>::value;
 };
 
-template<typename Edges> struct MaxTransActionLength;
-template<> struct MaxTransActionLength<TypeList<>> { static constexpr size_t value = 0; };
-template<typename... Edges> struct MaxTransActionLength<TypeList<Edges...>> {
-  static constexpr size_t value = std::max({ Edges::action::length... });
+template<typename Edges>
+struct MaxTransActionLength;
+template<>
+struct MaxTransActionLength<TypeList<>> {
+  static constexpr size_t value = 0;
+};
+template<typename... Edges>
+struct MaxTransActionLength<TypeList<Edges...>> {
+  static constexpr size_t value = std::max({
+    Edges::action::length...
+  });
 };
 
-template<typename List> struct MaxActionLengthInList;
-template<> struct MaxActionLengthInList<TypeList<>> { static constexpr size_t value = 0; };
-template<typename... Actions> struct MaxActionLengthInList<TypeList<Actions...>> {
+template<typename List>
+struct MaxActionLengthInList;
+template<>
+struct MaxActionLengthInList<TypeList<>> {
+  static constexpr size_t value = 0;
+};
+template<typename... Actions>
+struct MaxActionLengthInList<TypeList<Actions...>> {
   static constexpr size_t value = std::max({ Actions::length... });
 };
 
-template<typename States> struct MaxAcceptActionLength;
-template<> struct MaxAcceptActionLength<TypeList<>> { static constexpr size_t value = 0; };
-template<typename... States> struct MaxAcceptActionLength<TypeList<States...>> {
-  static constexpr size_t value = std::max({ MaxActionLengthInList<typename States::AcceptActions>::value... });
+template<typename States>
+struct MaxAcceptActionLength;
+template<>
+struct MaxAcceptActionLength<TypeList<>> {
+  static constexpr size_t value = 0;
+};
+template<typename... States>
+struct MaxAcceptActionLength<TypeList<States...>> {
+  static constexpr size_t value = std::max({
+    MaxActionLengthInList<typename States::AcceptActions>::value...
+  });
 };
 
-template<size_t NrStates, typename EdgeList> struct BuildTransTable;
-template<size_t NrStates, typename... Edges> struct BuildTransTable<NrStates, TypeList<Edges...>> {
-  static constexpr std::array<std::array<std::array<int32_t, NrStates>, nr_ascii_char>, NrStates> make() {
+template<size_t NrStates, typename EdgeList>
+struct BuildTransTable;
+template<size_t NrStates, typename... Edges>
+struct BuildTransTable<NrStates, TypeList<Edges...>> {
+  static constexpr std::array<
+    std::array<std::array<int32_t, NrStates>, nr_ascii_char>,
+    NrStates
+  > make() {
     std::array<std::array<std::array<int32_t, NrStates>, nr_ascii_char>, NrStates> result{};
     for (auto& state_table : result) for (auto& char_table : state_table) char_table.fill(-1);
     std::array<std::array<size_t, nr_ascii_char>, NrStates> idxes {};
     for (auto& line : idxes) line.fill(0);
-    ((result[Edges::from][static_cast<size_t>(Edges::ch)][idxes[Edges::from][static_cast<size_t>(Edges::ch)]++] = Edges::to), ...);
+    ((
+      result[Edges::from]
+            [static_cast<size_t>(Edges::ch)]
+            [idxes[Edges::from]
+            [static_cast<size_t>(Edges::ch)]++] = Edges::to
+    ), ...);
     return result;
   }
 };
 
 /* remain the edge with shortest action among edges having same From, Char and To */
-template<typename EdgeList> struct RemoveConflictEdge {
-  template<typename Edge, typename ProcessingEdgeList> struct IsEdgeNeedRetainImpl;
-  template<typename Edge> struct IsEdgeNeedRetainImpl<Edge, TypeList<>> {
+template<typename EdgeList>
+struct RemoveConflictEdge {
+  template<typename Edge, typename ProcessingEdgeList>
+  struct IsEdgeNeedRetainImpl;
+  template<typename Edge>
+  struct IsEdgeNeedRetainImpl<Edge, TypeList<>> {
     static constexpr bool value = true;
   };
   template<typename Edge, typename Head, typename... Tails>
@@ -1427,28 +1929,39 @@ template<typename EdgeList> struct RemoveConflictEdge {
   };
   template<size_t F, char C, size_t T, typename A1, typename A2, typename... Tails>
   struct IsEdgeNeedRetainImpl<Edge<F, C, A1, T>, TypeList<Edge<F, C, A2, T>, Tails...>> {
-    static constexpr bool value = A1::length <= A2::length && IsEdgeNeedRetainImpl<Edge<F, C, A1, T>, TypeList<Tails...>>::value;
+    static constexpr bool value = A1::length <= A2::length
+      && IsEdgeNeedRetainImpl<Edge<F, C, A1, T>, TypeList<Tails...>>::value;
   };
 
-  template<typename Edge> struct IsEdgeNeedRetain {
+  template<typename Edge>
+  struct IsEdgeNeedRetain {
     static constexpr bool value = IsEdgeNeedRetainImpl<Edge, EdgeList>::value;
   };
 
   using type = typename Filter<IsEdgeNeedRetain, EdgeList>::type;
 };
 
-template<typename StateList> struct BuildAcceptTable;
-template<typename... States> struct BuildAcceptTable<TypeList<States...>> {
+template<typename StateList>
+struct BuildAcceptTable;
+template<typename... States>
+struct BuildAcceptTable<TypeList<States...>> {
   static constexpr std::array<bool, sizeof...(States)> make() {
     return std::array<bool, sizeof...(States)>{ States::accepting... };
   }
 };
 
-template<size_t NrStates, size_t MaxTransActionLength, typename EdgeList> struct BuildTransActionTable;
+template<size_t NrStates, size_t MaxTransActionLength, typename EdgeList>
+struct BuildTransActionTable;
 template<size_t NrStates, size_t MaxTransActionLength, typename... Edges>
 struct BuildTransActionTable<NrStates, MaxTransActionLength, TypeList<Edges...>> {
-  static constexpr std::array<std::array<std::array<std::array<int32_t, MaxTransActionLength>, NrStates>, nr_ascii_char>, NrStates> make() {
-    std::array<std::array<std::array<std::array<int32_t, MaxTransActionLength>, NrStates>, nr_ascii_char>, NrStates> result{};
+  static constexpr std::array<
+    std::array<std::array<std::array<int32_t, MaxTransActionLength>, NrStates>, nr_ascii_char>,
+    NrStates
+  > make() {
+    std::array<
+      std::array<std::array<std::array<int32_t, MaxTransActionLength>, NrStates>, nr_ascii_char>,
+      NrStates
+    > result{};
     for (auto& from_state_table : result)
       for (auto& char_table : from_state_table)
         for (auto& action_list : char_table)
@@ -1478,10 +1991,14 @@ struct BuildTransActionTable<NrStates, MaxTransActionLength, TypeList<Edges...>>
   }
 };
 
-template<size_t MaxAcceptActionLength, typename StateList> struct BuildAcceptActionTable;
+template<size_t MaxAcceptActionLength, typename StateList>
+struct BuildAcceptActionTable;
 template<size_t MaxAcceptActionLength, typename... States>
 struct BuildAcceptActionTable<MaxAcceptActionLength, TypeList<States...>> {
-  static constexpr std::array<std::array<int32_t, MaxAcceptActionLength>, sizeof...(States)> make() {
+  static constexpr std::array<
+    std::array<int32_t, MaxAcceptActionLength>,
+    sizeof...(States)
+  > make() {
     std::array<std::array<int32_t, MaxAcceptActionLength>, sizeof...(States)> result{};
     for (auto& action_list : result) action_list.fill(-1);
     (([&]<typename State>(State){
@@ -1506,11 +2023,18 @@ struct BuildAcceptActionTable<MaxAcceptActionLength, TypeList<States...>> {
     return result;
   }
 
-  template<typename ActionList, typename CurLongestAction, size_t CurShortestLen> struct LongestAction;
-  template<typename CurLongestAction, size_t CurShortestLen> struct LongestAction<TypeList<>, CurLongestAction, CurShortestLen> {
+  template<typename ActionList, typename CurLongestAction, size_t CurShortestLen>
+  struct LongestAction;
+  template<typename CurLongestAction, size_t CurShortestLen>
+  struct LongestAction<TypeList<>, CurLongestAction, CurShortestLen> {
     using type = CurLongestAction;
   };
-  template<typename HeadAction, typename... TailActions, typename CurLongestAction, size_t CurShortestLen>
+  template<
+    typename HeadAction,
+    typename... TailActions,
+    typename CurLongestAction,
+    size_t CurShortestLen
+  >
   struct LongestAction<TypeList<HeadAction, TailActions...>, CurLongestAction, CurShortestLen> {
     using type = typename std::conditional_t<
       (HeadAction::length > CurShortestLen),
@@ -1520,33 +2044,66 @@ struct BuildAcceptActionTable<MaxAcceptActionLength, TypeList<States...>> {
   };
 };
 
-template<size_t Value> struct Num { static constexpr size_t value = Value; };
-template<size_t X, size_t Y> struct NumPair { static constexpr size_t x = X, y = Y; };
-template<typename Acc, FixedString Pattern, size_t Idx, size_t NrSeenGroup, typename OpeningGroupsIdx, typename ClosedGroups> struct MutualGroups {
+template<size_t Value>
+struct Num {
+  static constexpr size_t value = Value;
+};
+template<size_t X, size_t Y>
+struct NumPair {
+  static constexpr size_t x = X, y = Y;
+};
+template<
+  typename Acc,
+  FixedString Pattern,
+  size_t Idx,
+  size_t NrSeenGroup,
+  typename OpeningGroupsIdx,
+  typename ClosedGroups
+>
+struct MutualGroups {
   struct Impl {
     struct Open {
       static constexpr size_t OpenedIdx = NrSeenGroup;
-      template<typename ClosedIdx> struct MapFunc { using type = NumPair<ClosedIdx::value, OpenedIdx>; };
+      template<typename ClosedIdx>
+      struct MapFunc {
+        using type = NumPair<ClosedIdx::value, OpenedIdx>;
+      };
       using NextAcc = typename JoinUnique<Acc, typename Map<MapFunc, ClosedGroups>::type>::type;
       using NextOpeningGroupsIdx = typename PushFront<OpeningGroupsIdx, Num<OpenedIdx>>::type;
-      using type = typename MutualGroups<NextAcc, Pattern, Idx + 1, NrSeenGroup + 1, NextOpeningGroupsIdx, ClosedGroups>::type;
+      using type = typename MutualGroups<
+        NextAcc, Pattern, Idx + 1, NrSeenGroup + 1, NextOpeningGroupsIdx, ClosedGroups
+      >::type;
     };
     struct Close {
       static constexpr size_t ClosedIdx = OpeningGroupsIdx::template At<0>::value;
       using NextOpeningGroupsIdx = typename PopFront<OpeningGroupsIdx>::type;
       using NextClosedGroups = typename PushBack<ClosedGroups, Num<ClosedIdx>>::type;
-      using type = typename MutualGroups<Acc, Pattern, Idx + 1, NrSeenGroup, NextOpeningGroupsIdx, NextClosedGroups>::type;
+      using type = typename MutualGroups<
+        Acc, Pattern, Idx + 1, NrSeenGroup, NextOpeningGroupsIdx, NextClosedGroups
+      >::type;
     };
     struct Other {
-      using type = typename MutualGroups<Acc, Pattern, Idx + 1, NrSeenGroup, OpeningGroupsIdx, ClosedGroups>::type;
+      using type = typename MutualGroups<
+        Acc, Pattern, Idx + 1, NrSeenGroup, OpeningGroupsIdx, ClosedGroups
+      >::type;
     };
-    using type = typename std::conditional_t<Pattern[Idx] == '(', Open, std::conditional_t<Pattern[Idx] == ')', Close, Other>>::type;
+    using type = typename std::conditional_t<
+      Pattern[Idx] == '(',
+      Open,
+      std::conditional_t<Pattern[Idx] == ')', Close, Other>
+    >::type;
   };
-  using type = typename std::conditional_t<Idx >= Pattern.length, std::type_identity<Acc>, Impl>::type;
+  using type = typename std::conditional_t<
+    Idx >= Pattern.length,
+    std::type_identity<Acc>,
+    Impl
+  >::type;
 };
 
-template<size_t NrGroups, typename MutualPairList> struct BuildMutualTable;
-template<size_t NrGroups, typename... MutualPairs> struct BuildMutualTable<NrGroups, TypeList<MutualPairs...>> {
+template<size_t NrGroups, typename MutualPairList>
+struct BuildMutualTable;
+template<size_t NrGroups, typename... MutualPairs>
+struct BuildMutualTable<NrGroups, TypeList<MutualPairs...>> {
   static constexpr std::array<std::array<bool, NrGroups>, NrGroups> make() {
     std::array<std::array<bool, NrGroups>, NrGroups> result;
     for (auto& line : result) line.fill(false);
@@ -1574,7 +2131,8 @@ inline bool match(std::string_view str) noexcept {
   using DFAStatesList = impl::dfa::AllStatesList<NoActionRe>;
   using DFAEdgesList  = impl::dfa::AllEdgesList<NoActionRe>;
   static constexpr std::size_t nr_dfa_states = DFAStatesList::length;
-  static constexpr auto dfa_trans_table = impl::dfa::BuildTable<nr_dfa_states, DFAEdgesList>::make();
+  static constexpr auto dfa_trans_table
+    = impl::dfa::BuildTable<nr_dfa_states, DFAEdgesList>::make();
   static constexpr auto dfa_is_accept_states = impl::dfa::BuildAccepts<DFAStatesList>::make();
 
   std::size_t state = 0;
@@ -1594,8 +2152,10 @@ std::string replace(std::string_view replace_rule, std::string_view str) noexcep
   using EdgeList  = typename impl::tnfa::RemoveConflictEdge<impl::tnfa::AllEdgesList<Re>>::type;
   static constexpr std::size_t nr_states = StateList::length;
   static constexpr std::size_t nr_used_slots = impl::tnfa::NrUsedSlots<Re>::value;
-  static constexpr std::size_t max_trans_action_length = impl::tnfa::MaxTransActionLength<EdgeList>::value;
-  static constexpr std::size_t max_accept_action_length = impl::tnfa::MaxAcceptActionLength<StateList>::value;
+  static constexpr std::size_t max_trans_action_length
+    = impl::tnfa::MaxTransActionLength<EdgeList>::value;
+  static constexpr std::size_t max_accept_action_length
+    = impl::tnfa::MaxAcceptActionLength<StateList>::value;
   static constexpr std::size_t nr_capture_group = nr_used_slots / 2;
 
   /* S x Alphabet -> int32_t[], -1 represent no trans */
@@ -1603,22 +2163,38 @@ std::string replace(std::string_view replace_rule, std::string_view str) noexcep
   /* S -> bool */
   static constexpr auto accept_table = impl::tnfa::BuildAcceptTable<StateList>::make();
   /* S x Alphabet x S -> int32_t[], -1 represent no action */
-  static constexpr auto trans_action_table = impl::tnfa::BuildTransActionTable<nr_states, max_trans_action_length, EdgeList>::make();
+  static constexpr auto trans_action_table
+    = impl::tnfa::BuildTransActionTable<nr_states, max_trans_action_length, EdgeList>::make();
   /* S -> int32_t[], -1 represent no action */
-  static constexpr auto accept_action_table = impl::tnfa::BuildAcceptActionTable<max_accept_action_length, StateList>::make();
+  static constexpr auto accept_action_table
+    = impl::tnfa::BuildAcceptActionTable<max_accept_action_length, StateList>::make();
 
   using SlotLine = std::array<int32_t, nr_used_slots>;
   using SlotFile = std::array<SlotLine, nr_states>;
 
-  static auto open_time = [](const SlotLine& line, size_t group_idx) { return line[group_idx << 1]; };
-  static auto close_time = [](const SlotLine& line, size_t group_idx) { return line[group_idx << 1 | 1]; };
-  static auto is_opened = [](const SlotLine& line, size_t group_idx) { return open_time(line, group_idx) >= 0; };
-  static auto is_closed = [](const SlotLine& line, size_t group_idx) { return close_time(line, group_idx) >= 0; };
-  static auto group_len = [](const SlotLine& line, size_t group_idx) { return close_time(line, group_idx) - open_time(line, group_idx); };
+  static auto open_time = [](const SlotLine& line, size_t group_idx) {
+    return line[group_idx << 1];
+  };
+  static auto close_time = [](const SlotLine& line, size_t group_idx) {
+    return line[group_idx << 1 | 1];
+  };
+  static auto is_opened = [](const SlotLine& line, size_t group_idx) {
+    return open_time(line, group_idx) >= 0;
+  };
+  static auto is_closed = [](const SlotLine& line, size_t group_idx) {
+    return close_time(line, group_idx) >= 0;
+  };
+  static auto group_len = [](const SlotLine& line, size_t group_idx) {
+    return close_time(line, group_idx) - open_time(line, group_idx);
+  };
 
   static auto is_digit = [](char ch) { return '0' <= ch && ch <= '9'; };
 
-  static auto apply_action = []<size_t N>(const SlotLine& old_line, const std::array<int32_t, N>& actions, int32_t p) {
+  static auto apply_action = []<size_t N>(
+    const SlotLine& old_line,
+    const std::array<int32_t, N>& actions,
+    int32_t p
+  ) {
     SlotLine new_line{old_line};
     for (const auto& action : actions) {
       if (action < 0) break;
@@ -1671,9 +2247,13 @@ std::string replace(std::string_view replace_rule, std::string_view str) noexcep
       for (const auto& next_state : trans_table[state][static_cast<size_t>(ch)]) {
         if (next_state < 0) break;
         auto next_slot_line = apply_action(
-          (*cur_slot_file)[state], trans_action_table[state][static_cast<size_t>(ch)][next_state], idx
+          (*cur_slot_file)[state],
+          trans_action_table[state][static_cast<size_t>(ch)][next_state], idx
         );
-        if (!(*nxt_active_state)[next_state] || need_change((*nxt_slot_file)[next_state], next_slot_line)) {
+        if (
+          !(*nxt_active_state)[next_state]
+          || need_change((*nxt_slot_file)[next_state], next_slot_line)
+        ) {
           (*nxt_slot_file)[next_state] = next_slot_line;
         }
         (*nxt_active_state)[next_state] = true;
@@ -1688,7 +2268,11 @@ std::string replace(std::string_view replace_rule, std::string_view str) noexcep
   for (size_t state = 0; state < nr_states; state++) {
     if (!(*cur_active_state)[state]) continue;
     if (!accept_table[state]) continue;
-    auto after_accept = apply_action((*cur_slot_file)[state], accept_action_table[state], str.size());
+    auto after_accept = apply_action(
+      (*cur_slot_file)[state],
+      accept_action_table[state],
+      str.size()
+    );
     if (!is_final_line_updated || need_change(final_line, after_accept)) {
       is_final_line_updated = true;
       final_line = after_accept;
