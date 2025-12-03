@@ -1855,17 +1855,37 @@ struct NrUsedSlots<Closure<R>> {
   static constexpr size_t value = NrUsedSlots<R>::value;
 };
 
-template<typename Edges>
+/* use the shortest action among edges sharing same from, ch and to */
+template<size_t NrStates, typename Edges>
 struct MaxTransActionLength;
-template<>
-struct MaxTransActionLength<TypeList<>> {
+template<size_t NrStates>
+struct MaxTransActionLength<NrStates, TypeList<>> {
   static constexpr size_t value = 0;
 };
-template<typename... Edges>
-struct MaxTransActionLength<TypeList<Edges...>> {
-  static constexpr size_t value = std::max({
-    Edges::action::length...
-  });
+template<size_t NrStates, typename... Edges>
+struct MaxTransActionLength<NrStates, TypeList<Edges...>> {
+  static constexpr size_t value = []() {
+    std::array<std::array<std::array<size_t, NrStates>, nr_ascii_char>, NrStates> min_len;
+    std::array<std::array<std::array<bool, NrStates>, nr_ascii_char>, NrStates> inited;
+    for (auto& from_table : inited)
+      for (auto& char_table : from_table)
+        char_table.fill(false);
+    ([&]<typename Edge>(Edge) {
+      if (
+        inited[Edge::from][static_cast<size_t>(Edge::ch)][Edge::to]
+        && min_len[Edge::from][static_cast<size_t>(Edge::ch)][Edge::to] < Edge::action::length
+      ) return;
+      inited[Edge::from][static_cast<size_t>(Edge::ch)][Edge::to] = true;
+      min_len[Edge::from][static_cast<size_t>(Edge::ch)][Edge::to] = Edge::action::length;
+    }(Edges{}), ...);
+    size_t result = 0;
+    for (size_t i = 0; i < NrStates; i++)
+      for (size_t ch = 0; ch < nr_ascii_char; ch++)
+        for (size_t j = 0; j < NrStates; j++)
+          if (inited[i][ch][j] && min_len[i][ch][j] > result)
+            result = min_len[i][ch][j];
+    return result;
+  }();
 };
 
 template<typename List>
@@ -1914,33 +1934,6 @@ struct BuildTransTable<NrStates, TypeList<Edges...>> {
   }
 };
 
-/* remain the edge with shortest action among edges having same From, Char and To */
-template<typename EdgeList>
-struct RemoveConflictEdge {
-  template<typename Edge, typename ProcessingEdgeList>
-  struct IsEdgeNeedRetainImpl;
-  template<typename Edge>
-  struct IsEdgeNeedRetainImpl<Edge, TypeList<>> {
-    static constexpr bool value = true;
-  };
-  template<typename Edge, typename Head, typename... Tails>
-  struct IsEdgeNeedRetainImpl<Edge, TypeList<Head, Tails...>> {
-    static constexpr bool value = IsEdgeNeedRetainImpl<Edge, TypeList<Tails...>>::value;
-  };
-  template<size_t F, char C, size_t T, typename A1, typename A2, typename... Tails>
-  struct IsEdgeNeedRetainImpl<Edge<F, C, A1, T>, TypeList<Edge<F, C, A2, T>, Tails...>> {
-    static constexpr bool value = A1::length <= A2::length
-      && IsEdgeNeedRetainImpl<Edge<F, C, A1, T>, TypeList<Tails...>>::value;
-  };
-
-  template<typename Edge>
-  struct IsEdgeNeedRetain {
-    static constexpr bool value = IsEdgeNeedRetainImpl<Edge, EdgeList>::value;
-  };
-
-  using type = typename Filter<IsEdgeNeedRetain, EdgeList>::type;
-};
-
 template<typename StateList>
 struct BuildAcceptTable;
 template<typename... States>
@@ -1958,27 +1951,50 @@ struct BuildTransActionTable<NrStates, MaxTransActionLength, TypeList<Edges...>>
     std::array<std::array<std::array<int32_t, MaxTransActionLength>, NrStates>, nr_ascii_char>,
     NrStates
   > make() {
-    std::array<
-      std::array<std::array<std::array<int32_t, MaxTransActionLength>, NrStates>, nr_ascii_char>,
-      NrStates
+    std::array<std::array<std::array<
+      std::array<int32_t, MaxTransActionLength>,
+      NrStates>, nr_ascii_char>, NrStates
     > result{};
+    std::array<std::array<std::array<bool, NrStates>, nr_ascii_char>, NrStates> action_inited{};
     for (auto& from_state_table : result)
       for (auto& char_table : from_state_table)
         for (auto& action_list : char_table)
           action_list.fill(-1);
+    for (auto& from_state_table : action_inited)
+      for (auto& char_table : from_state_table)
+        char_table.fill(false);
+
+    /* use the shortest action among edges sharing same from, ch and to */
+    auto existing_len_of = []<size_t L>(const std::array<int32_t, L>& list) constexpr {
+      size_t i = 0;
+      while (i < L && list[i] != -1) ++i;
+      return i;
+    };
 
     (([&]<typename Edge>(Edge) {
       using Action = typename Edge::action;
-      auto& action_list = result[Edge::from][Edge::ch][Edge::to];
+      /* 
+       * MaxTransActionLength is generated using the shortest action among 
+       * edges sharing same from, ch and to. Therefore, if current action
+       * is longer than it, it's guaranteed that there exists a shorter action 
+       * for same from, ch and to, and current action can be ignored safely.
+       * On the other hand, if not do so, will trigger array out-of-bound
+       * access later.
+       */
+      if (Action::length > MaxTransActionLength) return;
+      auto& action_list = result[Edge::from][static_cast<size_t>(Edge::ch)][Edge::to];
+      if (
+        action_inited[Edge::from][static_cast<size_t>(Edge::ch)][Edge::to]
+        && Action::length > existing_len_of(action_list)
+      ) return;
+      action_inited[Edge::from][static_cast<size_t>(Edge::ch)][Edge::to] = true;
       action_list.fill(-1);
       if constexpr (is_omega<Action>::value) {
         /* ignore */
       } else if constexpr (is_set<Action>::value) {
-        static_assert(MaxTransActionLength > 0, "bad max trans action length");
         action_list[0] = static_cast<int32_t>(Action::i);
       } else if constexpr (is_seq<Action>::value) {
         [&]<typename... As>(Seq<As...>) {
-          static_assert(MaxTransActionLength >= sizeof...(As), "bad max trans action length");
           size_t idx = 0;
           ((action_list[idx++] = static_cast<int32_t>(As::i)), ...);
         }(Action{});
@@ -2149,11 +2165,11 @@ template<impl::FixedString Pattern>
 std::string replace(std::string_view replace_rule, std::string_view str) noexcept {
   using Re = typename impl::RegexScan<Pattern>::type;
   using StateList = impl::tnfa::AllStatesList<Re>;
-  using EdgeList  = typename impl::tnfa::RemoveConflictEdge<impl::tnfa::AllEdgesList<Re>>::type;
+  using EdgeList  = impl::tnfa::AllEdgesList<Re>;
   static constexpr std::size_t nr_states = StateList::length;
   static constexpr std::size_t nr_used_slots = impl::tnfa::NrUsedSlots<Re>::value;
   static constexpr std::size_t max_trans_action_length
-    = impl::tnfa::MaxTransActionLength<EdgeList>::value;
+    = impl::tnfa::MaxTransActionLength<nr_states, EdgeList>::value;
   static constexpr std::size_t max_accept_action_length
     = impl::tnfa::MaxAcceptActionLength<StateList>::value;
   static constexpr std::size_t nr_capture_group = nr_used_slots / 2;
