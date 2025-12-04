@@ -622,7 +622,8 @@ constexpr char visible_ascii_start = ' ';
 constexpr char visible_ascii_end = '~';
 
 constexpr bool is_visible_char(char ch) {
-  return ch >= visible_ascii_start && ch <= visible_ascii_end; // ASCII visible characters
+  return (ch >= visible_ascii_start && ch <= visible_ascii_end)
+    || ch == '\t' || ch == '\n' || ch == '\v' || ch == '\f' || ch == '\r';
 }
 
 constexpr std::array<bool, nr_ascii_char> make_valid_table() {
@@ -659,7 +660,23 @@ struct BuildCharList {
   using type = typename Impl<std::make_index_sequence<End - Start + 1>>::type;
 };
 
-using Alphabet = typename BuildCharList<visible_ascii_start, visible_ascii_end>::type;
+using Alphabet = TypeList<
+  Char<'\t'>, Char<'\n'>, Char<'\v'>, Char<'\f'>, Char<'\r'>, Char<' '>,
+  Char<'!'>, Char<'"'>, Char<'#'>, Char<'$'>, Char<'%'>, Char<'&'>, Char<'\''>,
+  Char<'('>, Char<')'>, Char<'*'>, Char<'+'>, Char<','>, Char<'-'>, Char<'.'>,
+  Char<'/'>, Char<'0'>, Char<'1'>, Char<'2'>, Char<'3'>, Char<'4'>, Char<'5'>,
+  Char<'6'>, Char<'7'>, Char<'8'>, Char<'9'>, Char<':'>, Char<';'>, Char<'<'>,
+  Char<'='>, Char<'>'>, Char<'?'>, Char<'@'>, Char<'A'>, Char<'B'>, Char<'C'>,
+  Char<'D'>, Char<'E'>, Char<'F'>, Char<'G'>, Char<'H'>, Char<'I'>, Char<'J'>,
+  Char<'K'>, Char<'L'>, Char<'M'>, Char<'N'>, Char<'O'>, Char<'P'>, Char<'Q'>,
+  Char<'R'>, Char<'S'>, Char<'T'>, Char<'U'>, Char<'V'>, Char<'W'>, Char<'X'>,
+  Char<'Y'>, Char<'Z'>, Char<'['>, Char<'\\'>, Char<']'>, Char<'^'>, Char<'_'>,
+  Char<'`'>, Char<'a'>, Char<'b'>, Char<'c'>, Char<'d'>, Char<'e'>, Char<'f'>,
+  Char<'g'>, Char<'h'>, Char<'i'>, Char<'j'>, Char<'k'>, Char<'l'>, Char<'m'>,
+  Char<'n'>, Char<'o'>, Char<'p'>, Char<'q'>, Char<'r'>, Char<'s'>, Char<'t'>,
+  Char<'u'>, Char<'v'>, Char<'w'>, Char<'x'>, Char<'y'>, Char<'z'>, Char<'{'>,
+  Char<'|'>, Char<'}'>, Char<'~'>
+>;
 
 
 /* === regex parser === */
@@ -773,47 +790,97 @@ struct EscapeImpl {
   using type = Char<Pattern[Pos + 1]>;
   static constexpr size_t next = Pos + 2;
 };
-using WordList = JoinUnique<
-  typename BuildCharList<'a', 'z'>::type,
-  typename JoinUnique<
-    typename BuildCharList<'A', 'Z'>::type,
-    typename PushBack<typename BuildCharList<'0', '9'>::type, Char<'_'>>::type
-  >::type
->::type;
+using WordRegex =
+  Or<Char<'a'>, Or<Char<'b'>, Or<Char<'c'>, Or<Char<'d'>, Or<Char<'e'>, Or<Char<'f'>,
+  Or<Char<'g'>, Or<Char<'h'>, Or<Char<'i'>, Or<Char<'j'>, Or<Char<'k'>, Or<Char<'l'>,
+  Or<Char<'m'>, Or<Char<'n'>, Or<Char<'o'>, Or<Char<'p'>, Or<Char<'q'>, Or<Char<'r'>,
+  Or<Char<'s'>, Or<Char<'t'>, Or<Char<'u'>, Or<Char<'v'>, Or<Char<'w'>, Or<Char<'x'>,
+  Or<Char<'y'>, Or<Char<'z'>, Or<Char<'A'>, Or<Char<'B'>, Or<Char<'C'>, Or<Char<'D'>,
+  Or<Char<'E'>, Or<Char<'F'>, Or<Char<'G'>, Or<Char<'H'>, Or<Char<'I'>, Or<Char<'J'>,
+  Or<Char<'K'>, Or<Char<'L'>, Or<Char<'M'>, Or<Char<'N'>, Or<Char<'O'>, Or<Char<'P'>,
+  Or<Char<'Q'>, Or<Char<'R'>, Or<Char<'S'>, Or<Char<'T'>, Or<Char<'U'>, Or<Char<'V'>,
+  Or<Char<'W'>, Or<Char<'X'>, Or<Char<'Y'>, Or<Char<'Z'>, Or<Char<'0'>, Or<Char<'1'>,
+  Or<Char<'2'>, Or<Char<'3'>, Or<Char<'4'>, Or<Char<'5'>, Or<Char<'6'>, Or<Char<'7'>,
+  Or<Char<'8'>, Or<Char<'9'>, Char<'_'>
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
+using NegativeWordRegex =
+  Or<Char<'\t'>, Or<Char<'\n'>, Or<Char<'\v'>, Or<Char<'\f'>, Or<Char<'\r'>, Or<Char<' '>,
+  Or<Char<'!'>, Or<Char<'"'>, Or<Char<'#'>, Or<Char<'$'>, Or<Char<'%'>, Or<Char<'&'>,
+  Or<Char<'\''>, Or<Char<'('>, Or<Char<')'>, Or<Char<'*'>, Or<Char<'+'>, Or<Char<','>,
+  Or<Char<'-'>, Or<Char<'.'>, Or<Char<'/'>, Or<Char<':'>, Or<Char<';'>, Or<Char<'<'>,
+  Or<Char<'='>, Or<Char<'>'>, Or<Char<'?'>, Or<Char<'@'>, Or<Char<'['>, Or<Char<'\\'>,
+  Or<Char<']'>, Or<Char<'^'>, Or<Char<'`'>, Or<Char<'{'>, Or<Char<'|'>, Or<Char<'}'>, Char<'~'>
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'w', Pattern, Pos> {
-  using type = CharListToOrSequential<WordList>::type;
+  using type = WordRegex;
   static constexpr size_t next = Pos + 2;
 };
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'W', Pattern, Pos> {
-  using type = CharListToOrSequential<typename CharListNegation<WordList, Alphabet>::type>::type;
+  using type = NegativeWordRegex;
   static constexpr size_t next = Pos + 2;
 };
-using DigitList = BuildCharList<'0', '9'>::type;
+using DigitalRegex =
+  Or<Char<'0'>, Or<Char<'1'>, Or<Char<'2'>, Or<Char<'3'>, Or<Char<'4'>,
+  Or<Char<'5'>, Or<Char<'6'>, Or<Char<'7'>, Or<Char<'8'>, Char<'9'>
+>>>>>>>>>;
+using NegativeDigitalRegex =
+  Or<Char<'\t'>, Or<Char<'\n'>, Or<Char<'\v'>, Or<Char<'\f'>, Or<Char<'\r'>, Or<Char<' '>,
+  Or<Char<'!'>, Or<Char<'"'>, Or<Char<'#'>, Or<Char<'$'>, Or<Char<'%'>, Or<Char<'&'>,
+  Or<Char<'\''>, Or<Char<'('>, Or<Char<')'>, Or<Char<'*'>, Or<Char<'+'>, Or<Char<','>,
+  Or<Char<'-'>, Or<Char<'.'>, Or<Char<'/'>, Or<Char<':'>, Or<Char<';'>, Or<Char<'<'>,
+  Or<Char<'='>, Or<Char<'>'>, Or<Char<'?'>, Or<Char<'@'>, Or<Char<'A'>, Or<Char<'B'>,
+  Or<Char<'C'>, Or<Char<'D'>, Or<Char<'E'>, Or<Char<'F'>, Or<Char<'G'>, Or<Char<'H'>,
+  Or<Char<'I'>, Or<Char<'J'>, Or<Char<'K'>, Or<Char<'L'>, Or<Char<'M'>, Or<Char<'N'>,
+  Or<Char<'O'>, Or<Char<'P'>, Or<Char<'Q'>, Or<Char<'R'>, Or<Char<'S'>, Or<Char<'T'>,
+  Or<Char<'U'>, Or<Char<'V'>, Or<Char<'W'>, Or<Char<'X'>, Or<Char<'Y'>, Or<Char<'Z'>,
+  Or<Char<'['>, Or<Char<'\\'>, Or<Char<']'>, Or<Char<'^'>, Or<Char<'_'>, Or<Char<'`'>,
+  Or<Char<'a'>, Or<Char<'b'>, Or<Char<'c'>, Or<Char<'d'>, Or<Char<'e'>, Or<Char<'f'>,
+  Or<Char<'g'>, Or<Char<'h'>, Or<Char<'i'>, Or<Char<'j'>, Or<Char<'k'>, Or<Char<'l'>,
+  Or<Char<'m'>, Or<Char<'n'>, Or<Char<'o'>, Or<Char<'p'>, Or<Char<'q'>, Or<Char<'r'>,
+  Or<Char<'s'>, Or<Char<'t'>, Or<Char<'u'>, Or<Char<'v'>, Or<Char<'w'>, Or<Char<'x'>,
+  Or<Char<'y'>, Or<Char<'z'>, Or<Char<'{'>, Or<Char<'|'>, Or<Char<'}'>, Char<'~'>
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'d', Pattern, Pos> {
-  using type = CharListToOrSequential<DigitList>::type;
+  using type = DigitalRegex;
   static constexpr size_t next = Pos + 2;
 };
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'D', Pattern, Pos> {
-  using type = CharListToOrSequential<typename CharListNegation<DigitList, Alphabet>::type>::type;
+  using type = NegativeDigitalRegex;
   static constexpr size_t next = Pos + 2;
 };
-using WhitespaceList = TypeList<
-  Char<' '>, Char<'\t'>, Char<'\x0B'>, Char<'\n'>, Char<'\f'>, Char<'\r'>
->;
+using WhitespaceRegex =
+  Or<Char<'\t'>, Or<Char<'\n'>, Or<Char<'\v'>, Or<Char<'\f'>, Or<Char<'\r'>, Char<' '>
+>>>>>;
+using NegativeWhitespaceRegex =
+  Or<Char<'!'>, Or<Char<'"'>, Or<Char<'#'>, Or<Char<'$'>, Or<Char<'%'>, Or<Char<'&'>,
+  Or<Char<'\''>, Or<Char<'('>, Or<Char<')'>, Or<Char<'*'>, Or<Char<'+'>, Or<Char<','>,
+  Or<Char<'-'>, Or<Char<'.'>, Or<Char<'/'>, Or<Char<'0'>, Or<Char<'1'>, Or<Char<'2'>,
+  Or<Char<'3'>, Or<Char<'4'>, Or<Char<'5'>, Or<Char<'6'>, Or<Char<'7'>, Or<Char<'8'>,
+  Or<Char<'9'>, Or<Char<':'>, Or<Char<';'>, Or<Char<'<'>, Or<Char<'='>, Or<Char<'>'>,
+  Or<Char<'?'>, Or<Char<'@'>, Or<Char<'A'>, Or<Char<'B'>, Or<Char<'C'>, Or<Char<'D'>,
+  Or<Char<'E'>, Or<Char<'F'>, Or<Char<'G'>, Or<Char<'H'>, Or<Char<'I'>, Or<Char<'J'>,
+  Or<Char<'K'>, Or<Char<'L'>, Or<Char<'M'>, Or<Char<'N'>, Or<Char<'O'>, Or<Char<'P'>,
+  Or<Char<'Q'>, Or<Char<'R'>, Or<Char<'S'>, Or<Char<'T'>, Or<Char<'U'>, Or<Char<'V'>,
+  Or<Char<'W'>, Or<Char<'X'>, Or<Char<'Y'>, Or<Char<'Z'>, Or<Char<'['>, Or<Char<'\\'>,
+  Or<Char<']'>, Or<Char<'^'>, Or<Char<'_'>, Or<Char<'`'>, Or<Char<'a'>, Or<Char<'b'>,
+  Or<Char<'c'>, Or<Char<'d'>, Or<Char<'e'>, Or<Char<'f'>, Or<Char<'g'>, Or<Char<'h'>,
+  Or<Char<'i'>, Or<Char<'j'>, Or<Char<'k'>, Or<Char<'l'>, Or<Char<'m'>, Or<Char<'n'>,
+  Or<Char<'o'>, Or<Char<'p'>, Or<Char<'q'>, Or<Char<'r'>, Or<Char<'s'>, Or<Char<'t'>,
+  Or<Char<'u'>, Or<Char<'v'>, Or<Char<'w'>, Or<Char<'x'>, Or<Char<'y'>, Or<Char<'z'>,
+  Or<Char<'{'>, Or<Char<'|'>, Or<Char<'}'>, Char<'~'>
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'s', Pattern, Pos> {
-  using type = CharListToOrSequential<WhitespaceList>::type;
+  using type = WhitespaceRegex;
   static constexpr size_t next = Pos + 2;
 };
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'S', Pattern, Pos> {
-  using type = CharListToOrSequential<
-    typename CharListNegation<WhitespaceList, Alphabet>::type
-  >::type;
+  using type = NegativeWhitespaceRegex;
   static constexpr size_t next = Pos + 2;
 };
 template<FixedString Pattern, size_t Pos>
@@ -970,18 +1037,26 @@ struct ParseCharGroup {
   static constexpr size_t next = chosen::next;
 };
 
-template<typename Char>
-struct IsLF : std::false_type {};
-template<>
-struct IsLF<Char<'\n'>> : std::true_type {};
-template<typename Alphabet>
-struct FullMatch {
-  template<typename X, typename Y>
-  struct BuildOr {
-    using type = std::conditional_t<IsLF<X>::value, Y, Or<X, Y>>;
-  };
-  using type = typename RightFold<BuildOr, Alphabet, EmptySet>::type;
-};
+/* all characters except \n and \r */
+using FullMatchRegex =
+  Or<Char<'\t'>, Or<Char<'\v'>, Or<Char<'\f'>, Or<Char<' '>, Or<Char<'!'>,
+  Or<Char<'"'>, Or<Char<'#'>, Or<Char<'$'>, Or<Char<'%'>, Or<Char<'&'>, Or<Char<'\''>,
+  Or<Char<'('>, Or<Char<')'>, Or<Char<'*'>, Or<Char<'+'>, Or<Char<','>, Or<Char<'-'>, 
+  Or<Char<'.'>, Or<Char<'/'>, Or<Char<'0'>, Or<Char<'1'>, Or<Char<'2'>, Or<Char<'3'>, 
+  Or<Char<'4'>, Or<Char<'5'>, Or<Char<'6'>, Or<Char<'7'>, Or<Char<'8'>, Or<Char<'9'>, 
+  Or<Char<':'>, Or<Char<';'>, Or<Char<'<'>, Or<Char<'='>, Or<Char<'>'>, Or<Char<'?'>, 
+  Or<Char<'@'>, Or<Char<'A'>, Or<Char<'B'>, Or<Char<'C'>, Or<Char<'D'>, Or<Char<'E'>, 
+  Or<Char<'F'>, Or<Char<'G'>, Or<Char<'H'>, Or<Char<'I'>, Or<Char<'J'>, Or<Char<'K'>, 
+  Or<Char<'L'>, Or<Char<'M'>, Or<Char<'N'>, Or<Char<'O'>, Or<Char<'P'>, Or<Char<'Q'>, 
+  Or<Char<'R'>, Or<Char<'S'>, Or<Char<'T'>, Or<Char<'U'>, Or<Char<'V'>, Or<Char<'W'>, 
+  Or<Char<'X'>, Or<Char<'Y'>, Or<Char<'Z'>, Or<Char<'['>, Or<Char<'\\'>, Or<Char<']'>, 
+  Or<Char<'^'>, Or<Char<'_'>, Or<Char<'`'>, Or<Char<'a'>, Or<Char<'b'>, Or<Char<'c'>, 
+  Or<Char<'d'>, Or<Char<'e'>, Or<Char<'f'>, Or<Char<'g'>, Or<Char<'h'>, Or<Char<'i'>, 
+  Or<Char<'j'>, Or<Char<'k'>, Or<Char<'l'>, Or<Char<'m'>, Or<Char<'n'>, Or<Char<'o'>, 
+  Or<Char<'p'>, Or<Char<'q'>, Or<Char<'r'>, Or<Char<'s'>, Or<Char<'t'>, Or<Char<'u'>, 
+  Or<Char<'v'>, Or<Char<'w'>, Or<Char<'x'>, Or<Char<'y'>, Or<Char<'z'>, Or<Char<'{'>, 
+  Or<Char<'|'>, Or<Char<'}'>, Char<'~'>
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
 
 /* ParseAtom: '(' Regex ')' | '[' CharSet ']' |  CHAR | '.' */
 template<FixedString Pattern, size_t Pos, size_t CapIdx>
@@ -1027,7 +1102,7 @@ struct ParseAtom {
 
   /* case '.' */
   struct impl_full_match {
-    using type = typename FullMatch<Alphabet>::type;
+    using type = FullMatchRegex;
     static constexpr size_t next = Pos + 1;
     static constexpr size_t next_cap_idx = CapIdx;
   };
@@ -1973,10 +2048,10 @@ struct BuildTransActionTable<NrStates, MaxTransActionLength, TypeList<Edges...>>
 
     (([&]<typename Edge>(Edge) {
       using Action = typename Edge::action;
-      /* 
-       * MaxTransActionLength is generated using the shortest action among 
+      /*
+       * MaxTransActionLength is generated using the shortest action among
        * edges sharing same from, ch and to. Therefore, if current action
-       * is longer than it, it's guaranteed that there exists a shorter action 
+       * is longer than it, it's guaranteed that there exists a shorter action
        * for same from, ch and to, and current action can be ignored safely.
        * On the other hand, if not do so, will trigger array out-of-bound
        * access later.
@@ -2162,7 +2237,7 @@ inline bool match(std::string_view str) noexcept {
 }
 
 template<impl::FixedString Pattern>
-std::string replace(std::string_view replace_rule, std::string_view str) noexcept {
+inline std::string replace(std::string_view replace_rule, std::string_view str) noexcept {
   using Re = typename impl::RegexScan<Pattern>::type;
   using StateList = impl::tnfa::AllStatesList<Re>;
   using EdgeList  = impl::tnfa::AllEdgesList<Re>;
