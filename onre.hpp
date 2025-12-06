@@ -1,15 +1,15 @@
-#ifndef ONRE_REGEX_HPP
-#define ONRE_REGEX_HPP
+#ifndef ONRE_REGEX_HPP__
+#define ONRE_REGEX_HPP__
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
-#include <type_traits>
-#include <string_view>
-#include <algorithm>
 #include <cstdio>
-#include <string>
 #include <sstream>
+#include <string>
+#include <string_view>
 #include <tuple>
+#include <type_traits>
 
 namespace onre {
 namespace impl {
@@ -38,25 +38,7 @@ struct TypeList {
   }();
 
   static constexpr size_t length = sizeof...(Ts);
-
-  template<template<typename, typename> typename IsLess>
-  static constexpr bool IsInOrder = [] {
-    if constexpr (length < 2) {
-      return true;
-    } else {
-      using Tuple = std::tuple<Ts...>;
-      return []<std::size_t... Is>(std::index_sequence<Is...>) {
-        return ((!IsLess<std::tuple_element_t<Is + 1, Tuple>,
-          std::tuple_element_t<Is, Tuple>>::value) && ...);
-      }(std::make_index_sequence<length - 1>{});
-    }
-  }();
 };
-
-template<typename T>
-struct IsTypeList : std::false_type {};
-template<typename... Es>
-struct IsTypeList<TypeList<Es...>> : std::true_type {};
 
 template<typename List1, typename List2>
 struct CatList;
@@ -155,62 +137,6 @@ struct RightFold<MergeFunc, TypeList<>, Begin> {
   using type = Begin;
 };
 
-template<template<typename, typename> typename MergeFunc, typename List, typename Acc>
-struct LeftFoldImpl;
-template<
-  template<typename, typename>
-  typename MergeFunc,
-  typename Head,
-  typename... Tails,
-  typename Acc
->
-struct LeftFoldImpl<MergeFunc, TypeList<Head, Tails...>, Acc> {
-  using TmpAcc = typename MergeFunc<Acc, Head>::type;
-  using type = typename LeftFoldImpl<MergeFunc, TypeList<Tails...>, TmpAcc>::type;
-};
-template<template<typename, typename> typename MergeFunc, typename Acc>
-struct LeftFoldImpl<MergeFunc, TypeList<>, Acc> {
-  using type = Acc;
-};
-
-template<template<typename, typename> typename MergeFunc, typename List, typename Begin>
-struct LeftFold {
-  using type = typename LeftFoldImpl<MergeFunc, List, Begin>::type;
-};
-
-template<template<typename, typename> typename IsLess, typename List, typename T>
-struct InsertElem;
-template<template<typename, typename> typename IsLess, typename T>
-struct InsertElem<IsLess, TypeList<>, T> {
-  using type = TypeList<T>;
-};
-template<template<typename, typename> typename IsLess, typename Head, typename... Tails, typename T>
-struct InsertElem<IsLess, TypeList<Head, Tails...>, T> {
-  using type = typename std::conditional_t<
-    IsLess<T, Head>::value,
-    std::type_identity<TypeList<T, Head, Tails...>>,
-    PushFront<typename InsertElem<IsLess, TypeList<Tails...>, T>::type, Head>
-  >::type;
-};
-template<template<typename, typename> typename IsLess, typename List>
-struct InsertSort {
-  template<typename Acc, typename Head>
-  struct Merge {
-    using type = typename InsertElem<IsLess, Acc, Head>::type;
-  };
-  using type = typename LeftFold<Merge, List, TypeList<>>::type;
-};
-
-template<template<typename, typename> typename IsLess, typename List>
-struct Sort {
-  using type = typename std::conditional_t<
-    List::template IsInOrder<IsLess>,
-    std::type_identity<List>,
-    InsertSort<IsLess, List>
-  >::type;
-};
-
-
 /* === fixed string, a string container enabling compile-time visiting === */
 template<size_t N>
 struct FixedString {
@@ -260,40 +186,6 @@ struct Closure {
   using inner = R;
 };
 
-template<typename R>
-struct is_empty_set : std::is_same<R, EmptySet> {};
-template<typename R>
-struct is_epsilon : std::is_same<R, Epsilon> {};
-template<typename R>
-struct is_char : std::false_type {};
-template<char C>
-struct is_char<Char<C>> : std::true_type {};
-template<typename R>
-struct is_setslot : std::false_type {};
-template<size_t I>
-struct is_setslot<SetSlot<I>> : std::true_type {};
-template<typename>
-struct is_or : std::false_type {};
-template<typename L, typename R>
-struct is_or<Or<L, R>> : std::true_type {};
-template<typename>
-struct is_concat : std::false_type {};
-template<typename L, typename R>
-struct is_concat<Concat<L, R>> : std::true_type {};
-template<typename>
-struct is_closure : std::false_type {};
-template<typename T>
-struct is_closure<Closure<T>> : std::true_type {};
-
-template<typename T> static constexpr auto is_empty_set_v = is_empty_set<T>::value;
-template<typename T> static constexpr auto is_epsilon_v = is_epsilon<T>::value;
-template<typename T> static constexpr auto is_char_v = is_char<T>::value;
-template<typename T> static constexpr auto is_setslot_v = is_setslot<T>::value;
-template<typename T> static constexpr auto is_or_v = is_or<T>::value;
-template<typename T> static constexpr auto is_concat_v = is_concat<T>::value;
-template<typename T> static constexpr auto is_closure_v = is_closure<T>::value;
-
-
 /* === nullable testing, testing whether epsilon in L(R) === */
 template<typename R>
 struct Nullable {};
@@ -313,7 +205,6 @@ struct Nullable<Concat<L, R>>
   : std::bool_constant<Nullable<L>::value && Nullable<R>::value> {};
 template<typename R>
 struct Nullable<Closure<R>> : std::true_type {};
-
 
 /*                        First notation,                           *
  * === get TypeList<Char...> of possible character occurring in === *
@@ -360,7 +251,6 @@ template <typename R, typename Acc>
 struct First<Closure<R>, Acc> {
   using type = typename First<R, Acc>::type;
 };
-
 
 /* === simplify and standard ordering rules, significantly reduce complexity === */
 template<typename R>
@@ -615,7 +505,6 @@ struct Simplify<Closure<R>> {
   using type = typename SimplifyFixedPoint<Closure<R>, simplified, is_same>::type;
 };
 
-
 /* === compile-time alphabet and helper function === */
 constexpr size_t nr_ascii_char = 128;
 constexpr char visible_ascii_start = ' ';
@@ -677,7 +566,6 @@ using Alphabet = TypeList<
   Char<'u'>, Char<'v'>, Char<'w'>, Char<'x'>, Char<'y'>, Char<'z'>, Char<'{'>,
   Char<'|'>, Char<'}'>, Char<'~'>
 >;
-
 
 /* === regex parser === */
 /*
@@ -1041,20 +929,20 @@ struct ParseCharGroup {
 using FullMatchRegex =
   Or<Char<'\t'>, Or<Char<'\v'>, Or<Char<'\f'>, Or<Char<' '>, Or<Char<'!'>,
   Or<Char<'"'>, Or<Char<'#'>, Or<Char<'$'>, Or<Char<'%'>, Or<Char<'&'>, Or<Char<'\''>,
-  Or<Char<'('>, Or<Char<')'>, Or<Char<'*'>, Or<Char<'+'>, Or<Char<','>, Or<Char<'-'>, 
-  Or<Char<'.'>, Or<Char<'/'>, Or<Char<'0'>, Or<Char<'1'>, Or<Char<'2'>, Or<Char<'3'>, 
-  Or<Char<'4'>, Or<Char<'5'>, Or<Char<'6'>, Or<Char<'7'>, Or<Char<'8'>, Or<Char<'9'>, 
-  Or<Char<':'>, Or<Char<';'>, Or<Char<'<'>, Or<Char<'='>, Or<Char<'>'>, Or<Char<'?'>, 
-  Or<Char<'@'>, Or<Char<'A'>, Or<Char<'B'>, Or<Char<'C'>, Or<Char<'D'>, Or<Char<'E'>, 
-  Or<Char<'F'>, Or<Char<'G'>, Or<Char<'H'>, Or<Char<'I'>, Or<Char<'J'>, Or<Char<'K'>, 
-  Or<Char<'L'>, Or<Char<'M'>, Or<Char<'N'>, Or<Char<'O'>, Or<Char<'P'>, Or<Char<'Q'>, 
-  Or<Char<'R'>, Or<Char<'S'>, Or<Char<'T'>, Or<Char<'U'>, Or<Char<'V'>, Or<Char<'W'>, 
-  Or<Char<'X'>, Or<Char<'Y'>, Or<Char<'Z'>, Or<Char<'['>, Or<Char<'\\'>, Or<Char<']'>, 
-  Or<Char<'^'>, Or<Char<'_'>, Or<Char<'`'>, Or<Char<'a'>, Or<Char<'b'>, Or<Char<'c'>, 
-  Or<Char<'d'>, Or<Char<'e'>, Or<Char<'f'>, Or<Char<'g'>, Or<Char<'h'>, Or<Char<'i'>, 
-  Or<Char<'j'>, Or<Char<'k'>, Or<Char<'l'>, Or<Char<'m'>, Or<Char<'n'>, Or<Char<'o'>, 
-  Or<Char<'p'>, Or<Char<'q'>, Or<Char<'r'>, Or<Char<'s'>, Or<Char<'t'>, Or<Char<'u'>, 
-  Or<Char<'v'>, Or<Char<'w'>, Or<Char<'x'>, Or<Char<'y'>, Or<Char<'z'>, Or<Char<'{'>, 
+  Or<Char<'('>, Or<Char<')'>, Or<Char<'*'>, Or<Char<'+'>, Or<Char<','>, Or<Char<'-'>,
+  Or<Char<'.'>, Or<Char<'/'>, Or<Char<'0'>, Or<Char<'1'>, Or<Char<'2'>, Or<Char<'3'>,
+  Or<Char<'4'>, Or<Char<'5'>, Or<Char<'6'>, Or<Char<'7'>, Or<Char<'8'>, Or<Char<'9'>,
+  Or<Char<':'>, Or<Char<';'>, Or<Char<'<'>, Or<Char<'='>, Or<Char<'>'>, Or<Char<'?'>,
+  Or<Char<'@'>, Or<Char<'A'>, Or<Char<'B'>, Or<Char<'C'>, Or<Char<'D'>, Or<Char<'E'>,
+  Or<Char<'F'>, Or<Char<'G'>, Or<Char<'H'>, Or<Char<'I'>, Or<Char<'J'>, Or<Char<'K'>,
+  Or<Char<'L'>, Or<Char<'M'>, Or<Char<'N'>, Or<Char<'O'>, Or<Char<'P'>, Or<Char<'Q'>,
+  Or<Char<'R'>, Or<Char<'S'>, Or<Char<'T'>, Or<Char<'U'>, Or<Char<'V'>, Or<Char<'W'>,
+  Or<Char<'X'>, Or<Char<'Y'>, Or<Char<'Z'>, Or<Char<'['>, Or<Char<'\\'>, Or<Char<']'>,
+  Or<Char<'^'>, Or<Char<'_'>, Or<Char<'`'>, Or<Char<'a'>, Or<Char<'b'>, Or<Char<'c'>,
+  Or<Char<'d'>, Or<Char<'e'>, Or<Char<'f'>, Or<Char<'g'>, Or<Char<'h'>, Or<Char<'i'>,
+  Or<Char<'j'>, Or<Char<'k'>, Or<Char<'l'>, Or<Char<'m'>, Or<Char<'n'>, Or<Char<'o'>,
+  Or<Char<'p'>, Or<Char<'q'>, Or<Char<'r'>, Or<Char<'s'>, Or<Char<'t'>, Or<Char<'u'>,
+  Or<Char<'v'>, Or<Char<'w'>, Or<Char<'x'>, Or<Char<'y'>, Or<Char<'z'>, Or<Char<'{'>,
   Or<Char<'|'>, Or<Char<'}'>, Char<'~'>
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
 
@@ -1334,7 +1222,6 @@ struct Derivative<Closure<R>, C> {
     using type = typename Simplify<Concat<typename Derivative<R, C>::type, Closure<R>>>::type;
 };
 
-
 /* === DFA builder === */
 template<typename R>
 struct RemoveAllAction;
@@ -1508,7 +1395,6 @@ template<typename RE> using AllStateEdgePair = typename AllStatesAndEdgesGenerat
 template<typename RE> using AllStatesList = typename AllStatesAndEdgesGenerator<RE>::States;
 template<typename RE> using AllEdgesList  = typename AllStatesAndEdgesGenerator<RE>::Edges;
 
-
 /* === table builder, convert sparse graph representation into jump table representation === */
 template<size_t NrStates, typename EdgesList>
 struct BuildTable;
@@ -1607,7 +1493,6 @@ struct CatAction<Seq<As1...>, Seq<As2...>> {
 };
 template<typename Seq, typename A> using CarAction_t = typename CatAction<Seq, A>::type;
 
-
 namespace tnfa {
 
 /* === v notation === */
@@ -1666,7 +1551,6 @@ template<typename R>
 struct v<Closure<R>> {
   using type = TypeList<Omega>;
 };
-
 
 /* === extended brzozowski derivative === */
 template <typename Remain, typename Action>
@@ -1759,7 +1643,6 @@ struct Derivative<Closure<R>, C> {
 
   using type = typename Map<MapFunc, typename Derivative<R, C>::type>::type;
 };
-
 
 /* === TNFA builder === */
 template<typename R>
@@ -2203,11 +2086,9 @@ struct BuildMutualTable<NrGroups, TypeList<MutualPairs...>> {
   }
 };
 
-
 } /* namespace tnfa */
 
 } /* namespace impl */
-
 
 /* === interface === */
 template<impl::FixedString Pattern>
@@ -2402,4 +2283,4 @@ inline std::string replace(std::string_view replace_rule, std::string_view str) 
 
 } /* namespace onre */
 
-#endif /* !ONRE_REGEX_HPP_ */
+#endif /* #ifndef ONRE_REGEX_HPP__ */
