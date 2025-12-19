@@ -5,11 +5,11 @@
 #include <array>
 #include <cstddef>
 #include <cstdio>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
+#include <vector>
 
 namespace onre {
 namespace impl {
@@ -2197,61 +2197,83 @@ inline std::string replace(std::string_view replace_rule, std::string_view str) 
   };
 
   thread_local static SlotFile slot_file1, slot_file2;
-  thread_local static std::array<bool, nr_states> active_states1, active_states2;
+  thread_local static std::array<bool, nr_states> is_state_active1, is_state_active2;
+  thread_local static std::vector<size_t> active_states1, active_states2;
 
   SlotFile* cur_slot_file = &slot_file1;
   SlotFile* nxt_slot_file = &slot_file2;
   // use pointer to explicitly eliminate TLS
   for (auto& line : *cur_slot_file) line.fill(-1);
   for (auto& line : *nxt_slot_file) line.fill(-1);
-  auto* cur_active_state = &active_states1;
-  auto* nxt_active_state = &active_states2;
-  cur_active_state->fill(false);
-  nxt_active_state->fill(false);
+  auto* cur_active_states = &active_states1;
+  auto* nxt_active_states = &active_states2;
+  cur_active_states->clear();
+  cur_active_states->reserve(nr_states);
+  nxt_active_states->clear();
+  nxt_active_states->reserve(nr_states);
+  auto* cur_is_state_active = &is_state_active1;
+  auto* nxt_is_state_active = &is_state_active2;
+  cur_is_state_active->fill(false);
+  nxt_is_state_active->fill(false);
 
-  (*cur_active_state)[0] = true;
+  cur_active_states->push_back(0);
+  (*cur_is_state_active)[0] = true;
   for (size_t idx = 0; idx < str.size(); idx++) {
     char ch = str[idx];
     if (ch == '\0') break;
-    nxt_active_state->fill(false);
-    for (size_t state = 0; state < nr_states; state++) {
-      if (!(*cur_active_state)[state]) continue;
-      for (const auto& next_state : trans_table[state][static_cast<size_t>(ch)]) {
-        if (next_state < 0) break;
+    nxt_active_states->clear();
+    nxt_is_state_active->fill(false);
+    for (size_t state : *cur_active_states) {
+      for (const auto& nxt_state : trans_table[state][static_cast<size_t>(ch)]) {
+        if (nxt_state < 0) break;
+        if (!(*nxt_is_state_active)[nxt_state]) {
+          (*nxt_slot_file)[nxt_state] = apply_action(
+            (*cur_slot_file)[state],
+            trans_action_table[state][static_cast<size_t>(ch)][nxt_state], idx
+          );
+          nxt_active_states->push_back((nxt_state));
+          (*nxt_is_state_active)[nxt_state] = true;
+          continue;
+        }
         auto next_slot_line = apply_action(
           (*cur_slot_file)[state],
-          trans_action_table[state][static_cast<size_t>(ch)][next_state], idx
+          trans_action_table[state][static_cast<size_t>(ch)][nxt_state], idx
         );
-        if (
-          !(*nxt_active_state)[next_state]
-          || need_change((*nxt_slot_file)[next_state], next_slot_line)
-        ) {
-          (*nxt_slot_file)[next_state] = next_slot_line;
+        if (need_change((*nxt_slot_file)[nxt_state], next_slot_line)) {
+          (*nxt_slot_file)[nxt_state] = next_slot_line;
         }
-        (*nxt_active_state)[next_state] = true;
       }
     }
     std::swap(cur_slot_file, nxt_slot_file);
-    std::swap(cur_active_state, nxt_active_state);
+    std::swap(cur_active_states, nxt_active_states);
+    std::swap(cur_is_state_active, nxt_is_state_active);
   }
 
-  bool is_final_line_updated = false;
+  bool is_final_line_inited = false;
   SlotLine final_line {};
-  for (size_t state = 0; state < nr_states; state++) {
-    if (!(*cur_active_state)[state]) continue;
+  for (size_t state : *cur_active_states) {
     if (!accept_table[state]) continue;
+    if (!is_final_line_inited) {
+      final_line = apply_action(
+        (*cur_slot_file)[state],
+        accept_action_table[state],
+        str.size()
+      );
+      is_final_line_inited = true;
+      continue;
+    }
     auto after_accept = apply_action(
       (*cur_slot_file)[state],
       accept_action_table[state],
       str.size()
     );
-    if (!is_final_line_updated || need_change(final_line, after_accept)) {
-      is_final_line_updated = true;
+    if (need_change(final_line, after_accept)) {
       final_line = after_accept;
     }
   }
 
-  std::ostringstream result_buffer;
+  std::string result;
+  result.reserve(str.size() + replace_rule.size());
 
   static auto find_dollar = [](std::string_view str, size_t start_pos) {
     return std::find(str.begin() + start_pos, str.end(), '$') - str.begin();
@@ -2259,11 +2281,11 @@ inline std::string replace(std::string_view replace_rule, std::string_view str) 
 
   for (size_t idx = 0; idx < replace_rule.size(); idx++) {
     size_t nxt_dollar_idx = find_dollar(replace_rule, idx);
-    result_buffer.write(replace_rule.data() + idx, nxt_dollar_idx - idx);
+    result.append(replace_rule.data() + idx, nxt_dollar_idx - idx);
     idx = nxt_dollar_idx;
     if (idx >= replace_rule.size()) break;
     if (++idx >= replace_rule.size()) return "";
-    if (replace_rule[idx] == '$') result_buffer << '$';
+    if (replace_rule[idx] == '$') result.append("$");
     else if (is_digit(replace_rule[idx])) {
       size_t group_idx = replace_rule[idx] - '0';
       while (idx + 1 < replace_rule.size() && is_digit(replace_rule[idx + 1])) {
@@ -2273,12 +2295,12 @@ inline std::string replace(std::string_view replace_rule, std::string_view str) 
       if (group_idx >= nr_capture_group) return "";
       int32_t l = open_time(final_line, group_idx), r = close_time(final_line, group_idx);
       if (l < 0 || r < 0) continue;
-      result_buffer.write(str.data() + l, r - l);
+      result.append(str.data() + l, r - l);
     }
     else return "";
   }
 
-  return result_buffer.str();
+  return result;
 }
 
 } /* namespace onre */
