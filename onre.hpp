@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <string>
 #include <string_view>
@@ -171,7 +172,7 @@ struct Char {
 };
 template<std::size_t I>
 struct SetSlot {
-  static constexpr char i = I;
+  static constexpr std::size_t i = I;
 };
 template<typename R, typename S>
 struct Or {
@@ -316,10 +317,10 @@ template<>
 struct Simplify<Closure<Epsilon>> {
   using type = Epsilon;
 };
-/* 0* <=> 0 */
+/* 0* <=> e */
 template<>
 struct Simplify<Closure<EmptySet>> {
-  using type = EmptySet;
+  using type = Epsilon;
 };
 
 /* R** <=> R* */
@@ -1064,23 +1065,42 @@ struct ParseFactor {
 
   struct curly {
     static_assert(Atom::next + 1 < Pattern.length, "ParseFactor: incomplete quantifier");
+
+    static_assert(Pattern[Atom::next + 1] != '}', "ParseFactor: empty quantifier '{}' is invalid");
+
     using ParseMin = ParseDecimal<Pattern, Atom::next + 1>;
-    static constexpr int64_t Min = Pattern[Atom::next + 1] == ',' ? 0 : ParseMin::value;
+    static constexpr bool min_missing = (Pattern[Atom::next + 1] == ',');
+    static constexpr int64_t Min = min_missing ? 0 : ParseMin::value;
+
     static_assert(ParseMin::next < Pattern.length
       && (Pattern[ParseMin::next] == ',' || Pattern[ParseMin::next] == '}'),
       "ParseFactor: incomplete quantifier");
+
     struct single_num {
       static constexpr int64_t Max = Min;
       static constexpr size_t next = ParseMin::next + 1;
     };
+
     struct multiple_num {
+      static_assert(ParseMin::next + 1 < Pattern.length, "ParseFactor: incomplete quantifier");
+
+      static_assert(!(min_missing && Pattern[ParseMin::next + 1] == '}'),
+        "ParseFactor: quantifier must contain at least one number");
+
       using ParseMax = ParseDecimal<Pattern, ParseMin::next + 1>;
-      static constexpr int64_t Max = Pattern[ParseMin::next + 1] == '}' ? -1 : ParseMax::value;
+      static_assert(ParseMax::next < Pattern.length && Pattern[ParseMax::next] == '}',
+        "ParseFactor: incomplete quantifier (missing '}')");
+
+      static constexpr int64_t Max =
+        (Pattern[ParseMin::next + 1] == '}') ? -1 : ParseMax::value;
       static constexpr size_t next = ParseMax::next + 1;
     };
+
     using chosen = std::conditional_t<Pattern[ParseMin::next] == '}', single_num, multiple_num>;
     static constexpr int64_t Max = chosen::Max;
+
     static_assert(Max < 0 || Min <= Max, "ParseFactor: invalid quantifier");
+
     using type = typename BuildQuantifier<typename Atom::type, Min, Max>::type;
     static constexpr size_t next = chosen::next;
   };
@@ -1256,7 +1276,7 @@ struct RemoveAllAction<Concat<L, R>> {
   >::type;
 };
 template<typename R>
-struct RemoveAllAction<Closure<R>> : std::true_type {
+struct RemoveAllAction<Closure<R>> {
   using type = typename Simplify<
     Closure<typename RemoveAllAction<R>::type>
   >::type;
@@ -1515,8 +1535,9 @@ template<
   typename Acc
 >
 struct Product<List1, TypeList<Head, Tails...>, Acc> {
-  using TmpAcc = typename ProductAction<List1, Head>::type;
-  using type = typename Product<List1, TypeList<Tails...>, TmpAcc>::type;
+  using Tmp = typename ProductAction<List1, Head>::type;
+  using NextAcc = typename JoinUnique<Acc, Tmp>::type;
+  using type = typename Product<List1, TypeList<Tails...>, NextAcc>::type;
 };
 template<typename List1, typename Acc>
 struct Product<List1, TypeList<>, Acc> {
@@ -2064,6 +2085,7 @@ struct MutualGroups {
       >::type;
     };
     struct Close {
+      static_assert(OpeningGroupsIdx::length > 0, "MutualGroups: unmatched ')'");
       static constexpr size_t ClosedIdx = OpeningGroupsIdx::template At<0>::value;
       using NextOpeningGroupsIdx = typename PopFront<OpeningGroupsIdx>::type;
       using NextClosedGroups = typename PushBack<ClosedGroups, Num<ClosedIdx>>::type;
@@ -2233,32 +2255,39 @@ inline std::string replace(std::string_view replace_rule, std::string_view str) 
 
   cur_active_states->push_back(0);
   (*cur_is_state_active)[0] = true;
+
   for (size_t idx = 0; idx < str.size(); idx++) {
-    char ch = str[idx];
-    if (ch == '\0') break;
+    unsigned char uch = static_cast<unsigned char>(str[idx]);
+
     nxt_active_states->clear();
     nxt_is_state_active->fill(false);
+
     for (size_t state : *cur_active_states) {
-      for (const auto& nxt_state : trans_table[state][static_cast<size_t>(ch)]) {
+      for (const auto& nxt_state : trans_table[state][static_cast<size_t>(uch)]) {
         if (nxt_state < 0) break;
+
         if (!(*nxt_is_state_active)[nxt_state]) {
           (*nxt_slot_file)[nxt_state] = apply_action(
             (*cur_slot_file)[state],
-            trans_action_table[state][static_cast<size_t>(ch)][nxt_state], idx
+            trans_action_table[state][static_cast<size_t>(uch)][nxt_state],
+            static_cast<int32_t>(idx)
           );
-          nxt_active_states->push_back((nxt_state));
+          nxt_active_states->push_back(nxt_state);
           (*nxt_is_state_active)[nxt_state] = true;
           continue;
         }
+
         auto next_slot_line = apply_action(
           (*cur_slot_file)[state],
-          trans_action_table[state][static_cast<size_t>(ch)][nxt_state], idx
+          trans_action_table[state][static_cast<size_t>(uch)][nxt_state],
+          static_cast<int32_t>(idx)
         );
         if (need_change((*nxt_slot_file)[nxt_state], next_slot_line)) {
           (*nxt_slot_file)[nxt_state] = next_slot_line;
         }
       }
     }
+
     std::swap(cur_slot_file, nxt_slot_file);
     std::swap(cur_active_states, nxt_active_states);
     std::swap(cur_is_state_active, nxt_is_state_active);
@@ -2302,7 +2331,9 @@ inline std::string replace(std::string_view replace_rule, std::string_view str) 
       if (group_idx >= nr_capture_group) return "";
       int32_t l = open_time(final_line, group_idx), r = close_time(final_line, group_idx);
       if (l < 0 || r < 0) continue;
-      result.append(str.data() + l, r - l);
+
+      if (r < l) continue;
+      result.append(str.data() + l, static_cast<size_t>(r - l));
     }
     else return "";
   }
