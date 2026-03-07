@@ -15,7 +15,7 @@ A header-only regex Engine with zero-cost abstraction and strictly O(n) time com
 * ✔️ **Supports capture groups** and replacement based on capture groups.
 * ✔️ Uses Brzozowski derivatives with type-level functional metaprogramming to ensure fast compilation and almost always produce minimal automata, and **it’s cool**!
 * ✔️ Supports all visible ASCII characters as the alphabet.
-* ✔️ Supports standard regular expressions (concatenation, alternation `|`, Kleene star `*`, parentheses `()`); supports `+` and `?`; supports wildcard `.`; supports character classes (like `[^a-z012]`); supports escapes (`\n`, `\t`, `\d`, `\s`, `\w`, `\x[HEX]`, `\[`, `\]`, `\*`, ...); supports quantifiers (`{n}`, `{n,}`, `{,m}`, `{n,m}`).
+* ✔️ Supports standard regular expressions (concatenation, alternation `|`, Kleene star `*`, parentheses `()`); supports `+` and `?`; supports wildcard `.`; supports character classes (like `[^a-z012]`); supports escapes (`\n`, `\t`, `\d`, `\s`, `\w`, `\xHH` (two hex digits), `\[`, `\]`, `\*`, ...); supports quantifiers (`{n}`, `{n,}`, `{,m}`, `{n,m}`).
 * ❌️ Does not support zero-width assertions.
 * ❌️ Does not support backreferences.
 * ❌️ Capture disambiguation rules do not conform to POSIX or Perl standards.
@@ -260,7 +260,7 @@ Each extended regular expression defines a language, with $L(\langle i\rangle) =
 
 At the start of matching, we initialize the slot state as $(-1, -1, \ldots, -1)$. When matching, each subexpression executes its corresponding action upon completion. The resulting slot configuration after a full match is the output of the expression for that string. The output may not be unique (multiple paths may exist), and we do not attempt to disambiguate.
 
-For example, the POSIX regular expression `a(a*)a`, which captures the substring excluding the first and last characters, can be viewed as the extended expression $\langle 0\rangle a^\ast\langle 1\rangle a$. Upon completion, it yields an output $(s_0, s_1)$, representing the start and end indices (left-open, right-closed) of the captured group.
+For example, the POSIX regular expression `a(a*)a`, which captures the substring excluding the first and last characters, can be viewed as the extended expression $\langle 0\rangle a^\ast\langle 1\rangle a$. Upon completion, it yields an output $(s_0, s_1)$, representing the start and end indices (0-based, left-closed, right-open) of the captured group.
 
 ### The $v$ Function
 
@@ -430,6 +430,6 @@ If recursion depth causes compile failures, add `-ftemplate-depth=[A BIG NUMBER]
 
 ## 😭 Known issues
 
-❗ To keep compilation time acceptable, the current implementation does not use semantic equivalence when merging states; it uses syntactic equivalence instead. As a result it does not support some expressions that have multiple interpretations inside closures, examples include `(ab|ababab|c)*`, `(aa|aaa)*`, `(a*|aa)*`, or `(a*aa)*`. Instead, equivalent forms like `(ab|c)*`, `|aaa*`, `a*`, or `(aa)*` are preferred; otherwise compilation may fail. An Exact mode might be added in future to relax this, but compilation time will predictably become unacceptable.
+❗ To keep compilation time acceptable, the current implementation does not use semantic equivalence when merging states; it uses syntactic equivalence instead. As a result it does not support some expressions that have multiple interpretations inside closures, examples include `(ab|ababab|c)*`, `(aa|aaa)*`, `(a*|aa)*`, or `(a*aa)*`. Instead, equivalent forms like `(ab|c)*`, `(|aaa*)`, `a*`, or `(aa)*` are preferred; otherwise compilation may fail. An Exact mode might be added in future to relax this, but compilation time will predictably become unacceptable.
 
 🩹 The expressions that cause the issue are rarely used in normal circumstances, and because patterns are static they are not exploitable for attack vectors. Fixing this is not currently planned.
