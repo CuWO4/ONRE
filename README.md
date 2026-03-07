@@ -3,19 +3,19 @@
 
 # ONRE
 
-A header-only regex Engine with zero-cost abstraction and strictly O(n) time complexity.
+A header-only regex engine with zero-cost abstraction and strictly linear-time matching in the subject length.
 
 ---
 
 ## ✨ Core features
 
-* ✔️ Strict $O(|s|)$ matching complexity, where $|s|$ denotes the length of the subject string.
+* ✔️ Strict $O(|s|)$ matching complexity in the subject length (for a fixed pattern); the constant factor depends on the compiled automaton size (and is larger for capture-group-aware operations).
 * ✔️ Compile-time construction of automata for constant string regular expressions, leaving no runtime overhead.
 * ✔️ Single-header file; just `include` to use.
 * ✔️ **Supports capture groups** and replacement based on capture groups.
 * ✔️ Uses Brzozowski derivatives with type-level functional metaprogramming to ensure fast compilation and almost always produce minimal automata, and **it’s cool**!
 * ✔️ Supports all visible ASCII characters as the alphabet.
-* ✔️ Supports standard regular expressions (concatenation, alternation `|`, Kleene star `*`, parentheses `()`); supports `+` and `?`; supports wildcard `.`; supports character classes (like `[^a-z012]`); supports escapes (`\n`, `\t`, `\d`, `\s`, `\w`, `\x[HEX]`, `\[`, `\]`, `\*`, ...); supports quantifiers (`{n}`, `{n,}`, `{,m}`, `{n,m}`).
+* ✔️ Supports standard regular expressions (concatenation, alternation `|`, Kleene star `*`, parentheses `()`); supports `+` and `?`; supports wildcard `.`; supports character classes (like `[^a-z012]`); supports escapes (`\n`, `\t`, `\d`, `\s`, `\w`, `\xHH` (two hex digits), `\[`, `\]`, `\*`, ...); supports quantifiers (`{n}`, `{n,}`, `{,m}`, `{n,m}`).
 * ❌️ Does not support zero-width assertions.
 * ❌️ Does not support backreferences.
 * ❌️ Capture disambiguation rules do not conform to POSIX or Perl standards.
@@ -83,7 +83,7 @@ std::string onre::replace(std::string_view replace_rule, std::string_view str) n
 
 `onre::match` will return whether `str` can be matched by `Pattern`; `onre::replace` will return the string obtained after performing replacements according to `replace_rule` if `str` can be matched by `Pattern`. The rule for `replace_rule` is: `$N` denotes the $N$-th capture group (ordered by the position of the left parenthesis, starting from 1); `$0` denotes the string itself; `$$` denotes `$`.
 
-If `onre::replace` cannot match, the result is undefined; if the replacement rule is invalid, `onre::replace` returns an empty string. For scenarios where a match might fail, you should first use `onre::match` to check whether it matches.
+If `onre::replace` cannot match, it returns an empty string (the same return value as when the replacement rule is invalid). For scenarios where a match might fail or you need to distinguish failures, you should first use `onre::match` to check whether it matches.
 
 Usage example:
 
@@ -240,7 +240,7 @@ Each extended regular expression defines a language, with $L(\langle i\rangle) =
 
 At the start of matching, we initialize the slot state as $(-1, -1, \ldots, -1)$. When matching, each subexpression executes its corresponding action upon completion. The resulting slot configuration after a full match is the output of the expression for that string. The output may not be unique (multiple paths may exist), and we do not attempt to disambiguate.
 
-For example, the POSIX regular expression `a(a*)a`, which captures the substring excluding the first and last characters, can be viewed as the extended expression $\langle 0\rangle a^\ast\langle 1\rangle a$. Upon completion, it yields an output $(s_0, s_1)$, representing the start and end indices (left-open, right-closed) of the captured group.
+For example, the POSIX regular expression `a(a*)a`, which captures the substring excluding the first and last characters, can be viewed as the extended expression $\langle 0\rangle a^\ast\langle 1\rangle a$. Upon completion, it yields an output $(s_0, s_1)$, representing the start and end indices (0-based, left-closed and right-open) of the captured group.
 
 ### The $v$ Function
 
@@ -410,6 +410,6 @@ If recursion depth causes compile failures, add `-ftemplate-depth=[A BIG NUMBER]
 
 ## 😭 Known issues
 
-❗ To keep compilation time acceptable, the current implementation does not use semantic equivalence when merging states; it uses syntactic equivalence instead. As a result it does not support some expressions that have multiple interpretations inside closures, examples include `(ab|ababab|c)*`, `(aa|aaa)*`, `(a*|aa)*`, or `(a*aa)*`. Instead, equivalent forms like `(ab|c)*`, `|aaa*`, `a*`, or `(aa)*` are preferred; otherwise compilation may fail. An Exact mode might be added in future to relax this, but compilation time will predictably become unacceptable.
+❗ To keep compilation time acceptable, the current implementation does not use semantic equivalence when merging states; it uses syntactic equivalence instead. As a result it does not support some expressions that have multiple interpretations inside closures, examples include `(ab|ababab|c)*`, `(aa|aaa)*`, `(a*|aa)*`, or `(a*aa)*`. Instead, equivalent forms like `(ab|c)*`, `(|aaa*)`, `a*`, or `(aa)*` are preferred; otherwise compilation may fail. An Exact mode might be added in future to relax this, but compilation time will predictably become unacceptable.
 
 🩹 The expressions that cause the issue are rarely used in normal circumstances, and because patterns are static they are not exploitable for attack vectors. Fixing this is not currently planned.
