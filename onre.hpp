@@ -528,11 +528,13 @@ constexpr std::array<bool, nr_ascii_char> make_valid_table() {
 constexpr auto valid_table = make_valid_table();
 
 constexpr bool is_valid_char(char ch) {
-  return valid_table[static_cast<unsigned char>(ch)];
+  const auto u = static_cast<unsigned char>(ch);
+  return u < nr_ascii_char && valid_table[u];
 }
 
 constexpr bool is_in_class_char(char ch) {
-  return is_visible_char(ch) && ch != ']';
+  const auto u = static_cast<unsigned char>(ch);
+  return u < nr_ascii_char && is_visible_char(static_cast<char>(u)) && ch != ']';
 }
 
 template <char Start, char End>
@@ -1880,14 +1882,27 @@ struct BuildTransTable<NrStates, TypeList<Edges...>> {
   > make() {
     std::array<std::array<std::array<int32_t, NrStates>, nr_ascii_char>, NrStates> result{};
     for (auto& state_table : result) for (auto& char_table : state_table) char_table.fill(-1);
+
     std::array<std::array<size_t, nr_ascii_char>, NrStates> idxes {};
     for (auto& line : idxes) line.fill(0);
-    ((
-      result[Edges::from]
-            [static_cast<size_t>(Edges::ch)]
-            [idxes[Edges::from]
-            [static_cast<size_t>(Edges::ch)]++] = Edges::to
-    ), ...);
+
+    std::array<std::array<std::array<bool, NrStates>, nr_ascii_char>, NrStates> inited{};
+    for (auto& from_table : inited)
+      for (auto& ch_table : from_table)
+        ch_table.fill(false);
+
+    (([&]<typename Edge>(Edge) {
+      constexpr size_t from = Edge::from;
+      constexpr size_t to   = Edge::to;
+      constexpr size_t ch   = static_cast<size_t>(Edge::ch);
+      if (inited[from][ch][to]) return;
+      inited[from][ch][to] = true;
+
+      auto& idx = idxes[from][ch];
+      if (idx >= NrStates) return;
+      result[from][ch][idx++] = static_cast<int32_t>(to);
+    }(Edges{})), ...);
+
     return result;
   }
 };
@@ -2108,9 +2123,9 @@ inline bool match(std::string_view str) noexcept {
   static constexpr auto dfa_is_accept_states = impl::dfa::BuildAccepts<DFAStatesList>::make();
 
   std::size_t state = 0;
-  for (const char& ch : str) {
-    if (ch < 0) [[unlikely]] return false;
-    int32_t nxt = dfa_trans_table[state][static_cast<std::size_t>(ch)];
+  for (unsigned char uch : str) {
+    if (uch >= impl::nr_ascii_char) [[unlikely]] return false;
+    int32_t nxt = dfa_trans_table[state][static_cast<std::size_t>(uch)];
     if (nxt < 0) return false;
     state = static_cast<std::size_t>(nxt);
   }
@@ -2254,23 +2269,15 @@ inline std::string replace(std::string_view replace_rule, std::string_view str) 
   for (size_t state : *cur_active_states) {
     if (!accept_table[state]) continue;
     if (!is_final_line_inited) {
-      final_line = apply_action(
-        (*cur_slot_file)[state],
-        accept_action_table[state],
-        str.size()
-      );
+      final_line = apply_action((*cur_slot_file)[state], accept_action_table[state], str.size());
       is_final_line_inited = true;
       continue;
     }
-    auto after_accept = apply_action(
-      (*cur_slot_file)[state],
-      accept_action_table[state],
-      str.size()
-    );
-    if (need_change(final_line, after_accept)) {
-      final_line = after_accept;
-    }
+    auto after_accept = apply_action((*cur_slot_file)[state], accept_action_table[state], str.size());
+    if (need_change(final_line, after_accept)) final_line = after_accept;
   }
+
+  if (!is_final_line_inited) return "";
 
   std::string result;
   result.reserve(str.size() + replace_rule.size());
