@@ -26,7 +26,7 @@ inline void replace_all(std::string& str, const std::string& from, const std::st
 template<onre::impl::FixedString pattern>
 void test_match_and_log(std::string_view str, bool expected) {
   auto start = std::chrono::high_resolution_clock::now();
-  bool result = onre::match<pattern>(str);
+  bool result = onre::Matcher<pattern>()(str);
   auto end = std::chrono::high_resolution_clock::now();
   std::string s(str);
   replace_all(s, "\n", "\\n");
@@ -50,7 +50,7 @@ void test_match_and_log(std::string_view str, bool expected) {
 template<onre::impl::FixedString pattern>
 void test_replace_and_log(std::string_view rule, std::string_view str, std::string_view expected) {
   auto start = std::chrono::high_resolution_clock::now();
-  std::string result = onre::replace<pattern>(rule, str);
+  std::string result = onre::Replacer<pattern>()(rule, str);
   auto end = std::chrono::high_resolution_clock::now();
   std::string s(str), expected_s(expected);
   replace_all(s, "\n", "\\n");
