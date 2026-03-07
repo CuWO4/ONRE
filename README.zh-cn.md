@@ -74,16 +74,29 @@ sys     0m3.850s
 原型:
 
 ```cpp
-template<onre::impl::FixedString Pattern>
-inline bool onre::match(std::string_view str) noexcept;
+class Matcher {
+public:
+  constexpr Matcher() {}
+  bool operator()(std::string_view str) noexcept;
+};
+template<typename CharType, CharType... Cs>
+constexpr Matcher<...> operator""_match();
 
-template<onre::impl::FixedString Pattern>
-std::string onre::replace(std::string_view replace_rule, std::string_view str) noexcept;
+template<impl::FixedString Pattern>
+class Replacer {
+public:
+  constexpr Replacer() {}
+  std::string operator()(std::string_view replace_rule, std::string_view str) noexcept;
+};
+template<typename CharType, CharType... Cs>
+constexpr Replacer<...> operator""_replace();
 ```
 
-`onre::match` 会返回 `str` 是否可以被 `Pattern` 匹配; 若 `str` 可以被 `Pattern` 匹配, `onre::replace` 会返回按照 `replace_rule` 进行替换后得到的串. 其中 `replace_rule` 的规则是 `$N` 表示第 $N$ 个捕获组 (按照捕获组左括号位置排序, 从 1 开始); `$0` 表示串本身; `$$` 表示 `$`.
+可以通过 `"regex expression"_match` 和 `"regex expression"_replace` 来轻松构造 `onre::Matcher` 和 `onre::Replacer`. 事实上, 你也很难手动构造二者.
 
-若 `onre::replace` 无法匹配, 结果是未定义的; 若替换规则不合法, `onre::replace` 返回空串. 对于有可能匹配失败的场景, 应该先使用 `onre::match` 检查是否匹配.
+`onre::Matcher` 会返回 `str` 是否可以被 `Pattern` 匹配; 若 `str` 可以被 `Pattern` 匹配, `onre::Replacer` 会返回按照 `replace_rule` 进行替换后得到的串. 其中 `replace_rule` 的规则是 `$N` 表示第 $N$ 个捕获组 (按照捕获组左括号位置排序, 从 1 开始); `$0` 表示串本身; `$$` 表示 `$`.
+
+若 `onre::Replacer` 无法匹配, 结果是未定义的; 若替换规则不合法, `onre::Replacer` 返回空串. 对于有可能匹配失败的场景, 应该先使用 `onre::Matcher` 检查是否匹配.
 
 使用例:
 
@@ -91,23 +104,30 @@ std::string onre::replace(std::string_view replace_rule, std::string_view str) n
 #include "onre.hpp"
 #include <string>
 
+// declare in the beginning of the file
+USE_ONRE;
+
 void f() {
-  bool result = onre::match<"((ab)*|c*|b)(@\\.)?">("abab");
-  std::string replaced = onre::replace<"ab(.*)ab">("$0, $1, $$", "ababab");
+  // check whether `abab` matches `((ab)*|c*|b)(@\\.)?`
+  bool result = "((ab)*|c*|b)(@\\.)?"_match("abab");
+  // match `ababab` with `ab(.*)ab`, then replace with rule `$0, $1, $$`
+  std::string replaced = "ab(.*)ab"_replace("$0, $1, $$", "ababab");
   // result = true; replaced = "ababab, ab, $"
 }
 ```
 
-`onre::match` 和 `onre::replace` 是线程安全的.
+`onre::Matcher` 和 `onre::Replacer` 是线程安全的.
 
-在代码的任何位置实例化 `onre::match` 和 `onre::replace`, 都会导致编译期展开, 增加编译时间, 即使动态运行时永远不可能运行到. 同一个编译单元中, 相同 pattern 的匹配器只会被实例化一次, 不同编译单元中的匹配器则在每个单元的编译中都会被实例化, 因此把复杂模式的匹配抽象到一个编译单元中会显著降低编译用时.
+在代码的任何位置实例化 `onre::Matcher` 和 `onre::Replacer`, 都会导致编译期展开, 增加编译时间, 即使动态运行时永远不可能运行到. 同一个编译单元中, 相同 pattern 的匹配器只会被实例化一次, 不同编译单元中的匹配器则在每个单元的编译中都会被实例化, 因此把复杂模式的匹配抽象到一个编译单元中会显著降低编译用时.
 
 ```cpp
 #include "onre.hpp"
 
+USE_ONRE;
+
 bool is_valid_email(std::string email) {
   // only compiled once
-  return onre::match<"[-a-zA-Z0-9.]+@([-a-zA-Z0-9]+.)+[-a-zA-Z0-9]+">(email);
+  return "[-a-zA-Z0-9.]+@([-a-zA-Z0-9]+.)+[-a-zA-Z0-9]+"_match(email);
 }
 ```
 
@@ -142,8 +162,8 @@ bool is_valid_email(std::string email) {
 其他例子:
 
 ```cpp
-onre::replace<"((a*)b)*">("$2", "aabb") => "" // aab-()-b
-onre::replace<"(a|ab)+b">("$1", "abab") => "a" // ab-(a)-b
+"((a*)b)*"_replace("$2", "aabb") => "" // aab-()-b
+"(a|ab)+b"_replace("$1", "abab") => "a" // ab-(a)-b
 ```
 
 ## 🤯 理论基础

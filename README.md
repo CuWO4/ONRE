@@ -74,16 +74,29 @@ sys     0m3.850s
 Prototype:
 
 ```cpp
-template<onre::impl::FixedString Pattern>
-inline bool onre::match(std::string_view str) noexcept;
+class Matcher {
+public:
+  constexpr Matcher() {}
+  bool operator()(std::string_view str) noexcept;
+};
+template<typename CharType, CharType... Cs>
+constexpr Matcher<...> operator""_match();
 
-template<onre::impl::FixedString Pattern>
-std::string onre::replace(std::string_view replace_rule, std::string_view str) noexcept;
+template<impl::FixedString Pattern>
+class Replacer {
+public:
+  constexpr Replacer() {}
+  std::string operator()(std::string_view replace_rule, std::string_view str) noexcept;
+};
+template<typename CharType, CharType... Cs>
+constexpr Replacer<...> operator""_replace();
 ```
 
-`onre::match` will return whether `str` can be matched by `Pattern`; `onre::replace` will return the string obtained after performing replacements according to `replace_rule` if `str` can be matched by `Pattern`. The rule for `replace_rule` is: `$N` denotes the $N$-th capture group (ordered by the position of the left parenthesis, starting from 1); `$0` denotes the string itself; `$$` denotes `$`.
+You could easily construct `onre::Matcher` and `onre::Replacer` with `"regex expression"_match` and `"regex expression"_replace`. In fact, it's quite difficult to construct both manually.
 
-If `onre::replace` cannot match, the result is undefined; if the replacement rule is invalid, `onre::replace` returns an empty string. For scenarios where a match might fail, you should first use `onre::match` to check whether it matches.
+`onre::Matcher` will return whether `str` can be matched by `Pattern`; `onre::Replacer` will return the string obtained after performing replacements according to `replace_rule` if `str` can be matched by `Pattern`. The rule for `replace_rule` is: `$N` denotes the $N$-th capture group (ordered by the position of the left parenthesis, starting from 1); `$0` denotes the string itself; `$$` denotes `$`.
+
+If `onre::Replacer` cannot match, the result is undefined; if the replacement rule is invalid, `onre::Replacer` returns an empty string. For scenarios where a match might fail, you should first use `onre::Matcher` to check whether it matches.
 
 Usage example:
 
@@ -91,23 +104,30 @@ Usage example:
 #include "onre.hpp"
 #include <string>
 
+// declare in the beginning of the file
+USE_ONRE;
+
 void f() {
-  bool result = onre::match<"((ab)*|c*|b)(@\\.)?">("abab");
-  std::string replaced = onre::replace<"ab(.*)ab">("$0, $1, $$", "ababab");
+  // check whether `abab` matches `((ab)*|c*|b)(@\\.)?`
+  bool result = "((ab)*|c*|b)(@\\.)?"_match("abab");
+  // match `ababab` with `ab(.*)ab`, then replace with rule `$0, $1, $$`
+  std::string replaced = "ab(.*)ab"_replace("$0, $1, $$", "ababab");
   // result = true; replaced = "ababab, ab, $"
 }
 ```
 
-`onre::match` and `onre::replace` are thread-safe.
+`onre::Matcher` and `onre::Replacer` are thread-safe.
 
-Instantiating `onre::match` or `onre::replace` anywhere in the code will trigger compile-time expansion and increase compile time even if the instance can never be executed at runtime. The same pattern instantiated multiple times within one translation unit is instantiated only once; different translation units will each instantiate it separately, so moving complex patterns into a single translation unit can greatly reduce compile time.
+Instantiating `onre::Matcher` or `onre::Replacer` anywhere in the code will trigger compile-time expansion and increase compile time even if the instance can never be executed at runtime. The same pattern instantiated multiple times within one translation unit is instantiated only once; different translation units will each instantiate it separately, so moving complex patterns into a single translation unit can greatly reduce compile time.
 
 ```cpp
 #include "onre.hpp"
 
+USE_ONRE;
+
 bool is_valid_email(std::string email) {
   // only compiled once
-  return onre::match<"[-a-zA-Z0-9.]+@([-a-zA-Z0-9]+.)+[-a-zA-Z0-9]+">(email);
+  return "[-a-zA-Z0-9.]+@([-a-zA-Z0-9]+.)+[-a-zA-Z0-9]+"_match(email);
 }
 ```
 
@@ -142,8 +162,8 @@ Equivalently:
 Other examples:
 
 ```cpp
-onre::replace<"((a*)b)*">("$2", "aabb") => "" // aab-()-b
-onre::replace<"(a|ab)+b">("$1", "abab") => "a" // ab-(a)-b
+"((a*)b)*"_replace("$2", "aabb") => "" // aab-()-b
+"(a|ab)+b"_replace("$1", "abab") => "a" // ab-(a)-b
 ```
 
 ## 🤯 Theoretical Foundation
