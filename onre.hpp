@@ -313,12 +313,12 @@ struct Simplify<Concat<Epsilon, Epsilon>> {
 
 /* e* <=> e */
 template<>
-struct Simplify<Closure<EmptySet>> {
+struct Simplify<Closure<Epsilon>> {
   using type = Epsilon;
 };
 /* 0* <=> 0 */
 template<>
-struct Simplify<Closure<Epsilon>> {
+struct Simplify<Closure<EmptySet>> {
   using type = EmptySet;
 };
 
