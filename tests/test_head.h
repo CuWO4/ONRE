@@ -107,6 +107,7 @@ void replace_character_class_test();
 void replace_extended_alphabet_and_escape_test();
 void replace_quantifier_test();
 void replace_longest_match_test();
+void replace_non_capturing_group_test();
 
 constexpr int N = 100000;
 constexpr int M = 10000;

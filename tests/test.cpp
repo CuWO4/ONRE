@@ -28,6 +28,7 @@ int main() {
   replace_extended_alphabet_and_escape_test();
   replace_quantifier_test();
   replace_longest_match_test();
+  replace_non_capturing_group_test();
 
   return 0;
 }
