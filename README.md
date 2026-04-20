@@ -15,10 +15,10 @@ A header-only regex engine with zero-cost abstraction and strictly linear-time m
 * ✔️ **Supports capture groups** and replacement based on capture groups.
 * ✔️ Uses Brzozowski derivatives with type-level functional metaprogramming to ensure fast compilation and almost always produce minimal automata, and **it’s cool**!
 * ✔️ Supports all visible ASCII characters as the alphabet.
-* ✔️ Supports standard regular expressions (concatenation, alternation `|`, Kleene star `*`, parentheses `()`); supports `+` and `?`; supports wildcard `.`; supports character classes (like `[^a-z012]`); supports escapes (`\n`, `\t`, `\d`, `\s`, `\w`, `\xHH` (two hex digits), `\[`, `\]`, `\*`, ...); supports quantifiers (`{n}`, `{n,}`, `{,m}`, `{n,m}`).
+* ✔️ Supports standard regular expressions (concatenation, alternation `|`, Kleene star `*`, parentheses `()`); supports `+` and `?`; supports wildcard `.`; supports character classes (like `[^a-z012]`); supports escapes (`\n`, `\t`, `\d`, `\s`, `\w`, `\xHH` (two hex digits), `\[`, `\]`, `\*`, ...); supports non-capturing groups `(?:...)`; supports quantifiers (`{n}`, `{n,}`, `{,m}`, `{n,m}`).
 * ❌️ Does not support zero-width assertions.
 * ❌️ Does not support backreferences.
-* ❌️ Capture disambiguation rules do not conform to POSIX or Perl standards.
+* ❌️ Capture disambiguation rules are not guaranteed to conform to POSIX or Perl standards.
 
 ## ⏱️ Performance showcase
 
