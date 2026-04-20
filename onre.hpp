@@ -959,15 +959,21 @@ struct ParseAtom {
     ), "ParseAtom: unknown character"
   );
 
-  /* case '(' Regex ')' */
+  /* case '(' Regex ')' or '(?:' Regex ')' */
   struct impl_paren {
-    using Regex = ParseRegex<Pattern, Pos + 1, CapIdx + 1>;
+    static constexpr bool is_non_capturing =
+      Pos + 2 < Pattern.length && Pattern[Pos + 1] == '?' && Pattern[Pos + 2] == ':';
+    using Regex = ParseRegex<Pattern, Pos + (is_non_capturing ? 3 : 1), CapIdx + (is_non_capturing ? 0 : 1)>;
     static_assert(Regex::next <= Pattern.length, "ParseAtom: regex parse overflow");
     static_assert(Regex::next < Pattern.length && Pattern[Regex::next] == ')',
       "ParseAtom impl_paren: missing closing ')' in pattern");
-    using type = Concat<
-      SetSlot<2 * CapIdx>,
-      Concat<typename Regex::type, SetSlot<2 * CapIdx + 1>>
+    using type = std::conditional_t<
+      is_non_capturing,
+      typename Regex::type,
+      Concat<
+        SetSlot<2 * CapIdx>,
+        Concat<typename Regex::type, SetSlot<2 * CapIdx + 1>>
+      >
     >;
     static constexpr size_t next = Regex::next + 1;
     static constexpr size_t next_cap_idx = Regex::next_cap_idx;
