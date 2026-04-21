@@ -15,6 +15,8 @@ int main() {
   extended_alphabet_and_escape_test();
   quantifier_test();
   divisible_test();
+  notdotall_test();
+  dotall_test();
 
   replace_basic_test();
   replace_boundary_test();

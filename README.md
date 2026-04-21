@@ -15,7 +15,7 @@ A header-only regex engine with zero-cost abstraction and strictly linear-time m
 * ✔️ **Supports capture groups** and replacement based on capture groups.
 * ✔️ Uses Brzozowski derivatives with type-level functional metaprogramming to ensure fast compilation and almost always produce minimal automata, and **it’s cool**!
 * ✔️ Supports all visible ASCII characters as the alphabet.
-* ✔️ Supports standard regular expressions (concatenation, alternation `|`, Kleene star `*`, parentheses `()`); supports `+` and `?`; supports wildcard `.`; supports character classes (like `[^a-z012]`); supports escapes (`\n`, `\t`, `\d`, `\s`, `\w`, `\xHH` (two hex digits), `\[`, `\]`, `\*`, ...); supports non-capturing groups `(?:...)`; supports quantifiers (`{n}`, `{n,}`, `{,m}`, `{n,m}`).
+* ✔️ Supports standard regular expressions (concatenation, alternation `|`, Kleene star `*`, parentheses `()`); supports `+` and `?`; supports wildcard `.`; supports character classes (like `[^a-z012]`); supports escapes (`\n`, `\t`, `\d`, `\s`, `\w`, `\xHH` (two hex digits), `\[`, `\]`, `\*`, ...); supports non-capturing groups `(?:...)`; supports quantifiers (`{n}`, `{n,}`, `{,m}`, `{n,m}`). By default, `.` does not match `\n` or `\r`; define `ONRE_DOTALL` at compile time to make `.` match them as well.
 * ❌️ Does not support zero-width assertions.
 * ❌️ Does not support backreferences.
 * ❌️ Capture disambiguation rules are not guaranteed to conform to POSIX or Perl standards.
@@ -99,6 +99,15 @@ void f() {
 ```
 
 `onre::match` and `onre::replace` are thread-safe.
+
+You could define `ONRE_DOTALL` macro before including header to allow wildcard `.` matches line breaks (not match by default):
+
+```cpp
+#define ONRE_DOTALL
+#include "onre.hpp"
+
+bool ok = onre::match<"a.b">("a\nb");
+```
 
 Instantiating `onre::match` or `onre::replace` anywhere in the code will trigger compile-time expansion and increase compile time even if the instance can never be executed at runtime. The same pattern instantiated multiple times within one translation unit is instantiated only once; different translation units will each instantiate it separately, so moving complex patterns into a single translation unit can greatly reduce compile time.
 

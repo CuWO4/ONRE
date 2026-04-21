@@ -250,7 +250,11 @@ struct NotWildcardExcluded {
   static constexpr bool value = !std::is_same_v<CharT, Char<'\n'>>
     && !std::is_same_v<CharT, Char<'\r'>>;
 };
-using WildcardAlphabet = typename Filter<NotWildcardExcluded, Alphabet>::type;
+#ifdef ONRE_DOTALL
+  using WildcardAlphabet = Alphabet;
+#else
+  using WildcardAlphabet = typename Filter<NotWildcardExcluded, Alphabet>::type;
+#endif
 
 template<typename Acc>
 struct First<Wildcard, Acc> {
@@ -1202,7 +1206,11 @@ struct Derivative<Char<X>, C> {
 };
 template<char C>
 struct Derivative<Wildcard, C> {
-  using type = Epsilon;
+  #ifdef ONRE_DOTALL
+    using type = Epsilon;
+  #else
+    using type = typename std::conditional<C == '\n' || C == '\r', EmptySet, Epsilon>::type;
+  #endif
 };
 /* d(R|S)/dc = dR/dc | dS/dc */
 template<typename R, typename S, char C>
@@ -1599,7 +1607,15 @@ struct Derivative<Char<y>, C> {
 };
 template <char C>
 struct Derivative<Wildcard, C> {
-  using type = TypeList<DerivedPair<Epsilon, Omega>>;
+  #ifdef ONRE_DOTALL
+    using type = TypeList<DerivedPair<Epsilon, Omega>>;
+  #else
+    using type = typename std::conditional<
+      C == '\n' || C == '\r',
+      TypeList<>,
+      TypeList<DerivedPair<Epsilon, Omega>>
+    >::type;
+  #endif
 };
 /* d(R|S)/dx = dR/dx U dS/dx */
 template <typename R, typename S, char C>
