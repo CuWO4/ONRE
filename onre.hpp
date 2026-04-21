@@ -141,10 +141,15 @@ struct RightFold<MergeFunc, TypeList<>, Begin> {
 /* === fixed string, a string container enabling compile-time visiting === */
 template<size_t N>
 struct FixedString {
-  char data[N]; /* include '\0' */
+  uint8_t data[N]; /* include '\0' */
 
   constexpr FixedString(const char (&str)[N]) {
-    for (size_t i = 0; i < N; i++) data[i] = str[i];
+    for (size_t i = 0; i < N; i++)
+      data[i] = str[i];
+  }
+  constexpr FixedString(const char8_t (&str)[N]) {
+    for (size_t i = 0; i < N; i++)
+      data[i] = str[i];
   }
 
   constexpr FixedString(const FixedString&) noexcept = default;
@@ -154,21 +159,23 @@ struct FixedString {
 
   static constexpr size_t length = N - 1;
   constexpr const char* c_str() const {
-    return data;
+    return (char const*) data; // implementation defined behavior, but on almost all modern system, it works.
   }
-  constexpr char operator[](size_t i) const {
+  constexpr uint8_t operator[](size_t i) const {
     return data[i];
   }
 };
 template<size_t N>
 FixedString(const char (&str)[N]) -> FixedString<N>;
+template<size_t N>
+FixedString(const char8_t (&str)[N]) -> FixedString<N>;
 
 /* === extended regular expression tree representation with zero-width action === */
 struct EmptySet {};
 struct Epsilon {};
-template<char C>
+template<uint8_t C>
 struct Char {
-  static constexpr char c = C;
+  static constexpr uint8_t c = C;
 };
 struct Wildcard {};
 template<std::size_t I>
@@ -195,7 +202,7 @@ template<>
 struct Nullable<EmptySet> : std::false_type {};
 template<>
 struct Nullable<Epsilon> : std::true_type {};
-template<char C>
+template<uint8_t C>
 struct Nullable<Char<C>> : std::false_type {};
 template<>
 struct Nullable<Wildcard> : std::false_type {};
@@ -214,23 +221,6 @@ struct Nullable<Closure<R>> : std::true_type {};
  * === get TypeList<Char...> of possible character occurring in === *
  *               the head of string in RE language                  */
 
-using Alphabet = TypeList<
-  Char<'\t'>, Char<'\n'>, Char<'\v'>, Char<'\f'>, Char<'\r'>, Char<' '>,
-  Char<'!'>, Char<'"'>, Char<'#'>, Char<'$'>, Char<'%'>, Char<'&'>, Char<'\''>,
-  Char<'('>, Char<')'>, Char<'*'>, Char<'+'>, Char<','>, Char<'-'>, Char<'.'>,
-  Char<'/'>, Char<'0'>, Char<'1'>, Char<'2'>, Char<'3'>, Char<'4'>, Char<'5'>,
-  Char<'6'>, Char<'7'>, Char<'8'>, Char<'9'>, Char<':'>, Char<';'>, Char<'<'>,
-  Char<'='>, Char<'>'>, Char<'?'>, Char<'@'>, Char<'A'>, Char<'B'>, Char<'C'>,
-  Char<'D'>, Char<'E'>, Char<'F'>, Char<'G'>, Char<'H'>, Char<'I'>, Char<'J'>,
-  Char<'K'>, Char<'L'>, Char<'M'>, Char<'N'>, Char<'O'>, Char<'P'>, Char<'Q'>,
-  Char<'R'>, Char<'S'>, Char<'T'>, Char<'U'>, Char<'V'>, Char<'W'>, Char<'X'>,
-  Char<'Y'>, Char<'Z'>, Char<'['>, Char<'\\'>, Char<']'>, Char<'^'>, Char<'_'>,
-  Char<'`'>, Char<'a'>, Char<'b'>, Char<'c'>, Char<'d'>, Char<'e'>, Char<'f'>,
-  Char<'g'>, Char<'h'>, Char<'i'>, Char<'j'>, Char<'k'>, Char<'l'>, Char<'m'>,
-  Char<'n'>, Char<'o'>, Char<'p'>, Char<'q'>, Char<'r'>, Char<'s'>, Char<'t'>,
-  Char<'u'>, Char<'v'>, Char<'w'>, Char<'x'>, Char<'y'>, Char<'z'>, Char<'{'>,
-  Char<'|'>, Char<'}'>, Char<'~'>
->;
 template <typename RE, typename Acc>
 struct First;
 template <typename Acc>
@@ -241,26 +231,10 @@ template <typename Acc>
 struct First<Epsilon, Acc> {
   using type = Acc;
 };
-template <char C, typename Acc>
+template <uint8_t C, typename Acc>
 struct First<Char<C>, Acc> {
   using type = typename PushBackUnique<Acc, Char<C>>::type;
 };
-template<typename CharT>
-struct NotWildcardExcluded {
-  static constexpr bool value = !std::is_same_v<CharT, Char<'\n'>>
-    && !std::is_same_v<CharT, Char<'\r'>>;
-};
-#ifdef ONRE_DOTALL
-  using WildcardAlphabet = Alphabet;
-#else
-  using WildcardAlphabet = typename Filter<NotWildcardExcluded, Alphabet>::type;
-#endif
-
-template<typename Acc>
-struct First<Wildcard, Acc> {
-  using type = typename JoinUnique<Acc, WildcardAlphabet>::type;
-};
-
 template <size_t I, typename Acc>
 struct First<SetSlot<I>, Acc> {
   using type = Acc;
@@ -314,11 +288,11 @@ struct Simplify<Or<EmptySet, EmptySet>> {
   using type = EmptySet;
 };
 /* .|c <=> c|. <=> .*/
-template<char C>
+template<uint8_t C>
 struct Simplify<Or<Wildcard, Char<C>>> {
   using type = Wildcard;
 };
-template<char C>
+template<uint8_t C>
 struct Simplify<Or<Char<C>, Wildcard>> {
   using type = Wildcard;
 };
@@ -503,38 +477,53 @@ struct Simplify<Closure<R>> {
 };
 
 /* === compile-time alphabet and helper function === */
-constexpr size_t nr_ascii_char = 128;
-constexpr char visible_ascii_start = ' ';
-constexpr char visible_ascii_end = '~';
+constexpr size_t nr_byte = 256;
 
-constexpr bool is_visible_char(char ch) {
-  return (ch >= visible_ascii_start && ch <= visible_ascii_end)
-    || ch == '\t' || ch == '\n' || ch == '\v' || ch == '\f' || ch == '\r';
-}
-
-constexpr std::array<bool, nr_ascii_char> make_valid_table() {
-  std::array<bool, nr_ascii_char> table {};
-  for (size_t i = 0; i < nr_ascii_char; i++) {
-    table[i] = is_visible_char(i) && i != '|' && i != '*' && i != '+'
-      && i != '?' && i != '(' && i != ')' && i != '[' && i != ']'
-      && i != '.';
+constexpr std::array<bool, nr_byte> make_valid_table() {
+  std::array<bool, nr_byte> table {};
+  for (size_t i = 0; i < nr_byte; i++) {
+    table[i] = i != '|' && i != '*' && i != '+' && i != '?'
+      && i != '(' && i != ')' && i != '[' && i != ']' && i != '\\' && i != '.';
   }
   return table;
 }
 
 constexpr auto valid_table = make_valid_table();
 
-constexpr bool is_valid_char(char ch) {
-  const auto u = static_cast<unsigned char>(ch);
-  return u < nr_ascii_char && valid_table[u];
+constexpr bool is_valid_char(uint8_t ch) {
+  return valid_table[ch];
 }
 
-constexpr bool is_in_class_char(char ch) {
-  const auto u = static_cast<unsigned char>(ch);
-  return u < nr_ascii_char && is_visible_char(static_cast<char>(u)) && ch != ']';
+constexpr bool is_in_class_char(uint8_t ch) {
+  return ch != ']';
 }
 
-template <char Start, char End>
+template<typename Indices>
+struct BuildAlphabetImpl;
+template<size_t... Is>
+struct BuildAlphabetImpl<std::index_sequence<Is...>> {
+  using type = TypeList<Char<static_cast<uint8_t>(Is)>...>;
+};
+
+using Alphabet = typename BuildAlphabetImpl<std::make_index_sequence<nr_byte>>::type;
+
+template<typename CharT>
+struct NotWildcardExcluded {
+  static constexpr bool value = !std::is_same_v<CharT, Char<'\n'>>
+    && !std::is_same_v<CharT, Char<'\r'>>;
+};
+#ifdef ONRE_DOTALL
+  using WildcardAlphabet = Alphabet;
+#else
+  using WildcardAlphabet = typename Filter<NotWildcardExcluded, Alphabet>::type;
+#endif
+
+template<typename Acc>
+struct First<Wildcard, Acc> {
+  using type = typename JoinUnique<Acc, WildcardAlphabet>::type;
+};
+
+template <uint8_t Start, uint8_t End>
 struct BuildCharList {
   static_assert(Start <= End, "invalid char range");
 
@@ -626,7 +615,7 @@ struct ParseDecimal {
 template<FixedString Pattern, size_t Pos, size_t N, int64_t Acc = 0>
 struct ParseHexN {
   struct is_digit_impl {
-    static constexpr char ch = Pattern[Pos];
+    static constexpr uint8_t ch = Pattern[Pos];
     static constexpr int64_t digit_value = (ch >= '0' && ch <= '9')
       ? ch - '0'
       : (ch >= 'A' && ch <= 'F')
@@ -654,7 +643,7 @@ struct ParseHexN {
   static constexpr size_t next = chosen::next;
 };
 
-template<char C, FixedString Pattern, size_t Pos>
+template<uint8_t C, FixedString Pattern, size_t Pos>
 struct EscapeImpl {
   using type = Char<Pattern[Pos + 1]>;
   static constexpr size_t next = Pos + 2;
@@ -786,10 +775,42 @@ struct EscapeImpl<'x', Pattern, Pos> {
 template <FixedString Pattern, size_t Pos>
 struct ParseEscape {
   static_assert(Pos + 1 < Pattern.length, "ParseEscape: cannot find escape character");
-  static_assert(is_visible_char(Pattern[Pos + 1]), "ParseEscape: unknown character");
   using chosen = EscapeImpl<Pattern[Pos + 1], Pattern, Pos>;
   using type = typename chosen::type;
   static constexpr size_t next = chosen::next;
+};
+
+constexpr size_t utf8_sequence_length(uint8_t lead) {
+  if (lead < 0x80) return 1;
+  if ((lead & 0xE0) == 0xC0) return 2;
+  if ((lead & 0xF0) == 0xE0) return 3;
+  if ((lead & 0xF8) == 0xF0) return 4;
+  return 0;
+}
+
+template<FixedString Pattern, size_t Pos, size_t Len>
+struct ParseUtf8LiteralImpl {
+  static_assert((Pattern[Pos + 1] & 0xC0) == 0x80, "ParseUtf8LiteralImpl: invalid utf-8 continuation byte");
+  using type = typename std::conditional<
+    Len == 1,
+    Char<Pattern[Pos]>,
+    Concat<Char<Pattern[Pos]>, typename ParseUtf8LiteralImpl<Pattern, Pos + 1, Len - 1>::type>
+  >::type;
+};
+
+template<FixedString Pattern, size_t Pos>
+struct ParseUtf8LiteralImpl<Pattern, Pos, 1> {
+  static_assert(Pos < Pattern.length, "ParseUtf8LiteralImpl: unexpected pattern ending");
+  using type = Char<Pattern[Pos]>;
+};
+
+template<FixedString Pattern, size_t Pos>
+struct ParseUtf8Literal {
+  static constexpr size_t len = utf8_sequence_length(Pattern[Pos]);
+  static_assert(len != 0, "ParseUtf8Literal: invalid utf-8 leading byte");
+  static_assert(Pos + len <= Pattern.length, "ParseUtf8Literal: truncated utf-8 sequence");
+  using type = typename ParseUtf8LiteralImpl<Pattern, Pos, len>::type;
+  static constexpr size_t next = Pos + len;
 };
 
 /* ParseCHAR : [VALID CHAR] | Escape */
@@ -807,8 +828,8 @@ struct ParseCHAR {
   };
 
   struct impl_simple {
-    using type = Char<Pattern[Pos]>;
-    static constexpr size_t next = Pos + 1;
+    using type = typename ParseUtf8Literal<Pattern, Pos>::type;
+    static constexpr size_t next = ParseUtf8Literal<Pattern, Pos>::next;
   };
 
   static constexpr bool is_escape = Pattern[Pos] == '\\';
@@ -831,8 +852,8 @@ struct ParseCharSetAtom {
   };
 
   struct impl_char {
-    using type = TypeList<Char<Pattern[Pos]>>;
-    static constexpr size_t next = Pos + 1;
+    using type = TypeList<typename ParseUtf8Literal<Pattern, Pos>::type>;
+    static constexpr size_t next = ParseUtf8Literal<Pattern, Pos>::next;
   };
 
   struct impl_escape {
@@ -906,34 +927,13 @@ struct ParseCharGroup {
   static constexpr size_t next = chosen::next;
 };
 
-/* all characters except \n and \r */
-using FullMatchRegex =
-  Or<Char<'\t'>, Or<Char<'\v'>, Or<Char<'\f'>, Or<Char<' '>, Or<Char<'!'>,
-  Or<Char<'"'>, Or<Char<'#'>, Or<Char<'$'>, Or<Char<'%'>, Or<Char<'&'>, Or<Char<'\''>,
-  Or<Char<'('>, Or<Char<')'>, Or<Char<'*'>, Or<Char<'+'>, Or<Char<','>, Or<Char<'-'>,
-  Or<Char<'.'>, Or<Char<'/'>, Or<Char<'0'>, Or<Char<'1'>, Or<Char<'2'>, Or<Char<'3'>,
-  Or<Char<'4'>, Or<Char<'5'>, Or<Char<'6'>, Or<Char<'7'>, Or<Char<'8'>, Or<Char<'9'>,
-  Or<Char<':'>, Or<Char<';'>, Or<Char<'<'>, Or<Char<'='>, Or<Char<'>'>, Or<Char<'?'>,
-  Or<Char<'@'>, Or<Char<'A'>, Or<Char<'B'>, Or<Char<'C'>, Or<Char<'D'>, Or<Char<'E'>,
-  Or<Char<'F'>, Or<Char<'G'>, Or<Char<'H'>, Or<Char<'I'>, Or<Char<'J'>, Or<Char<'K'>,
-  Or<Char<'L'>, Or<Char<'M'>, Or<Char<'N'>, Or<Char<'O'>, Or<Char<'P'>, Or<Char<'Q'>,
-  Or<Char<'R'>, Or<Char<'S'>, Or<Char<'T'>, Or<Char<'U'>, Or<Char<'V'>, Or<Char<'W'>,
-  Or<Char<'X'>, Or<Char<'Y'>, Or<Char<'Z'>, Or<Char<'['>, Or<Char<'\\'>, Or<Char<']'>,
-  Or<Char<'^'>, Or<Char<'_'>, Or<Char<'`'>, Or<Char<'a'>, Or<Char<'b'>, Or<Char<'c'>,
-  Or<Char<'d'>, Or<Char<'e'>, Or<Char<'f'>, Or<Char<'g'>, Or<Char<'h'>, Or<Char<'i'>,
-  Or<Char<'j'>, Or<Char<'k'>, Or<Char<'l'>, Or<Char<'m'>, Or<Char<'n'>, Or<Char<'o'>,
-  Or<Char<'p'>, Or<Char<'q'>, Or<Char<'r'>, Or<Char<'s'>, Or<Char<'t'>, Or<Char<'u'>,
-  Or<Char<'v'>, Or<Char<'w'>, Or<Char<'x'>, Or<Char<'y'>, Or<Char<'z'>, Or<Char<'{'>,
-  Or<Char<'|'>, Or<Char<'}'>, Char<'~'>
->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
-
 /* ParseAtom: '(' Regex ')' | '[' CharSet ']' |  CHAR | '.' */
 template<FixedString Pattern, size_t Pos, size_t CapIdx>
 struct ParseAtom {
   static_assert(
     Pos < Pattern.length && (
       Pattern[Pos] == '(' || Pattern[Pos] == '[' || Pattern[Pos] == '.'
-      || Pattern[Pos] == '\\' || is_visible_char(Pattern[Pos])
+      || Pattern[Pos] == '\\' || is_valid_char(Pattern[Pos])
     ), "ParseAtom: unknown character"
   );
 
@@ -1187,24 +1187,24 @@ struct RegexScan {
 namespace dfa {
 
 /* === classic brzozowski derivative === */
-template<typename R, char C>
+template<typename R, uint8_t C>
 struct Derivative;
 /* d0/dc = 0 */
-template<char C>
+template<uint8_t C>
 struct Derivative<EmptySet, C> {
   using type = EmptySet;
 };
 /* de/dc = 0 */
-template<char C>
+template<uint8_t C>
 struct Derivative<Epsilon, C> {
   using type = EmptySet;
 };
 /* dx/dc = x == c ? e : 0 */
-template<char X, char C>
+template<uint8_t X, uint8_t C>
 struct Derivative<Char<X>, C> {
   using type = std::conditional_t<X == C, Epsilon, EmptySet>;
 };
-template<char C>
+template<uint8_t C>
 struct Derivative<Wildcard, C> {
   #ifdef ONRE_DOTALL
     using type = Epsilon;
@@ -1213,14 +1213,14 @@ struct Derivative<Wildcard, C> {
   #endif
 };
 /* d(R|S)/dc = dR/dc | dS/dc */
-template<typename R, typename S, char C>
+template<typename R, typename S, uint8_t C>
 struct Derivative<Or<R, S>, C> {
   using type = typename Simplify<
     Or<typename Derivative<R, C>::type, typename Derivative<S, C>::type>
   >::type;
 };
 /* d(RS)/dc = dR/dc S | (delta(R) ? dS/dc : 0)*/
-template<typename L, typename R, char C>
+template<typename L, typename R, uint8_t C>
 struct Derivative<Concat<L, R>, C> {
   using Part1 = Concat<typename Derivative<L, C>::type, R>;
   using Part2 = std::conditional_t<
@@ -1231,7 +1231,7 @@ struct Derivative<Concat<L, R>, C> {
   using type = typename Simplify<Or<Part1, Part2>>::type;
 };
 /* d(R*)/dc = dR/dc R* */
-template<typename R, char C>
+template<typename R, uint8_t C>
 struct Derivative<Closure<R>, C> {
     using type = typename Simplify<Concat<typename Derivative<R, C>::type, Closure<R>>>::type;
 };
@@ -1247,7 +1247,7 @@ template<>
 struct RemoveAllAction<Epsilon> {
   using type = Epsilon;
 };
-template<char C>
+template<uint8_t C>
 struct RemoveAllAction<Char<C>> {
   using type = Char<C>;
 };
@@ -1284,16 +1284,16 @@ struct State {
   static constexpr bool accepting = Nullable<R>::value;
 };
 
-template<std::size_t From, char C, std::size_t To>
+template<std::size_t From, uint8_t C, std::size_t To>
 struct Edge {
   static constexpr std::size_t from = From;
-  static constexpr char ch = C;
+  static constexpr uint8_t ch = C;
   static constexpr std::size_t to = To;
 };
 
-template<char C, typename State>
+template<uint8_t C, typename State>
 struct CharStatePair {
-  static constexpr char c = C;
+  static constexpr uint8_t c = C;
   using state = State;
 };
 
@@ -1303,7 +1303,7 @@ template<typename Acc, typename S>
 struct DerivNewStates<Acc, S, TypeList<>> {
   using type = Acc;
 };
-template<typename Acc, typename S, char C, typename... Tails>
+template<typename Acc, typename S, uint8_t C, typename... Tails>
 struct DerivNewStates<Acc, S, TypeList<Char<C>, Tails...>> {
   using Der = typename Derivative<typename S::re, C>::type;
   using type = typename std::conditional_t<
@@ -1342,7 +1342,7 @@ template<
 struct PushNewStates<SA, EA, TBP, StartState, TypeList<HeadPair, TailPairs...>> {
   using FromState = StartState;
   using ToState = typename HeadPair::state;
-  static constexpr char C = HeadPair::c;
+  static constexpr uint8_t C = HeadPair::c;
   static constexpr bool IsStateNew = !SA::template Contains<ToState>;
   using NextStateAcc = typename PushBackUnique<SA, ToState>::type;
   using NextToBeProcessList = typename std::conditional_t<
@@ -1418,8 +1418,8 @@ template<size_t NrStates, typename EdgesList>
 struct BuildTable;
 template<size_t NrStates, typename... Edges>
 struct BuildTable<NrStates, TypeList<Edges...>> {
-  static constexpr std::array<std::array<int32_t, nr_ascii_char>, NrStates> make() {
-    std::array<std::array<int32_t, nr_ascii_char>, NrStates> table{};
+  static constexpr std::array<std::array<int32_t, nr_byte>, NrStates> make() {
+    std::array<std::array<int32_t, nr_byte>, NrStates> table{};
     for (auto &row : table) row.fill(-1);
     ((table[Edges::from][static_cast<std::size_t>(Edges::ch)] = Edges::to), ...);
     return table;
@@ -1550,7 +1550,7 @@ template<>
 struct v<Epsilon> {
   using type = TypeList<Omega>;
 };
-template<char C>
+template<uint8_t C>
 struct v<Char<C>> {
   using type = TypeList<>;
 };
@@ -1581,23 +1581,23 @@ struct DerivedPair {
   using remain = Remain; using action = Action;
 };
 
-template <typename RE, char C>
+template <typename RE, uint8_t C>
 struct Derivative;
 /* d0/dx de/dx = d<i>/dx = 0 */
-template <char C>
+template <uint8_t C>
 struct Derivative<EmptySet, C> {
   using type = TypeList<>;
 };
-template <char C>
+template <uint8_t C>
 struct Derivative<Epsilon, C> {
   using type = TypeList<>;
 };
-template <size_t I, char C>
+template <size_t I, uint8_t C>
 struct Derivative<SetSlot<I>, C> {
   using type = TypeList<>;
 };
 /* dy/dx = x == y ? {(e, o)} : 0 */
-template <char y, char C>
+template <uint8_t y, uint8_t C>
 struct Derivative<Char<y>, C> {
   using type = std::conditional_t<
     y == C,
@@ -1605,7 +1605,7 @@ struct Derivative<Char<y>, C> {
     TypeList<>
   >;
 };
-template <char C>
+template <uint8_t C>
 struct Derivative<Wildcard, C> {
   #ifdef ONRE_DOTALL
     using type = TypeList<DerivedPair<Epsilon, Omega>>;
@@ -1618,14 +1618,14 @@ struct Derivative<Wildcard, C> {
   #endif
 };
 /* d(R|S)/dx = dR/dx U dS/dx */
-template <typename R, typename S, char C>
+template <typename R, typename S, uint8_t C>
 struct Derivative<Or<R, S>, C> {
   using dr = typename Derivative<R, C>::type;
   using ds = typename Derivative<S, C>::type;
   using type = typename JoinUnique<dr, ds>::type;
 };
 /* d(RS)/dx = {(R'S, a):(R',a) in dR/dx} U {(S', ab):a in v(R), (S', b) in dS/dx} */
-template <typename R, typename S, char C>
+template <typename R, typename S, uint8_t C>
 struct Derivative<Concat<R, S>, C> {
   template <typename Pair>
   struct MapFunc1 {
@@ -1666,7 +1666,7 @@ struct Derivative<Concat<R, S>, C> {
   using type = typename JoinUnique<Part1, Part2>::type;
 };
 /* d(R*)/dx = {(R'R*,a):(R',a) in dR/dx} */
-template <typename R, char C>
+template <typename R, uint8_t C>
 struct Derivative<Closure<R>, C> {
   template <typename Pair>
   struct MapFunc {
@@ -1687,17 +1687,17 @@ struct State {
   using AcceptActions = typename v<R>::type;
 };
 
-template<size_t From, char C, typename Action, size_t To>
+template<size_t From, uint8_t C, typename Action, size_t To>
 struct Edge {
   static constexpr std::size_t from = From;
-  static constexpr char ch = C;
+  static constexpr uint8_t ch = C;
   using action = Action;
   static constexpr size_t to = To;
 };
 
-template<char C, typename State, typename Action>
+template<uint8_t C, typename State, typename Action>
 struct CharStateAction {
-  static constexpr char c = C;
+  static constexpr uint8_t c = C;
   using state = State;
   using action = Action;
 };
@@ -1709,7 +1709,7 @@ struct DerivNewStates<Acc, S, TypeList<>> {
   using type = Acc;
 };
 
-template<typename Acc, typename S, char C, typename... Tails>
+template<typename Acc, typename S, uint8_t C, typename... Tails>
 struct DerivNewStates<Acc, S, TypeList<Char<C>, Tails...>> {
   template<typename RemainActionPair>
   struct AddChar {
@@ -1757,7 +1757,7 @@ template<
 struct PushNewStates<SA, EA, TBP, StartState, TypeList<HeadTuple, TailPairs...>> {
   using FromState = StartState;
   using ToState = typename HeadTuple::state;
-  static constexpr char C = HeadTuple::c;
+  static constexpr uint8_t C = HeadTuple::c;
   using Action = typename HeadTuple::action;
   static constexpr bool IsStateNew = !SA::template Contains<ToState>;
   using NextStateAcc = typename PushBackUnique<SA, ToState>::type;
@@ -1848,7 +1848,7 @@ struct NrUsedSlots<Closure<R>> {
   static constexpr size_t value = NrUsedSlots<R>::value;
 };
 
-/* use the shortest action among edges sharing same from, ch and to */
+/* use a compile-time upper bound for action table width */
 template<size_t NrStates, typename Edges>
 struct MaxTransActionLength;
 template<size_t NrStates>
@@ -1858,8 +1858,8 @@ struct MaxTransActionLength<NrStates, TypeList<>> {
 template<size_t NrStates, typename... Edges>
 struct MaxTransActionLength<NrStates, TypeList<Edges...>> {
   static constexpr size_t value = []() {
-    std::array<std::array<std::array<size_t, NrStates>, nr_ascii_char>, NrStates> min_len;
-    std::array<std::array<std::array<bool, NrStates>, nr_ascii_char>, NrStates> inited;
+    std::array<std::array<std::array<size_t, NrStates>, nr_byte>, NrStates> min_len;
+    std::array<std::array<std::array<bool, NrStates>, nr_byte>, NrStates> inited;
     for (auto& from_table : inited)
       for (auto& char_table : from_table)
         char_table.fill(false);
@@ -1873,7 +1873,7 @@ struct MaxTransActionLength<NrStates, TypeList<Edges...>> {
     }(Edges{}), ...);
     size_t result = 0;
     for (size_t i = 0; i < NrStates; i++)
-      for (size_t ch = 0; ch < nr_ascii_char; ch++)
+      for (size_t ch = 0; ch < nr_byte; ch++)
         for (size_t j = 0; j < NrStates; j++)
           if (inited[i][ch][j] && min_len[i][ch][j] > result)
             result = min_len[i][ch][j];
@@ -1910,16 +1910,16 @@ struct BuildTransTable;
 template<size_t NrStates, typename... Edges>
 struct BuildTransTable<NrStates, TypeList<Edges...>> {
   static constexpr std::array<
-    std::array<std::array<int32_t, NrStates>, nr_ascii_char>,
+    std::array<std::array<int32_t, NrStates>, nr_byte>,
     NrStates
   > make() {
-    std::array<std::array<std::array<int32_t, NrStates>, nr_ascii_char>, NrStates> result{};
+    std::array<std::array<std::array<int32_t, NrStates>, nr_byte>, NrStates> result{};
     for (auto& state_table : result) for (auto& char_table : state_table) char_table.fill(-1);
 
-    std::array<std::array<size_t, nr_ascii_char>, NrStates> idxes {};
+    std::array<std::array<size_t, nr_byte>, NrStates> idxes {};
     for (auto& line : idxes) line.fill(0);
 
-    std::array<std::array<std::array<bool, NrStates>, nr_ascii_char>, NrStates> inited{};
+    std::array<std::array<std::array<bool, NrStates>, nr_byte>, NrStates> inited{};
     for (auto& from_table : inited)
       for (auto& ch_table : from_table)
         ch_table.fill(false);
@@ -1954,14 +1954,14 @@ struct BuildTransActionTable;
 template<size_t NrStates, size_t MaxTransActionLength, typename... Edges>
 struct BuildTransActionTable<NrStates, MaxTransActionLength, TypeList<Edges...>> {
   static constexpr std::array<
-    std::array<std::array<std::array<int32_t, MaxTransActionLength>, NrStates>, nr_ascii_char>,
+    std::array<std::array<std::array<int32_t, MaxTransActionLength>, NrStates>, nr_byte>,
     NrStates
   > make() {
     std::array<std::array<std::array<
       std::array<int32_t, MaxTransActionLength>,
-      NrStates>, nr_ascii_char>, NrStates
+      NrStates>, nr_byte>, NrStates
     > result{};
-    std::array<std::array<std::array<bool, NrStates>, nr_ascii_char>, NrStates> action_inited{};
+    std::array<std::array<std::array<bool, NrStates>, nr_byte>, NrStates> action_inited{};
     for (auto& from_state_table : result)
       for (auto& char_table : from_state_table)
         for (auto& action_list : char_table)
@@ -2123,18 +2123,6 @@ struct MutualGroups {
   >::type;
 };
 
-template<size_t NrGroups, typename MutualPairList>
-struct BuildMutualTable;
-template<size_t NrGroups, typename... MutualPairs>
-struct BuildMutualTable<NrGroups, TypeList<MutualPairs...>> {
-  static constexpr std::array<std::array<bool, NrGroups>, NrGroups> make() {
-    std::array<std::array<bool, NrGroups>, NrGroups> result;
-    for (auto& line : result) line.fill(false);
-    ((result[MutualPairs::x][MutualPairs::y] = result[MutualPairs::y][MutualPairs::x] = true), ...);
-    return result;
-  }
-};
-
 } /* namespace tnfa */
 
 } /* namespace impl */
@@ -2157,8 +2145,7 @@ inline bool match(std::string_view str) noexcept {
   static constexpr auto dfa_is_accept_states = impl::dfa::BuildAccepts<DFAStatesList>::make();
 
   std::size_t state = 0;
-  for (unsigned char uch : str) {
-    if (uch >= impl::nr_ascii_char) [[unlikely]] return false;
+  for (uint8_t uch : str) {
     int32_t nxt = dfa_trans_table[state][static_cast<std::size_t>(uch)];
     if (nxt < 0) return false;
     state = static_cast<std::size_t>(nxt);
@@ -2209,7 +2196,7 @@ inline std::string replace(std::string_view replace_rule, std::string_view str) 
     return close_time(line, group_idx) - open_time(line, group_idx);
   };
 
-  static auto is_digit = [](char ch) { return '0' <= ch && ch <= '9'; };
+  static auto is_digit = [](uint8_t ch) { return '0' <= ch && ch <= '9'; };
 
   static auto apply_action = []<size_t N>(
     const SlotLine& old_line,
@@ -2269,7 +2256,7 @@ inline std::string replace(std::string_view replace_rule, std::string_view str) 
   (*cur_is_state_active)[0] = true;
 
   for (size_t idx = 0; idx < str.size(); idx++) {
-    unsigned char uch = static_cast<unsigned char>(str[idx]);
+    uint8_t uch = str[idx];
 
     nxt_active_states->clear();
     nxt_is_state_active->fill(false);

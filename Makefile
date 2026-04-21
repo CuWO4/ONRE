@@ -3,7 +3,7 @@ RUNARGS ?=
 
 EXT := cpp
 CXX := clang++
-CXXFLAGS := -Wall -std=c++20 -ftemplate-depth=65536 -fbracket-depth=65536
+CXXFLAGS := -Wall -std=c++20 -ftemplate-depth=65536 -fbracket-depth=65536 -fconstexpr-steps=4294967295 -fconstexpr-depth=65536
 LDFLAGS :=
 LDLIBS :=
 

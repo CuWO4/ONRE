@@ -3,10 +3,10 @@
 
 void dotall_test() {
   std::cout << "\n=== DOTALL Tests ===\n";
-  test_match_and_log<".">("a", true);
-  test_match_and_log<".">("\n", true);
-  test_match_and_log<".">("\r", true);
-  test_match_and_log<"a.b">("a\nb", true);
-  test_match_and_log<"a.b">("a\rb", true);
-  test_replace_and_log<"a.b">("$0", "a\nb", "a\nb");
+  test_match_and_log<"1.">("1a", true);
+  test_match_and_log<"1.">("1\n", true);
+  test_match_and_log<"1.">("1\r", true);
+  test_match_and_log<"1a.b">("1a\nb", true);
+  test_match_and_log<"1a.b">("1a\rb", true);
+  test_replace_and_log<"1a.b">("$0", "1a\nb", "1a\nb");
 }

@@ -2,9 +2,9 @@
 
 void notdotall_test() {
   std::cout << "\n=== NOT DOTALL Tests ===\n";
-  test_match_and_log<".">("a", true);
-  test_match_and_log<".">("\n", false);
-  test_match_and_log<".">("\r", false);
-  test_match_and_log<"a.b">("a\nb", false);
-  test_match_and_log<"a.b">("a\rb", false);
+  test_match_and_log<"2.">("2a", true);
+  test_match_and_log<"2.">("2\n", false);
+  test_match_and_log<"2.">("2\r", false);
+  test_match_and_log<"2a.b">("2a\nb", false);
+  test_match_and_log<"2a.b">("2a\rb", false);
 }

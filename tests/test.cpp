@@ -31,6 +31,7 @@ int main() {
   replace_quantifier_test();
   replace_longest_match_test();
   replace_non_capturing_group_test();
+  utf8_test();
 
   return 0;
 }
