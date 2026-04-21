@@ -170,6 +170,7 @@ template<char C>
 struct Char {
   static constexpr char c = C;
 };
+struct Wildcard {};
 template<std::size_t I>
 struct SetSlot {
   static constexpr std::size_t i = I;
@@ -196,6 +197,8 @@ template<>
 struct Nullable<Epsilon> : std::true_type {};
 template<char C>
 struct Nullable<Char<C>> : std::false_type {};
+template<>
+struct Nullable<Wildcard> : std::false_type {};
 template<size_t I>
 struct Nullable<SetSlot<I>> : std::true_type {};
 template<typename L, typename R>
@@ -210,6 +213,24 @@ struct Nullable<Closure<R>> : std::true_type {};
 /*                        First notation,                           *
  * === get TypeList<Char...> of possible character occurring in === *
  *               the head of string in RE language                  */
+
+using Alphabet = TypeList<
+  Char<'\t'>, Char<'\n'>, Char<'\v'>, Char<'\f'>, Char<'\r'>, Char<' '>,
+  Char<'!'>, Char<'"'>, Char<'#'>, Char<'$'>, Char<'%'>, Char<'&'>, Char<'\''>,
+  Char<'('>, Char<')'>, Char<'*'>, Char<'+'>, Char<','>, Char<'-'>, Char<'.'>,
+  Char<'/'>, Char<'0'>, Char<'1'>, Char<'2'>, Char<'3'>, Char<'4'>, Char<'5'>,
+  Char<'6'>, Char<'7'>, Char<'8'>, Char<'9'>, Char<':'>, Char<';'>, Char<'<'>,
+  Char<'='>, Char<'>'>, Char<'?'>, Char<'@'>, Char<'A'>, Char<'B'>, Char<'C'>,
+  Char<'D'>, Char<'E'>, Char<'F'>, Char<'G'>, Char<'H'>, Char<'I'>, Char<'J'>,
+  Char<'K'>, Char<'L'>, Char<'M'>, Char<'N'>, Char<'O'>, Char<'P'>, Char<'Q'>,
+  Char<'R'>, Char<'S'>, Char<'T'>, Char<'U'>, Char<'V'>, Char<'W'>, Char<'X'>,
+  Char<'Y'>, Char<'Z'>, Char<'['>, Char<'\\'>, Char<']'>, Char<'^'>, Char<'_'>,
+  Char<'`'>, Char<'a'>, Char<'b'>, Char<'c'>, Char<'d'>, Char<'e'>, Char<'f'>,
+  Char<'g'>, Char<'h'>, Char<'i'>, Char<'j'>, Char<'k'>, Char<'l'>, Char<'m'>,
+  Char<'n'>, Char<'o'>, Char<'p'>, Char<'q'>, Char<'r'>, Char<'s'>, Char<'t'>,
+  Char<'u'>, Char<'v'>, Char<'w'>, Char<'x'>, Char<'y'>, Char<'z'>, Char<'{'>,
+  Char<'|'>, Char<'}'>, Char<'~'>
+>;
 template <typename RE, typename Acc>
 struct First;
 template <typename Acc>
@@ -224,6 +245,18 @@ template <char C, typename Acc>
 struct First<Char<C>, Acc> {
   using type = typename PushBackUnique<Acc, Char<C>>::type;
 };
+template<typename CharT>
+struct NotWildcardExcluded {
+  static constexpr bool value = !std::is_same_v<CharT, Char<'\n'>>
+    && !std::is_same_v<CharT, Char<'\r'>>;
+};
+using WildcardAlphabet = typename Filter<NotWildcardExcluded, Alphabet>::type;
+
+template<typename Acc>
+struct First<Wildcard, Acc> {
+  using type = typename JoinUnique<Acc, WildcardAlphabet>::type;
+};
+
 template <size_t I, typename Acc>
 struct First<SetSlot<I>, Acc> {
   using type = Acc;
@@ -276,7 +309,36 @@ template<>
 struct Simplify<Or<EmptySet, EmptySet>> {
   using type = EmptySet;
 };
-
+/* .|c <=> c|. <=> .*/
+template<char C>
+struct Simplify<Or<Wildcard, Char<C>>> {
+  using type = Wildcard;
+};
+template<char C>
+struct Simplify<Or<Char<C>, Wildcard>> {
+  using type = Wildcard;
+};
+// /* .*|R <=> R|.* <=> .* */
+template<typename R>
+struct Simplify<Or<Closure<Wildcard>, R>> {
+  using type = Closure<Wildcard>;
+};
+template<typename R>
+struct Simplify<Or<R, Closure<Wildcard>>> {
+  using type = Closure<Wildcard>;
+};
+template<>
+struct Simplify<Or<Closure<Wildcard>, EmptySet>> {
+  using type = Closure<Wildcard>;
+};
+template<>
+struct Simplify<Or<EmptySet, Closure<Wildcard>>> {
+  using type = Closure<Wildcard>;
+};
+template<>
+struct Simplify<Or<Closure<Wildcard>, Closure<Wildcard>>> {
+  using type = Closure<Wildcard>;
+};
 /* 0R <=> R0 <=> 0 */
 template<typename R>
 struct Simplify<Concat<EmptySet, R>> {
@@ -367,76 +429,6 @@ struct Simplify<Or<Closure<R>, Concat<R, Closure<R>>>> {
 template<typename R>
 struct Simplify<Or<Closure<R>, Concat<Closure<R>, R>>> {
   using type = typename Simplify<Concat<R, Closure<R>>>::type;
-};
-
-/* standard ordering */
-template<typename A, typename B>
-struct is_less : std::false_type {};
-/* Or < Concat < Closure < EmptySet < Epsilon < Char < SetSlot */
-template <typename R1, typename S1, typename R2, typename S2>
-struct is_less<Or<R1, S1>, Concat<R2, S2>> : std::true_type {};
-template <typename R1, typename S1, typename R2>
-struct is_less<Or<R1, S1>, Closure<R2>> : std::true_type {};
-template <typename R, typename S>
-struct is_less<Or<R, S>, EmptySet> : std::true_type {};
-template <typename R, typename S>
-struct is_less<Or<R, S>, Epsilon> : std::true_type {};
-template <typename R, typename S, char C>
-struct is_less<Or<R, S>, Char<C>> : std::true_type {};
-template <typename R, typename S, size_t I>
-struct is_less<Or<R, S>, SetSlot<I>> : std::true_type {};
-template <typename R1, typename S1, typename R2>
-struct is_less<Concat<R1, S1>, Closure<R2>> : std::true_type {};
-template <typename R, typename S>
-struct is_less<Concat<R, S>, EmptySet> : std::true_type {};
-template <typename R, typename S>
-struct is_less<Concat<R, S>, Epsilon> : std::true_type {};
-template <typename R, typename S, char C>
-struct is_less<Concat<R, S>, Char<C>> : std::true_type {};
-template <typename R, typename S, size_t I>
-struct is_less<Concat<R, S>, SetSlot<I>> : std::true_type {};
-template <typename R>
-struct is_less<Closure<R>, EmptySet> : std::true_type {};
-template <typename R>
-struct is_less<Closure<R>, Epsilon> : std::true_type {};
-template <typename R, char C>
-struct is_less<Closure<R>, Char<C>> : std::true_type {};
-template <typename R, size_t I>
-struct is_less<Closure<R>, SetSlot<I>> : std::true_type {};
-template <>
-struct is_less<EmptySet, Epsilon> : std::true_type {};
-template <char C>
-struct is_less<EmptySet, Char<C>> : std::true_type {};
-template <size_t I>
-struct is_less<EmptySet, SetSlot<I>> : std::true_type {};
-template <char C>
-struct is_less<Epsilon, Char<C>> : std::true_type {};
-template <size_t I>
-struct is_less<Epsilon, SetSlot<I>> : std::true_type {};
-template <char C, size_t I>
-struct is_less<Char<C>, SetSlot<I>> : std::true_type {};
-
-template <char C1, char C2>
-struct is_less<Char<C1>, Char<C2>> {
-  static constexpr bool value = C1 < C2;
-};
-template <size_t I1, size_t I2>
-struct is_less<SetSlot<I1>, SetSlot<I2>> {
-  static constexpr bool value = I1 < I2;
-};
-template<typename R1, typename S1, typename R2, typename S2>
-struct is_less<Or<R1, S1>, Or<R2, S2>> {
-  static constexpr bool value = is_less<R1, R2>::value
-    || (!is_less<R1, R2>::value && is_less<S1, S2>::value);
-};
-template<typename R1, typename S1, typename R2, typename S2>
-struct is_less<Concat<R1, S1>, Concat<R2, S2>> {
-  static constexpr bool value = is_less<R1, R2>::value
-    || (!is_less<R1, R2>::value && is_less<S1, S2>::value);
-};
-template<typename R1, typename R2>
-struct is_less<Closure<R1>, Closure<R2>> {
-  static constexpr bool value = is_less<R1, R2>::value;
 };
 
 template<typename R, typename S, typename T>
@@ -551,24 +543,6 @@ struct BuildCharList {
 
   using type = typename Impl<std::make_index_sequence<End - Start + 1>>::type;
 };
-
-using Alphabet = TypeList<
-  Char<'\t'>, Char<'\n'>, Char<'\v'>, Char<'\f'>, Char<'\r'>, Char<' '>,
-  Char<'!'>, Char<'"'>, Char<'#'>, Char<'$'>, Char<'%'>, Char<'&'>, Char<'\''>,
-  Char<'('>, Char<')'>, Char<'*'>, Char<'+'>, Char<','>, Char<'-'>, Char<'.'>,
-  Char<'/'>, Char<'0'>, Char<'1'>, Char<'2'>, Char<'3'>, Char<'4'>, Char<'5'>,
-  Char<'6'>, Char<'7'>, Char<'8'>, Char<'9'>, Char<':'>, Char<';'>, Char<'<'>,
-  Char<'='>, Char<'>'>, Char<'?'>, Char<'@'>, Char<'A'>, Char<'B'>, Char<'C'>,
-  Char<'D'>, Char<'E'>, Char<'F'>, Char<'G'>, Char<'H'>, Char<'I'>, Char<'J'>,
-  Char<'K'>, Char<'L'>, Char<'M'>, Char<'N'>, Char<'O'>, Char<'P'>, Char<'Q'>,
-  Char<'R'>, Char<'S'>, Char<'T'>, Char<'U'>, Char<'V'>, Char<'W'>, Char<'X'>,
-  Char<'Y'>, Char<'Z'>, Char<'['>, Char<'\\'>, Char<']'>, Char<'^'>, Char<'_'>,
-  Char<'`'>, Char<'a'>, Char<'b'>, Char<'c'>, Char<'d'>, Char<'e'>, Char<'f'>,
-  Char<'g'>, Char<'h'>, Char<'i'>, Char<'j'>, Char<'k'>, Char<'l'>, Char<'m'>,
-  Char<'n'>, Char<'o'>, Char<'p'>, Char<'q'>, Char<'r'>, Char<'s'>, Char<'t'>,
-  Char<'u'>, Char<'v'>, Char<'w'>, Char<'x'>, Char<'y'>, Char<'z'>, Char<'{'>,
-  Char<'|'>, Char<'}'>, Char<'~'>
->;
 
 /* === regex parser === */
 /*
@@ -999,7 +973,7 @@ struct ParseAtom {
 
   /* case '.' */
   struct impl_full_match {
-    using type = FullMatchRegex;
+    using type = Wildcard;
     static constexpr size_t next = Pos + 1;
     static constexpr size_t next_cap_idx = CapIdx;
   };
@@ -1226,6 +1200,10 @@ template<char X, char C>
 struct Derivative<Char<X>, C> {
   using type = std::conditional_t<X == C, Epsilon, EmptySet>;
 };
+template<char C>
+struct Derivative<Wildcard, C> {
+  using type = Epsilon;
+};
 /* d(R|S)/dc = dR/dc | dS/dc */
 template<typename R, typename S, char C>
 struct Derivative<Or<R, S>, C> {
@@ -1264,6 +1242,10 @@ struct RemoveAllAction<Epsilon> {
 template<char C>
 struct RemoveAllAction<Char<C>> {
   using type = Char<C>;
+};
+template<>
+struct RemoveAllAction<Wildcard> {
+  using type = Wildcard;
 };
 template<size_t I>
 struct RemoveAllAction<SetSlot<I>> {
@@ -1564,6 +1546,10 @@ template<char C>
 struct v<Char<C>> {
   using type = TypeList<>;
 };
+template<>
+struct v<Wildcard> {
+  using type = TypeList<Omega>;
+};
 template<size_t I>
 struct v<SetSlot<I>> {
   using type = TypeList<Set<I>>;
@@ -1610,6 +1596,10 @@ struct Derivative<Char<y>, C> {
     TypeList<DerivedPair<Epsilon, Omega>>,
     TypeList<>
   >;
+};
+template <char C>
+struct Derivative<Wildcard, C> {
+  using type = TypeList<DerivedPair<Epsilon, Omega>>;
 };
 /* d(R|S)/dx = dR/dx U dS/dx */
 template <typename R, typename S, char C>
