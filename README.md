@@ -14,13 +14,15 @@ A header-only regex engine with zero-cost abstraction and strictly linear-time m
 * ✔️ Single-header file; just `include` to use.
 * ✔️ **Supports capture groups** and replacement based on capture groups.
 * ✔️ Uses Brzozowski derivatives with type-level functional metaprogramming to ensure fast compilation and almost always produce minimal automata, and **it’s cool**!
-* ✔️ Supports all visible ASCII characters as the alphabet.
+* ✔️ Full UTF-8 support.
 * ✔️ Supports standard regular expressions (concatenation, alternation `|`, Kleene star `*`, parentheses `()`); supports `+` and `?`; supports wildcard `.`; supports character classes (like `[^a-z012]`); supports escapes (`\n`, `\t`, `\d`, `\s`, `\w`, `\xHH` (two hex digits), `\[`, `\]`, `\*`, ...); supports non-capturing groups `(?:...)`; supports quantifiers (`{n}`, `{n,}`, `{,m}`, `{n,m}`). By default, `.` does not match `\n` or `\r`; define `ONRE_DOTALL` at compile time to make `.` match them as well.
 * ❌️ Does not support zero-width assertions.
 * ❌️ Does not support backreferences.
 * ❌️ Capture disambiguation rules are not guaranteed to conform to POSIX or Perl standards.
 
-## ⏱️ Performance showcase
+## ⏱️ Showcases
+
+### Performace Showcases
 
 ```text
 === Match ===
@@ -63,10 +65,20 @@ For very long strings, catastrophic backtracking cases, very long patterns, and 
 Compiling all of these (many more than shown; see `tests/`) complex patterns is controllable and acceptable:
 
 ```sh
-> make clean && time make -j30
-real    0m13.845s
-user    1m19.445s
-sys     0m3.850s
+> make clean && time make -j32 >/dev/null 2>&1
+real    0m14.719s
+user    2m32.499s
+sys     0m12.996s
+```
+
+### UTF-8 Showcase
+
+```text
+pattern: 你好                      str: 你好                 result: true
+pattern: こんにちは                str: こんにちは            result: true
+pattern: 😀                        str: 😀                   result: true
+pattern: a..b                      str: aéb                  result: true
+pattern: (😀)(世界)                 replace_rule: $2/$1        result: 世界/😀
 ```
 
 ## 🤔 Usage
@@ -100,7 +112,16 @@ void f() {
 
 `onre::match` and `onre::replace` are thread-safe.
 
-You could define `ONRE_DOTALL` macro before including header to allow wildcard `.` matches line breaks (not match by default):
+UTF-8 best practice: use `u8"..."` for pattern literals so they are not affected by the compiler execution character set. Because the API consumes `std::string_view`, a fixed UTF-8 literal should be passed as `reinterpret_cast<char const*>(u8"...")`. If the input comes from outside the source file, make sure it is actually UTF-8 encoded and that it can decay to `char8_t*` or `char*` before you hand it to the API.
+
+```cpp
+#include "onre.hpp"
+
+bool ok1 = onre::match<u8"你好">(reinterpret_cast<char const*>(u8"你好"));
+bool ok2 = onre::replace<u8"(你好)(世界)">("$2/$1", reinterpret_cast<char const*>(u8"你好世界"));
+```
+
+You could define `ONRE_DOTALL` macro before including the header to allow wildcard `.` to match line breaks (not match by default). Because this is a macro switch, it may be macro-polluting across translation units, and there is no better solution at the moment.
 
 ```cpp
 #define ONRE_DOTALL
@@ -403,22 +424,18 @@ Verified lowest compiler versions:
 
 Version >= 12
 
-`--std=c++20` or higher (if supported).
-
-If recursion depth causes compile failures, add `-fbracket-depth=[A BIG NUMBER] -ftemplate-depth=[A BIG NUMBER]` to allow deeper compile-time recursion.
+`--std=c++20` or higher (if supported), plus `-ftemplate-depth=65536 -fbracket-depth=65536 -fconstexpr-steps=4294967295 -fconstexpr-depth=65536`.
 
 ## g++
 
 Version >= 12
 
-`--std=c++20` or higher (if supported).
-
-If recursion depth causes compile failures, add `-ftemplate-depth=[A BIG NUMBER]` to allow deeper compile-time recursion.
-
-**Note that g++ compiles significantly slower than clang++ when compiling complex patterns.**
+`--std=c++20` or higher (if supported). It has been tested, but complex patterns compile so slowly that it is not practical for normal use.
 
 ## 😭 Known issues
 
-❗ To keep compilation time acceptable, the current implementation does not use semantic equivalence when merging states; it uses syntactic equivalence instead. As a result it does not support some expressions that have multiple interpretations inside closures, examples include `(ab|ababab|c)*`, `(aa|aaa)*`, `(a*|aa)*`, or `(a*aa)*`. Instead, equivalent forms like `(ab|c)*`, `(|aaa*)`, `a*`, or `(aa)*` are preferred; otherwise compilation may fail. An Exact mode might be added in future to relax this, but compilation time will predictably become unacceptable.
+- ❗ Wildcard `.` is byte-wise, not UTF-8 code-point-wise. For example, a 3-byte UTF-8 character needs `...` to match. This is outside the current scope.
 
-🩹 The expressions that cause the issue are rarely used in normal circumstances, and because patterns are static they are not exploitable for attack vectors. Fixing this is not currently planned.
+- ❗ To keep compilation time acceptable, the current implementation does not use semantic equivalence when merging states; it uses syntactic equivalence instead. As a result it does not support some expressions that have multiple interpretations inside closures, examples include `(ab|ababab|c)*`, `(aa|aaa)*`, `(a*|aa)*`, or `(a*aa)*`. Instead, equivalent forms like `(ab|c)*`, `(|aaa*)`, `a*`, or `(aa)*` are preferred; otherwise compilation may fail. An Exact mode might be added in future to relax this, but compilation time will predictably become unacceptable.
+
+  🩹 The expressions that cause the issue are rarely used in normal circumstances, and because patterns are static they are not exploitable for attack vectors. Fixing this is not currently planned.

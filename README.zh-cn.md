@@ -14,13 +14,15 @@
 - ✔️ 单头文件, 仅需 `include` 即可使用;
 - ✔️ **支持捕获组**以及基于捕获组的替换;
 - ✔️ 使用 Brzozowski 导数进行基于类型体操的函数式元编程, 确保编译迅速且最终结果几乎总是最简自动机, 而且很酷!
-- ✔️ 支持所有可见 ASCII 字符作为字母表;
+- ✔️ 完整的 UTF-8 支持;
 - ✔️ 支持标准正则表达式(连接, 并 `|`, 闭包 `*`, 括号 `()`); 支持 `+`, `?`; 支持通配 `.`; 支持字符类 (形如 `[^a-z012]`); 支持字符转义 (`\n`, `\t`, `\d`, `\s`, `\w`, `\xHH` (两位十六进制), `\[`, `\]`, `\*`...); 支持非捕获组 `(?:...)`; 支持量词 (`{n}`, `{n,}`, `{,m}`, `{n,m}`); 默认情况下 `.` 不匹配 `\n` 或 `\r`, 如需让 `.` 也匹配它们, 可在编译时定义 `ONRE_DOTALL`;
 - ❌️ 不支持零宽断言;
 - ❌️ 不支持反向引用;
 - ❌️ 捕获消歧规则不一定符合 POSIX 标准或 Perl 标准.
 
-## ⏱️ 性能展示
+## ⏱️ 展示
+
+### 性能展示
 
 ```text
 === Match ===
@@ -63,10 +65,20 @@ pattern: (a*)b         pattern_len: 5   replace_rule: $1B      str: aaaaaaa....a
 编译这些(总数远超过上面展示的, 详见 `tests/`)复杂模式的时间是完全可控且可接受的:
 
 ```sh
-> make clean && time make -j30
-real    0m13.845s
-user    1m19.445s
-sys     0m3.850s
+> make clean && time make -j32 >/dev/null 2>&1
+real    0m14.719s
+user    2m32.499s
+sys     0m12.996s
+```
+
+### UTF-8 展示
+
+```text
+pattern: 你好                      str: 你好                 result: true
+pattern: こんにちは                str: こんにちは            result: true
+pattern: 😀                        str: 😀                   result: true
+pattern: a..b                      str: aéb                  result: true
+pattern: (😀)(世界)                 replace_rule: $2/$1        result: 世界/😀
 ```
 
 ## 🤔 用法
@@ -100,7 +112,16 @@ void f() {
 
 `onre::match` 和 `onre::replace` 是线程安全的.
 
-可以通过在引用头文件前定义 `ONRE_DOTALL` 宏来让通配符 `.` 匹配换行符 (默认不匹配):
+UTF-8 最佳实践: 模式串最好使用 `u8"..."`, 这样不会受编译器执行字符集影响. 由于接口是 `std::string_view`, 固定 UTF-8 字面量应当写成 `reinterpret_cast<char const*>(u8"...")` 传入. 如果字符串来自外部输入, 则要保证其源编码就是 UTF-8, 并且在传入前类型可以退化为 `char8_t*` 或 `char*`.
+
+```cpp
+#include "onre.hpp"
+
+bool ok1 = onre::match<u8"你好">(reinterpret_cast<char const*>(u8"你好"));
+bool ok2 = onre::replace<u8"(你好)(世界)">("$2/$1", reinterpret_cast<char const*>(u8"你好世界"));
+```
+
+可以通过在引用头文件前定义 `ONRE_DOTALL` 宏来让通配符 `.` 匹配换行符 (默认不匹配). 由于这是宏开关, 它很可能带来宏污染, 目前没有更好的解决方案.
 
 ```cpp
 #define ONRE_DOTALL
@@ -386,22 +407,18 @@ make test -j20
 
 版本 >= 12
 
-`--std=c++20` 或更高 (如果支持).
-
-如果展开深度过深导致编译失败, 添加 `-fbracket-depth=[A BIG NUMBER] -ftemplate-depth=[A BIG NUMBER]`.
+`--std=c++20` 或更高 (如果支持), 另加 `-ftemplate-depth=65536 -fbracket-depth=65536 -fconstexpr-steps=4294967295 -fconstexpr-depth=65536`.
 
 ## g++
 
 版本 >= 12
 
-`--std=c++20` 或更高 (如果支持).
-
-如果展开深度过深导致编译失败, 添加 `-ftemplate-depth=[A BIG NUMBER]`.
-
-**注意, 编译复杂模式时, g++ 编译速度显著地比 clang++ 慢.**
+`--std=c++20` 或更高 (如果支持). 已经测试过, 但复杂模式编译速度太慢, 基本不适合正常使用.
 
 ## 😭 已知问题
 
-❗ 现有实现为了可接受的编译时间, 不使用语义等价, 而使用语法等价来合并状态, 代价是不支持写存在多种可能解释的闭包, 例如 `(ab|ababab|c)*`, `(aa|aaa)*`, `(a*|aa)*` 或 `(a*aa)*`. 应等价地写作 `(ab|c)*`, `(|aaa*)`, `a*` 或 `(aa)*`, 否则会导致编译失败. 未来可能增加一个 Exact 模式来放宽该限制, 但可预期地会导致编译时间变得不可接受.
+- ❗ 通配符 `.` 目前是按字节匹配, 不是按 UTF-8 字符匹配. 例如一个 3 字节 UTF-8 字符要用 `...` 来匹配, 不能指望单个 `.`. 这不在当前计划解决的范围内.
 
-🩹 触发该问题的表达式在日常场景中很少出现, 且 pattern 为编译期常量, 不构成可利用的攻击面. 目前暂无计划修复.
+- ❗ 现有实现为了可接受的编译时间, 不使用语义等价, 而使用语法等价来合并状态, 代价是不支持写存在多种可能解释的闭包, 例如 `(ab|ababab|c)*`, `(aa|aaa)*`, `(a*|aa)*` 或 `(a*aa)*`. 应等价地写作 `(ab|c)*`, `(|aaa*)`, `a*` 或 `(aa)*`, 否则会导致编译失败. 未来可能增加一个 Exact 模式来放宽该限制, 但可预期地会导致编译时间变得不可接受.
+
+  🩹 触发该问题的表达式在日常场景中很少出现, 且 pattern 为编译期常量, 不构成可利用的攻击面. 目前暂无计划修复.
