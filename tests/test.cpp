@@ -1,6 +1,17 @@
 #include "test_head.h"
 
-int main() {
+int main(int argc, char** argv) {
+  bool verbose = false;
+  for (int i = 1; i < argc; i++) {
+    if (std::string_view(argv[i]) == "-v") verbose = true;
+  }
+
+  reset_test_counters();
+  set_test_verbose(verbose);
+
+  std::streambuf* saved_cout = nullptr;
+  if (!verbose) saved_cout = std::cout.rdbuf(g_test_null_stream.rdbuf());
+
   basic_test();
   boundary_test();
   long_string_test();
@@ -33,5 +44,9 @@ int main() {
   replace_non_capturing_group_test();
   utf8_test();
 
-  return 0;
+  if (!verbose) std::cout.rdbuf(saved_cout);
+
+  print_test_summary();
+
+  return g_test_passed == g_test_total ? 0 : 1;
 }
