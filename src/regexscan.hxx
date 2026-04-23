@@ -5,6 +5,7 @@
 #include "fixedstring.hxx"
 #include "reg.hxx"
 #include "simplify.hxx"
+#include "alphabet.hxx"
 
 // === snippet begin ===
 namespace onre {
@@ -47,13 +48,95 @@ struct ParseCHAR;
 template<FixedString Pattern, size_t Pos>
 struct ParseEscape;
 
-template<typename CharList>
-struct CharListToOrSequential {
-  template<typename X, typename Y>
-  struct BuildOr {
-    using type = Or<X, Y>;
+constexpr size_t utf8_sequence_length(uint8_t lead) {
+  if (lead < 0x80) return 1;
+  if ((lead & 0xE0) == 0xC0) return 2;
+  if ((lead & 0xF0) == 0xE0) return 3;
+  if ((lead & 0xF8) == 0xF0) return 4;
+  return 0;
+}
+
+template<uint32_t code>
+struct CodePoint {
+  static constexpr uint32_t value = code;
+};
+
+template<FixedString Pattern, size_t Pos>
+struct ParseUtf8CodePoint {
+  static_assert(Pos < Pattern.length, "unexpected end of pattern");
+  static constexpr size_t len = utf8_sequence_length(Pattern[Pos]);
+  static_assert(len > 0, "UTF-8 decode error");
+  static_assert(Pos + len <= Pattern.length, "unexpected end of pattern");
+  static_assert(
+    len != 2 || ((Pattern[Pos + 1] & 0xC0) == 0x80),
+    "UTF-8 decode error, invalid continuation byte"
+  );
+  static_assert(
+    len != 3 || (((Pattern[Pos + 1] & 0xC0) == 0x80) && (((Pattern[Pos + 2] & 0xC0) == 0x80))),
+    "UTF-8 decode error, invalid continuation byte"
+  );
+  static_assert(
+    len != 4 || (
+      ((Pattern[Pos + 1] & 0xC0) == 0x80)
+      && ((Pattern[Pos + 2] & 0xC0) == 0x80)
+      && ((Pattern[Pos + 3] & 0xC0) == 0x80)
+    ), "UTF-8 decode error, invalid continuation byte"
+  );
+  static constexpr uint32_t value = len == 1
+    ? Pattern[Pos]
+    : len == 2
+      ? (((Pattern[Pos] & 0x1F) << 6) | (Pattern[Pos + 1] & 0x3F))
+      : len == 3
+        ? (((Pattern[Pos] & 0x0F) << 12) | ((Pattern[Pos + 1] & 0x3F) << 6) | (Pattern[Pos + 2] & 0x3F))
+        : (((Pattern[Pos] & 0x07) << 18) | ((Pattern[Pos + 1] & 0x3F) << 12)
+          | ((Pattern[Pos + 2] & 0x3F) << 6) | (Pattern[Pos + 3] & 0x3F));
+  static constexpr size_t next = Pos + len;
+  static_assert(value <= 0x10FFFF, "UTF-8 decode error, code point overflow");
+};
+
+template<uint32_t Code>
+struct BuildUtf8ByteStreamRegex {
+  using type = decltype([]{
+    if constexpr (Code <= 0x7F) {
+      return Char<Code>{};
+    } else if constexpr (Code <= 0x7FF) {
+      return Concat<Char<0xC0 | (Code >> 6)>, Char<0x80 | (Code & 0x3F)>>{};
+    } else if constexpr (Code <= 0xFFFF) {
+      return Concat<Concat<
+        Char<0xE0 | (Code >> 12)>,
+        Char<0x80 | ((Code >> 6) & 0x3F)>>,
+        Char<0x80 | (Code & 0x3F)>>{};
+    } else /* Code <= 0x10FFFF */ {
+      return Concat<Concat<Concat<
+        Char<0xF0 | (Code >> 18)>,
+        Char<0x80 | ((Code >> 12) & 0x3F)>>,
+        Char<0x80 | ((Code >> 6) & 0x3F)>>,
+        Char<0x80 | (Code & 0x3F)>>{};
+    }
+  }());
+};
+
+template<uint32_t Start, uint32_t End>
+struct BuildCodePointRange {
+  static_assert(Start <= End, "invalid code point range");
+
+  template <typename Indices>
+  struct Impl;
+  template <size_t... Is>
+  struct Impl<std::index_sequence<Is...>> {
+    using type = TypeList<CodePoint<Start + static_cast<uint32_t>(Is)>...>;
   };
-  using type = typename RightFold<BuildOr, CharList, EmptySet>::type;
+
+  using type = typename Impl<std::make_index_sequence<End - Start + 1>>::type;
+};
+
+template<typename CharList>
+struct BuildOrTree {
+  template<typename C1, typename C2>
+  struct Merge {
+    using type = Or<C1, C2>;
+  };
+  using type = typename RightFold<Merge, CharList, EmptySet>::type;
 };
 
 template<FixedString Pattern, size_t Pos, int64_t Acc = 0>
@@ -109,117 +192,78 @@ struct ParseHexN {
 
 template<uint8_t C, FixedString Pattern, size_t Pos>
 struct EscapeImpl {
+  static constexpr uint32_t code = Pattern[Pos + 1];
   using type = Char<Pattern[Pos + 1]>;
   static constexpr size_t next = Pos + 2;
 };
-using WordRegex =
-  Or<Char<'a'>, Or<Char<'b'>, Or<Char<'c'>, Or<Char<'d'>, Or<Char<'e'>, Or<Char<'f'>,
-  Or<Char<'g'>, Or<Char<'h'>, Or<Char<'i'>, Or<Char<'j'>, Or<Char<'k'>, Or<Char<'l'>,
-  Or<Char<'m'>, Or<Char<'n'>, Or<Char<'o'>, Or<Char<'p'>, Or<Char<'q'>, Or<Char<'r'>,
-  Or<Char<'s'>, Or<Char<'t'>, Or<Char<'u'>, Or<Char<'v'>, Or<Char<'w'>, Or<Char<'x'>,
-  Or<Char<'y'>, Or<Char<'z'>, Or<Char<'A'>, Or<Char<'B'>, Or<Char<'C'>, Or<Char<'D'>,
-  Or<Char<'E'>, Or<Char<'F'>, Or<Char<'G'>, Or<Char<'H'>, Or<Char<'I'>, Or<Char<'J'>,
-  Or<Char<'K'>, Or<Char<'L'>, Or<Char<'M'>, Or<Char<'N'>, Or<Char<'O'>, Or<Char<'P'>,
-  Or<Char<'Q'>, Or<Char<'R'>, Or<Char<'S'>, Or<Char<'T'>, Or<Char<'U'>, Or<Char<'V'>,
-  Or<Char<'W'>, Or<Char<'X'>, Or<Char<'Y'>, Or<Char<'Z'>, Or<Char<'0'>, Or<Char<'1'>,
-  Or<Char<'2'>, Or<Char<'3'>, Or<Char<'4'>, Or<Char<'5'>, Or<Char<'6'>, Or<Char<'7'>,
-  Or<Char<'8'>, Or<Char<'9'>, Char<'_'>
->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
-using NegativeWordRegex =
-  Or<Char<'\t'>, Or<Char<'\n'>, Or<Char<'\v'>, Or<Char<'\f'>, Or<Char<'\r'>, Or<Char<' '>,
-  Or<Char<'!'>, Or<Char<'"'>, Or<Char<'#'>, Or<Char<'$'>, Or<Char<'%'>, Or<Char<'&'>,
-  Or<Char<'\''>, Or<Char<'('>, Or<Char<')'>, Or<Char<'*'>, Or<Char<'+'>, Or<Char<','>,
-  Or<Char<'-'>, Or<Char<'.'>, Or<Char<'/'>, Or<Char<':'>, Or<Char<';'>, Or<Char<'<'>,
-  Or<Char<'='>, Or<Char<'>'>, Or<Char<'?'>, Or<Char<'@'>, Or<Char<'['>, Or<Char<'\\'>,
-  Or<Char<']'>, Or<Char<'^'>, Or<Char<'`'>, Or<Char<'{'>, Or<Char<'|'>, Or<Char<'}'>, Char<'~'>
->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
+using WordList = typename PushBack<typename Join<
+  typename BuildCharList<'a', 'z'>::type,
+  typename Join<
+    typename BuildCharList<'A', 'Z'>::type,
+    typename BuildCharList<'0', '9'>::type
+  >::type
+>::type, Char<'_'>>::type;
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'w', Pattern, Pos> {
-  using type = WordRegex;
+  static constexpr uint32_t code = -1;
+  using type = typename BuildOrTree<WordList>::type;
   static constexpr size_t next = Pos + 2;
 };
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'W', Pattern, Pos> {
-  using type = NegativeWordRegex;
+  static constexpr uint32_t code = -1;
+  using type = typename BuildOrTree<typename CharListNegation<WordList, Alphabet>::type>::type;
   static constexpr size_t next = Pos + 2;
 };
-using DigitalRegex =
-  Or<Char<'0'>, Or<Char<'1'>, Or<Char<'2'>, Or<Char<'3'>, Or<Char<'4'>,
-  Or<Char<'5'>, Or<Char<'6'>, Or<Char<'7'>, Or<Char<'8'>, Char<'9'>
->>>>>>>>>;
-using NegativeDigitalRegex =
-  Or<Char<'\t'>, Or<Char<'\n'>, Or<Char<'\v'>, Or<Char<'\f'>, Or<Char<'\r'>, Or<Char<' '>,
-  Or<Char<'!'>, Or<Char<'"'>, Or<Char<'#'>, Or<Char<'$'>, Or<Char<'%'>, Or<Char<'&'>,
-  Or<Char<'\''>, Or<Char<'('>, Or<Char<')'>, Or<Char<'*'>, Or<Char<'+'>, Or<Char<','>,
-  Or<Char<'-'>, Or<Char<'.'>, Or<Char<'/'>, Or<Char<':'>, Or<Char<';'>, Or<Char<'<'>,
-  Or<Char<'='>, Or<Char<'>'>, Or<Char<'?'>, Or<Char<'@'>, Or<Char<'A'>, Or<Char<'B'>,
-  Or<Char<'C'>, Or<Char<'D'>, Or<Char<'E'>, Or<Char<'F'>, Or<Char<'G'>, Or<Char<'H'>,
-  Or<Char<'I'>, Or<Char<'J'>, Or<Char<'K'>, Or<Char<'L'>, Or<Char<'M'>, Or<Char<'N'>,
-  Or<Char<'O'>, Or<Char<'P'>, Or<Char<'Q'>, Or<Char<'R'>, Or<Char<'S'>, Or<Char<'T'>,
-  Or<Char<'U'>, Or<Char<'V'>, Or<Char<'W'>, Or<Char<'X'>, Or<Char<'Y'>, Or<Char<'Z'>,
-  Or<Char<'['>, Or<Char<'\\'>, Or<Char<']'>, Or<Char<'^'>, Or<Char<'_'>, Or<Char<'`'>,
-  Or<Char<'a'>, Or<Char<'b'>, Or<Char<'c'>, Or<Char<'d'>, Or<Char<'e'>, Or<Char<'f'>,
-  Or<Char<'g'>, Or<Char<'h'>, Or<Char<'i'>, Or<Char<'j'>, Or<Char<'k'>, Or<Char<'l'>,
-  Or<Char<'m'>, Or<Char<'n'>, Or<Char<'o'>, Or<Char<'p'>, Or<Char<'q'>, Or<Char<'r'>,
-  Or<Char<'s'>, Or<Char<'t'>, Or<Char<'u'>, Or<Char<'v'>, Or<Char<'w'>, Or<Char<'x'>,
-  Or<Char<'y'>, Or<Char<'z'>, Or<Char<'{'>, Or<Char<'|'>, Or<Char<'}'>, Char<'~'>
->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
+using DigitalList = typename BuildCharList<'0', '9'>::type;
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'d', Pattern, Pos> {
-  using type = DigitalRegex;
+  static constexpr uint32_t code = -1;
+  using type = typename BuildOrTree<DigitalList>::type;
   static constexpr size_t next = Pos + 2;
 };
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'D', Pattern, Pos> {
-  using type = NegativeDigitalRegex;
+  static constexpr uint32_t code = -1;
+  using type = typename BuildOrTree<typename CharListNegation<DigitalList, Alphabet>::type>::type;
   static constexpr size_t next = Pos + 2;
 };
-using WhitespaceRegex =
-  Or<Char<'\t'>, Or<Char<'\n'>, Or<Char<'\v'>, Or<Char<'\f'>, Or<Char<'\r'>, Char<' '>
->>>>>;
-using NegativeWhitespaceRegex =
-  Or<Char<'!'>, Or<Char<'"'>, Or<Char<'#'>, Or<Char<'$'>, Or<Char<'%'>, Or<Char<'&'>,
-  Or<Char<'\''>, Or<Char<'('>, Or<Char<')'>, Or<Char<'*'>, Or<Char<'+'>, Or<Char<','>,
-  Or<Char<'-'>, Or<Char<'.'>, Or<Char<'/'>, Or<Char<'0'>, Or<Char<'1'>, Or<Char<'2'>,
-  Or<Char<'3'>, Or<Char<'4'>, Or<Char<'5'>, Or<Char<'6'>, Or<Char<'7'>, Or<Char<'8'>,
-  Or<Char<'9'>, Or<Char<':'>, Or<Char<';'>, Or<Char<'<'>, Or<Char<'='>, Or<Char<'>'>,
-  Or<Char<'?'>, Or<Char<'@'>, Or<Char<'A'>, Or<Char<'B'>, Or<Char<'C'>, Or<Char<'D'>,
-  Or<Char<'E'>, Or<Char<'F'>, Or<Char<'G'>, Or<Char<'H'>, Or<Char<'I'>, Or<Char<'J'>,
-  Or<Char<'K'>, Or<Char<'L'>, Or<Char<'M'>, Or<Char<'N'>, Or<Char<'O'>, Or<Char<'P'>,
-  Or<Char<'Q'>, Or<Char<'R'>, Or<Char<'S'>, Or<Char<'T'>, Or<Char<'U'>, Or<Char<'V'>,
-  Or<Char<'W'>, Or<Char<'X'>, Or<Char<'Y'>, Or<Char<'Z'>, Or<Char<'['>, Or<Char<'\\'>,
-  Or<Char<']'>, Or<Char<'^'>, Or<Char<'_'>, Or<Char<'`'>, Or<Char<'a'>, Or<Char<'b'>,
-  Or<Char<'c'>, Or<Char<'d'>, Or<Char<'e'>, Or<Char<'f'>, Or<Char<'g'>, Or<Char<'h'>,
-  Or<Char<'i'>, Or<Char<'j'>, Or<Char<'k'>, Or<Char<'l'>, Or<Char<'m'>, Or<Char<'n'>,
-  Or<Char<'o'>, Or<Char<'p'>, Or<Char<'q'>, Or<Char<'r'>, Or<Char<'s'>, Or<Char<'t'>,
-  Or<Char<'u'>, Or<Char<'v'>, Or<Char<'w'>, Or<Char<'x'>, Or<Char<'y'>, Or<Char<'z'>,
-  Or<Char<'{'>, Or<Char<'|'>, Or<Char<'}'>, Char<'~'>
->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
+using WhitespaceList = TypeList<Char<'\t'>, Char<'\n'>, Char<'\v'>, Char<'\f'>, Char<'\r'>, Char<' '>>;
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'s', Pattern, Pos> {
-  using type = WhitespaceRegex;
+  static constexpr uint32_t code = -1;
+  using type = typename BuildOrTree<WhitespaceList>::type;
   static constexpr size_t next = Pos + 2;
 };
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'S', Pattern, Pos> {
-  using type = NegativeWhitespaceRegex;
+  static constexpr uint32_t code = -1;
+  using type = typename BuildOrTree<typename CharListNegation<WhitespaceList, Alphabet>::type>::type;
   static constexpr size_t next = Pos + 2;
 };
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'n', Pattern, Pos> {
-  using type = Char<'\n'>; static constexpr size_t next = Pos + 2;
+  static constexpr uint32_t code = '\n';
+  using type = Char<'\n'>;
+  static constexpr size_t next = Pos + 2;
 };
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'t', Pattern, Pos> {
-  using type = Char<'\t'>; static constexpr size_t next = Pos + 2;
+  static constexpr uint32_t code = '\t';
+  using type = Char<'\t'>;
+  static constexpr size_t next = Pos + 2;
 };
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'f', Pattern, Pos> {
-  using type = Char<'\f'>; static constexpr size_t next = Pos + 2;
+  static constexpr uint32_t code = '\f';
+  using type = Char<'\f'>;
+  static constexpr size_t next = Pos + 2;
 };
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'r', Pattern, Pos> {
-  using type = Char<'\r'>; static constexpr size_t next = Pos + 2;
+  static constexpr uint32_t code = '\r';
+  using type = Char<'\r'>;
+  static constexpr size_t next = Pos + 2;
 };
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'x', Pattern, Pos> {
@@ -232,7 +276,56 @@ struct EscapeImpl<'x', Pattern, Pos> {
     "no value specified for `\\x`"
   );
   using HexParse = ParseHexN<Pattern, Pos + 2, 2>;
-  using type = Char<HexParse::value>;
+  static constexpr uint32_t code = HexParse::value;
+  using type = typename BuildUtf8ByteStreamRegex<HexParse::value>::type;
+  static constexpr size_t next = HexParse::next;
+};
+
+template<FixedString Pattern, size_t Pos, uint32_t Acc, size_t Digits>
+struct ParseHexBraced {
+  static_assert(Pos < Pattern.length, "ParseEscape: incomplete Unicode escape");
+  static constexpr bool is_hex_digit =
+    (Pattern[Pos] >= '0' && Pattern[Pos] <= '9')
+    || (Pattern[Pos] >= 'A' && Pattern[Pos] <= 'F')
+    || (Pattern[Pos] >= 'a' && Pattern[Pos] <= 'f');
+  static_assert(Pattern[Pos] == '}' || is_hex_digit, "ParseEscape: invalid Unicode escape");
+
+  struct impl_end {
+    static_assert(Digits > 0, "ParseEscape: no value specified for `\\u{`");
+    static constexpr uint32_t value = Acc;
+    static constexpr size_t next = Pos + 1;
+  };
+
+  struct impl_digit {
+    static_assert(Digits < 6, "ParseEscape: Unicode code point overflow");
+    static constexpr uint8_t ch = Pattern[Pos];
+    static constexpr uint32_t digit_value = (ch >= '0' && ch <= '9')
+      ? ch - '0'
+      : (ch >= 'A' && ch <= 'F')
+        ? ch - 'A' + 10
+        : ch - 'a' + 10;
+    using next_parse = ParseHexBraced<Pattern, Pos + 1, 16 * Acc + digit_value, Digits + 1>;
+    static constexpr uint32_t value = next_parse::value;
+    static constexpr size_t next = next_parse::next;
+  };
+
+  using chosen = std::conditional_t<
+    Pattern[Pos] == '}',
+    impl_end,
+    impl_digit
+  >;
+  static constexpr uint32_t value = chosen::value;
+  static constexpr size_t next = chosen::next;
+  static_assert(value <= 0x10FFFF, "ParseEscape: Unicode code point overflow");
+};
+
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'u', Pattern, Pos> {
+  static_assert(Pos + 3 < Pattern.length, "ParseEscape: incomplete Unicode escape");
+  static_assert(Pattern[Pos + 2] == '{', "ParseEscape: malformed Unicode escape");
+  using HexParse = ParseHexBraced<Pattern, Pos + 3, 0, 0>;
+  static constexpr uint32_t code = HexParse::value;
+  using type = typename BuildUtf8ByteStreamRegex<HexParse::value>::type;
   static constexpr size_t next = HexParse::next;
 };
 
@@ -240,82 +333,9 @@ template <FixedString Pattern, size_t Pos>
 struct ParseEscape {
   static_assert(Pos + 1 < Pattern.length, "ParseEscape: cannot find escape character");
   using chosen = EscapeImpl<Pattern[Pos + 1], Pattern, Pos>;
+  static constexpr uint32_t code = chosen::code;
   using type = typename chosen::type;
   static constexpr size_t next = chosen::next;
-};
-
-constexpr size_t utf8_sequence_length(uint8_t lead) {
-  if (lead < 0x80) return 1;
-  if ((lead & 0xE0) == 0xC0) return 2;
-  if ((lead & 0xF0) == 0xE0) return 3;
-  if ((lead & 0xF8) == 0xF0) return 4;
-  return 0;
-}
-
-template<uint32_t code>
-struct CodePoint {
-  static constexpr uint32_t value = code;
-};
-
-template<FixedString Pattern, size_t Pos>
-struct ParseUtf8CodePoint {
-  static_assert(Pos < Pattern.length, "unexpected end of pattern");
-  static constexpr size_t len = ((Pattern[Pos] & 0x80) == 0)
-    ? 1
-    : ((Pattern[Pos] & 0xE0) == 0xC0)
-      ? 2
-      : ((Pattern[Pos] & 0xF0) == 0xE0)
-        ? 3
-        : ((Pattern[Pos] & 0xF8) == 0xF0) ? 4 : 0;
-  static_assert(len > 0, "UTF-8 decode error");
-  static_assert(Pos + len <= Pattern.length, "unexpected end of pattern");
-  static_assert(
-    len != 2 || ((Pattern[Pos + 1] & 0xC0) == 0x80),
-    "UTF-8 decode error, invalid continuation byte"
-  );
-  static_assert(
-    len != 3 || (((Pattern[Pos + 1] & 0xC0) == 0x80) && (((Pattern[Pos + 2] & 0xC0) == 0x80))),
-    "UTF-8 decode error, invalid continuation byte"
-  );
-  static_assert(
-    len != 4 || (
-      ((Pattern[Pos + 1] & 0xC0) == 0x80)
-      && ((Pattern[Pos + 2] & 0xC0) == 0x80)
-      && ((Pattern[Pos + 3] & 0xC0) == 0x80)
-    ), "UTF-8 decode error, invalid continuation byte"
-  );
-  static constexpr uint32_t value = len == 1
-    ? Pattern[Pos]
-    : len == 2
-      ? (((Pattern[Pos] & 0x1F) << 6) | (Pattern[Pos + 1] & 0x3F))
-      : len == 3
-        ? (((Pattern[Pos] & 0x0F) << 12) | ((Pattern[Pos + 1] & 0x3F) << 6) | (Pattern[Pos + 2] & 0x3F))
-        : (((Pattern[Pos] & 0x07) << 18) | ((Pattern[Pos + 1] & 0x3F) << 12)
-          | ((Pattern[Pos + 2] & 0x3F) << 6) | (Pattern[Pos + 3] & 0x3F));
-  static constexpr size_t next = Pos + len;
-  static_assert(value <= 0x10FFFF, "UTF-8 decode error, code point overflow");
-};
-
-template<uint32_t Code>
-struct BuildUtf8ByteStreamRegex {
-  using type = decltype([]{
-    if constexpr (Code <= 0x7F) {
-      return Char<Code>{};
-    } else if constexpr (Code <= 0x7FF) {
-      return Concat<Char<0xC0 | (Code >> 6)>, Char<0x80 | (Code & 0x3F)>>{};
-    } else if constexpr (Code <= 0xFFFF) {
-      return Concat<Concat<
-        Char<0xE0 | (Code >> 12)>,
-        Char<0x80 | ((Code >> 6) & 0x3F)>>,
-        Char<0x80 | (Code & 0x3F)>>{};
-    } else /* Code <= 0x10FFFF */ {
-      return Concat<Concat<Concat<
-        Char<0xF0 | (Code >> 18)>,
-        Char<0x80 | ((Code >> 12) & 0x3F)>>,
-        Char<0x80 | ((Code >> 6) & 0x3F)>>,
-        Char<0x80 | (Code & 0x3F)>>{};
-    }
-  }());
 };
 
 /* ParseCHAR : [VALID CHAR] | Escape */
@@ -329,7 +349,7 @@ struct ParseCHAR {
   struct impl_escape {
     using EscapeParse = ParseEscape<Pattern, Pos>;
     using type = typename EscapeParse::type;
-    static constexpr size_t next = ParseEscape<Pattern, Pos>::next;
+    static constexpr size_t next = EscapeParse::next;
   };
 
   struct impl_simple {
@@ -498,25 +518,6 @@ struct ParseCharSetAtom {
   static_assert(Pos < Pattern.length, "ParseCharSetAtom: unexpected pattern ending");
   static_assert(is_in_class_char(Pattern[Pos]), "ParseCharSetAtom: unknown character");
 
-  template<uint32_t Code>
-  struct UCodePoint {
-    static constexpr uint32_t value = Code;
-  };
-
-  template<uint32_t Start, uint32_t End>
-  struct BuildCodePointRange {
-    static_assert(Start <= End, "ParseCharSetAtom: invalid char range");
-
-    template<typename Indices>
-    struct Impl;
-    template<size_t... Is>
-    struct Impl<std::index_sequence<Is...>> {
-      using type = TypeList<UCodePoint<Start + static_cast<uint32_t>(Is)>...>;
-    };
-
-    using type = typename Impl<std::make_index_sequence<End - Start + 1>>::type;
-  };
-
   template<typename CodePointList, typename Pack>
   struct BuildInPack;
   template<typename List1, typename List2, typename List3, typename List4>
@@ -619,44 +620,15 @@ struct ParseCharSetAtom {
   };
 
   struct impl_escape {
-    static_assert(Pos + 1 < Pattern.length, "ParseCharSetAtom: incomplete escape");
-    static constexpr char esc = Pattern[Pos + 1];
-    using type = std::conditional_t<
-      esc == 'n', TypeList<UCodePoint<'\n'>>,
-      std::conditional_t<
-        esc == 't', TypeList<UCodePoint<'\t'>>,
-        std::conditional_t<
-          esc == 'f', TypeList<UCodePoint<'\f'>>,
-          std::conditional_t<
-            esc == 'r', TypeList<UCodePoint<'\r'>>,
-            std::conditional_t<
-              esc == 'x', TypeList<UCodePoint<ParseHexN<Pattern, Pos + 2, 2>::value>>,
-              std::conditional_t<
-                esc == 'd', typename BuildCodePointRange<'0', '9'>::type,
-                std::conditional_t<
-                  esc == 's', TypeList<UCodePoint<' '>, UCodePoint<'\t'>, UCodePoint<'\n'>, UCodePoint<'\r'>, UCodePoint<'\f'>, UCodePoint<'\v'>>,
-                  std::conditional_t<
-                    esc == 'w',
-                    typename Join<
-                      typename BuildCodePointRange<'0', '9'>::type,
-                      typename Join<
-                        typename BuildCodePointRange<'A', 'Z'>::type,
-                        typename Join<
-                          typename BuildCodePointRange<'a', 'z'>::type,
-                          TypeList<UCodePoint<'_'>>
-                        >::type
-                      >::type
-                    >::type,
-                    TypeList<UCodePoint<static_cast<uint8_t>(esc)>>
-                  >
-                >
-              >
-            >
-          >
-        >
-      >
-    >;
-    static constexpr size_t next = esc == 'x' ? ParseHexN<Pattern, Pos + 2, 2>::next : Pos + 2;
+    static_assert(Pos + 1 < Pattern.length, "unexpected ending"); 
+    static_assert(
+      Pattern[Pos + 1] != 'w' && Pattern[Pos + 1] != 'W' && Pattern[Pos + 1] != 'd' 
+      && Pattern[Pos + 1] != 'D' && Pattern[Pos + 1] != 's' && Pattern[Pos + 1] != 'S', 
+      "char set do not support \\w, \\W, \\d, \\D, \\s, \\S. please use ([...]|\\w) explicitly"
+    );
+    using EscapeParse = ParseEscape<Pattern, Pos>;
+    using type = TypeList<CodePoint<EscapeParse::code>>;
+    static constexpr size_t next = EscapeParse::next;
   };
 
   static constexpr bool is_escape = Pattern[Pos] == '\\';

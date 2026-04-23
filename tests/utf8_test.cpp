@@ -32,6 +32,13 @@ void utf8_test() {
   test_match_and_log<u8"(ab|a😀)*c">((char const*)u8"a😀abc", true);
   test_match_and_log<u8"(😀|中|[a-z])+!">((char const*)u8"😀中abc!", true);
   test_match_and_log<u8"(hello|你好)(世界|world)">((char const*)u8"你好世界", true);
+  test_match_and_log<u8"\\u{A}">("\n", true);
+  test_match_and_log<u8"\\u{41}">("A", true);
+  test_match_and_log<u8"\\u{4F60}">((char const*)u8"你", true);
+  test_match_and_log<u8"\\u{4F60}\\u{597D}">((char const*)u8"你好", true);
+  test_match_and_log<u8"[\\u{4F60}-\\u{4F60}]">((char const*)u8"你", true);
+  test_match_and_log<u8"[^\\u{4F60}]">((char const*)u8"你", false);
+  test_match_and_log<u8"\\u{10AAAA}">((char const*)u8"\U0010AAAA", true);
   test_match_and_log<u8"[一-上]">((char const*)u8"一", true);
   test_match_and_log<u8"[一-上]">((char const*)u8"上", true);
   test_match_and_log<u8"[一-上]">((char const*)u8"丁", true);

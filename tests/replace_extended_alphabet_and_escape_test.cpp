@@ -20,5 +20,5 @@ void replace_extended_alphabet_and_escape_test() {
   test_replace_and_log<"\\f">("$0", "\f", "\f");
   test_replace_and_log<"\\r">("$0", "\r", "\r");
   test_replace_and_log<"\\x4f">("$0", "O", "O");
-  test_replace_and_log<"[\\s\\x4f]+">("$0", "O  O \n", "O  O \n");
+  test_replace_and_log<"(\\s|[\\x4f])+">("$0", "O  O \n", "O  O \n");
 }
