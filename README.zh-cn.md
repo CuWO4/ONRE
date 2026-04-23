@@ -404,6 +404,12 @@ if result_slots = null
 make test -j20
 ```
 
+## 🏗️ 单头构建
+
+`make build` 会扫描所有 `src/*.hxx` 文件, 读取 `// === snippet begin ===` 之前的 `#include "..."` 行, 再用 `tsort` 计算拓扑顺序, 最后按顺序把每个片段拼接到根目录的 [onre.hpp](onre.hpp) 中。这个生成出来的文件就是仓库里当前最新的结果。
+
+本仓库不发布 Release 产物。根目录的 [onre.hpp](onre.hpp) 始终是每次代码修改之后的最新生成结果。
+
 ## 🔗 依赖
 
 已验证的编译器最低版本:

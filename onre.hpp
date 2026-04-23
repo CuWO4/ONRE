@@ -150,6 +150,12 @@ struct RightFold<MergeFunc, TypeList<>, Begin> {
   using type = Begin;
 };
 
+} /* namespace impl */
+} /* namespace onre */
+
+namespace onre {
+namespace impl {
+
 /* === fixed string, a string container enabling compile-time visiting === */
 template<size_t N>
 struct FixedString {
@@ -181,6 +187,84 @@ template<size_t N>
 FixedString(const char (&str)[N]) -> FixedString<N>;
 template<size_t N>
 FixedString(const char8_t (&str)[N]) -> FixedString<N>;
+
+} /* namespace impl */
+} /* namespace onre */
+
+namespace onre {
+namespace impl {
+
+/* === action algebra === */
+struct Omega {
+  static constexpr size_t length = 0;
+};
+template<size_t I>
+struct Set {
+  static constexpr size_t i = I, length = 1;
+};
+template<typename... As>
+struct Seq {
+  static constexpr size_t length = (As::length + ...);
+};
+
+template<typename A>
+struct is_omega : std::false_type {};
+template<>
+struct is_omega<Omega> : std::true_type {};
+template<typename A>
+struct is_set : std::false_type {};
+template<size_t I>
+struct is_set<Set<I>> : std::true_type {};
+template<typename A>
+struct is_seq : std::false_type {};
+template<typename... As>
+struct is_seq<Seq<As...>> : std::true_type {};
+
+template<typename A1, typename A2>
+struct CatAction;
+template<>
+struct CatAction<Omega, Omega> {
+  using type = Omega;
+};
+template<size_t I>
+struct CatAction<Omega, Set<I>> {
+  using type = Set<I>;
+};
+template<typename... As>
+struct CatAction<Omega, Seq<As...>> {
+  using type = Seq<As...>;
+};
+template<size_t I>
+struct CatAction<Set<I>, Omega> {
+  using type = Set<I>;
+};
+template<size_t I1, size_t I2>
+struct CatAction<Set<I1>, Set<I2>> {
+  using type = Seq<Set<I1>, Set<I2>>;
+};
+template<size_t I, typename... As>
+struct CatAction<Set<I>, Seq<As...>> {
+  using type = Seq<Set<I>, As...>;
+};
+template<typename... As>
+struct CatAction<Seq<As...>, Omega> {
+  using type = Seq<As...>;
+};
+template<typename... As, size_t I>
+struct CatAction<Seq<As...>, Set<I>> {
+  using type = Seq<As..., Set<I>>;
+};
+template<typename... As1, typename... As2>
+struct CatAction<Seq<As1...>, Seq<As2...>> {
+  using type = Seq<As1..., As2...>;
+};
+template<typename Seq, typename A> using CarAction_t = typename CatAction<Seq, A>::type;
+
+} /* namespace impl */
+} /* namespace onre */
+
+namespace onre {
+namespace impl {
 
 /* === compile-time alphabet and helper function === */
 constexpr size_t nr_byte = 256;
@@ -254,6 +338,12 @@ struct NotWildcardExcluded {
 #else
   using WildcardAlphabet = typename Filter<NotWildcardExcluded, Utf8FirstByteAlphabet>::type;
 #endif
+
+} /* namespace impl */
+} /* namespace onre */
+
+namespace onre {
+namespace impl {
 
 /* === extended regular expression tree representation with zero-width action === */
 struct EmptySet {};
@@ -437,6 +527,12 @@ template <typename R, typename Acc>
 struct First<Closure<R>, Acc> {
   using type = typename First<R, Acc>::type;
 };
+
+} /* namespace impl */
+} /* namespace onre */
+
+namespace onre {
+namespace impl {
 
 /* === simplify and standard ordering rules, significantly reduce complexity === */
 template<typename R>
@@ -650,1373 +746,11 @@ struct Simplify<Closure<R>> {
   using type = typename SimplifyFixedPoint<Closure<R>, simplified, is_same>::type;
 };
 
-/* === regex parser === */
-/*
-  Grammar:
-    Regex       := Term ('|' Regex)?
-    Term        := Factor Term | (empty)
-    Factor      := Atom ('*')? | Atom ('+')? | Atom ('?')?
-                | Atom '{' Number ',' '}' | Atom '{' Number ',' Number '}'
-                | Atom '{' ',' Number '}'
-    Atom        := '(' Regex ')' | CharGroup | CHAR | '.'
-    CharGroup   := '[' CharSet ']' | '[' '^' CharSet ']'
-    CharSet     := CharSetAtom CharSet | CharSetAtom
-    CharSetAtom := [IN CLASS CHAR] | [IN CLASS CHAR] '-' [IN CLASS CHAR] | Escape
-    CHAR        := [VALID CHAR] | Escape
-    Escape      := '\' [VISIBLE CHAR] | '\' 'x' Number
-    Empty input -> Epsilon
-*/
-
-/* forward declarations */
-template<FixedString Pattern, size_t Pos, size_t CapIdx>
-struct ParseRegex;
-template<FixedString Pattern, size_t Pos, size_t CapIdx>
-struct ParseTerm;
-template<FixedString Pattern, size_t Pos, size_t CapIdx>
-struct ParseFactor;
-template<FixedString Pattern, size_t Pos, size_t CapIdx>
-struct ParseAtom;
-template<FixedString Pattern, size_t Pos>
-struct ParseCharGroup;
-template<FixedString Pattern, size_t Pos>
-struct ParseCharSet;
-template<FixedString Pattern, size_t Pos>
-struct ParseCharSetAtom;
-template<FixedString Pattern, size_t Pos>
-struct ParseCHAR;
-template<FixedString Pattern, size_t Pos>
-struct ParseEscape;
-
-template<typename CharList>
-struct CharListToOrSequential {
-  template<typename X, typename Y>
-  struct BuildOr {
-    using type = Or<X, Y>;
-  };
-  using type = typename RightFold<BuildOr, CharList, EmptySet>::type;
-};
-
-template<FixedString Pattern, size_t Pos, int64_t Acc = 0>
-struct ParseDecimal {
-  struct is_digit_impl {
-    using next_parse = ParseDecimal<Pattern, Pos + 1, 10 * Acc + (Pattern[Pos] - '0')>;
-    static constexpr int64_t value = next_parse::value;
-    static constexpr size_t next = next_parse::next;
-  };
-  struct not_digit_impl {
-    static constexpr int64_t value = Acc;
-    static constexpr size_t next = Pos;
-  };
-  using chosen = std::conditional_t<
-    Pos < Pattern.length && Pattern[Pos] >= '0' && Pattern[Pos] <= '9',
-    is_digit_impl,
-    not_digit_impl
-  >;
-  static constexpr int64_t value = chosen::value;
-  static constexpr size_t next = chosen::next;
-};
-
-template<FixedString Pattern, size_t Pos, size_t N, int64_t Acc = 0>
-struct ParseHexN {
-  struct is_digit_impl {
-    static constexpr uint8_t ch = Pattern[Pos];
-    static constexpr int64_t digit_value = (ch >= '0' && ch <= '9')
-      ? ch - '0'
-      : (ch >= 'A' && ch <= 'F')
-        ? ch - 'A' + 10
-        : ch - 'a' + 10
-    ;
-    using next_parse = ParseHexN<Pattern, Pos + 1, N - 1, 16 * Acc + digit_value>;
-    static constexpr int64_t value = next_parse::value;
-    static constexpr size_t next = next_parse::next;
-  };
-  struct not_digit_impl {
-    static constexpr int64_t value = Acc;
-    static constexpr size_t next = Pos;
-  };
-  using chosen = std::conditional_t<
-    (N > 0) && Pos < Pattern.length && (
-      (Pattern[Pos] >= '0' && Pattern[Pos] <= '9')
-      || (Pattern[Pos] >= 'a' && Pattern[Pos] <= 'f')
-      || (Pattern[Pos] >= 'A' && Pattern[Pos] <= 'F')
-    ),
-    is_digit_impl,
-    not_digit_impl
-  >;
-  static constexpr int64_t value = chosen::value;
-  static constexpr size_t next = chosen::next;
-};
-
-template<uint8_t C, FixedString Pattern, size_t Pos>
-struct EscapeImpl {
-  using type = Char<Pattern[Pos + 1]>;
-  static constexpr size_t next = Pos + 2;
-};
-using WordRegex =
-  Or<Char<'a'>, Or<Char<'b'>, Or<Char<'c'>, Or<Char<'d'>, Or<Char<'e'>, Or<Char<'f'>,
-  Or<Char<'g'>, Or<Char<'h'>, Or<Char<'i'>, Or<Char<'j'>, Or<Char<'k'>, Or<Char<'l'>,
-  Or<Char<'m'>, Or<Char<'n'>, Or<Char<'o'>, Or<Char<'p'>, Or<Char<'q'>, Or<Char<'r'>,
-  Or<Char<'s'>, Or<Char<'t'>, Or<Char<'u'>, Or<Char<'v'>, Or<Char<'w'>, Or<Char<'x'>,
-  Or<Char<'y'>, Or<Char<'z'>, Or<Char<'A'>, Or<Char<'B'>, Or<Char<'C'>, Or<Char<'D'>,
-  Or<Char<'E'>, Or<Char<'F'>, Or<Char<'G'>, Or<Char<'H'>, Or<Char<'I'>, Or<Char<'J'>,
-  Or<Char<'K'>, Or<Char<'L'>, Or<Char<'M'>, Or<Char<'N'>, Or<Char<'O'>, Or<Char<'P'>,
-  Or<Char<'Q'>, Or<Char<'R'>, Or<Char<'S'>, Or<Char<'T'>, Or<Char<'U'>, Or<Char<'V'>,
-  Or<Char<'W'>, Or<Char<'X'>, Or<Char<'Y'>, Or<Char<'Z'>, Or<Char<'0'>, Or<Char<'1'>,
-  Or<Char<'2'>, Or<Char<'3'>, Or<Char<'4'>, Or<Char<'5'>, Or<Char<'6'>, Or<Char<'7'>,
-  Or<Char<'8'>, Or<Char<'9'>, Char<'_'>
->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
-using NegativeWordRegex =
-  Or<Char<'\t'>, Or<Char<'\n'>, Or<Char<'\v'>, Or<Char<'\f'>, Or<Char<'\r'>, Or<Char<' '>,
-  Or<Char<'!'>, Or<Char<'"'>, Or<Char<'#'>, Or<Char<'$'>, Or<Char<'%'>, Or<Char<'&'>,
-  Or<Char<'\''>, Or<Char<'('>, Or<Char<')'>, Or<Char<'*'>, Or<Char<'+'>, Or<Char<','>,
-  Or<Char<'-'>, Or<Char<'.'>, Or<Char<'/'>, Or<Char<':'>, Or<Char<';'>, Or<Char<'<'>,
-  Or<Char<'='>, Or<Char<'>'>, Or<Char<'?'>, Or<Char<'@'>, Or<Char<'['>, Or<Char<'\\'>,
-  Or<Char<']'>, Or<Char<'^'>, Or<Char<'`'>, Or<Char<'{'>, Or<Char<'|'>, Or<Char<'}'>, Char<'~'>
->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
-template<FixedString Pattern, size_t Pos>
-struct EscapeImpl<'w', Pattern, Pos> {
-  using type = WordRegex;
-  static constexpr size_t next = Pos + 2;
-};
-template<FixedString Pattern, size_t Pos>
-struct EscapeImpl<'W', Pattern, Pos> {
-  using type = NegativeWordRegex;
-  static constexpr size_t next = Pos + 2;
-};
-using DigitalRegex =
-  Or<Char<'0'>, Or<Char<'1'>, Or<Char<'2'>, Or<Char<'3'>, Or<Char<'4'>,
-  Or<Char<'5'>, Or<Char<'6'>, Or<Char<'7'>, Or<Char<'8'>, Char<'9'>
->>>>>>>>>;
-using NegativeDigitalRegex =
-  Or<Char<'\t'>, Or<Char<'\n'>, Or<Char<'\v'>, Or<Char<'\f'>, Or<Char<'\r'>, Or<Char<' '>,
-  Or<Char<'!'>, Or<Char<'"'>, Or<Char<'#'>, Or<Char<'$'>, Or<Char<'%'>, Or<Char<'&'>,
-  Or<Char<'\''>, Or<Char<'('>, Or<Char<')'>, Or<Char<'*'>, Or<Char<'+'>, Or<Char<','>,
-  Or<Char<'-'>, Or<Char<'.'>, Or<Char<'/'>, Or<Char<':'>, Or<Char<';'>, Or<Char<'<'>,
-  Or<Char<'='>, Or<Char<'>'>, Or<Char<'?'>, Or<Char<'@'>, Or<Char<'A'>, Or<Char<'B'>,
-  Or<Char<'C'>, Or<Char<'D'>, Or<Char<'E'>, Or<Char<'F'>, Or<Char<'G'>, Or<Char<'H'>,
-  Or<Char<'I'>, Or<Char<'J'>, Or<Char<'K'>, Or<Char<'L'>, Or<Char<'M'>, Or<Char<'N'>,
-  Or<Char<'O'>, Or<Char<'P'>, Or<Char<'Q'>, Or<Char<'R'>, Or<Char<'S'>, Or<Char<'T'>,
-  Or<Char<'U'>, Or<Char<'V'>, Or<Char<'W'>, Or<Char<'X'>, Or<Char<'Y'>, Or<Char<'Z'>,
-  Or<Char<'['>, Or<Char<'\\'>, Or<Char<']'>, Or<Char<'^'>, Or<Char<'_'>, Or<Char<'`'>,
-  Or<Char<'a'>, Or<Char<'b'>, Or<Char<'c'>, Or<Char<'d'>, Or<Char<'e'>, Or<Char<'f'>,
-  Or<Char<'g'>, Or<Char<'h'>, Or<Char<'i'>, Or<Char<'j'>, Or<Char<'k'>, Or<Char<'l'>,
-  Or<Char<'m'>, Or<Char<'n'>, Or<Char<'o'>, Or<Char<'p'>, Or<Char<'q'>, Or<Char<'r'>,
-  Or<Char<'s'>, Or<Char<'t'>, Or<Char<'u'>, Or<Char<'v'>, Or<Char<'w'>, Or<Char<'x'>,
-  Or<Char<'y'>, Or<Char<'z'>, Or<Char<'{'>, Or<Char<'|'>, Or<Char<'}'>, Char<'~'>
->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
-template<FixedString Pattern, size_t Pos>
-struct EscapeImpl<'d', Pattern, Pos> {
-  using type = DigitalRegex;
-  static constexpr size_t next = Pos + 2;
-};
-template<FixedString Pattern, size_t Pos>
-struct EscapeImpl<'D', Pattern, Pos> {
-  using type = NegativeDigitalRegex;
-  static constexpr size_t next = Pos + 2;
-};
-using WhitespaceRegex =
-  Or<Char<'\t'>, Or<Char<'\n'>, Or<Char<'\v'>, Or<Char<'\f'>, Or<Char<'\r'>, Char<' '>
->>>>>;
-using NegativeWhitespaceRegex =
-  Or<Char<'!'>, Or<Char<'"'>, Or<Char<'#'>, Or<Char<'$'>, Or<Char<'%'>, Or<Char<'&'>,
-  Or<Char<'\''>, Or<Char<'('>, Or<Char<')'>, Or<Char<'*'>, Or<Char<'+'>, Or<Char<','>,
-  Or<Char<'-'>, Or<Char<'.'>, Or<Char<'/'>, Or<Char<'0'>, Or<Char<'1'>, Or<Char<'2'>,
-  Or<Char<'3'>, Or<Char<'4'>, Or<Char<'5'>, Or<Char<'6'>, Or<Char<'7'>, Or<Char<'8'>,
-  Or<Char<'9'>, Or<Char<':'>, Or<Char<';'>, Or<Char<'<'>, Or<Char<'='>, Or<Char<'>'>,
-  Or<Char<'?'>, Or<Char<'@'>, Or<Char<'A'>, Or<Char<'B'>, Or<Char<'C'>, Or<Char<'D'>,
-  Or<Char<'E'>, Or<Char<'F'>, Or<Char<'G'>, Or<Char<'H'>, Or<Char<'I'>, Or<Char<'J'>,
-  Or<Char<'K'>, Or<Char<'L'>, Or<Char<'M'>, Or<Char<'N'>, Or<Char<'O'>, Or<Char<'P'>,
-  Or<Char<'Q'>, Or<Char<'R'>, Or<Char<'S'>, Or<Char<'T'>, Or<Char<'U'>, Or<Char<'V'>,
-  Or<Char<'W'>, Or<Char<'X'>, Or<Char<'Y'>, Or<Char<'Z'>, Or<Char<'['>, Or<Char<'\\'>,
-  Or<Char<']'>, Or<Char<'^'>, Or<Char<'_'>, Or<Char<'`'>, Or<Char<'a'>, Or<Char<'b'>,
-  Or<Char<'c'>, Or<Char<'d'>, Or<Char<'e'>, Or<Char<'f'>, Or<Char<'g'>, Or<Char<'h'>,
-  Or<Char<'i'>, Or<Char<'j'>, Or<Char<'k'>, Or<Char<'l'>, Or<Char<'m'>, Or<Char<'n'>,
-  Or<Char<'o'>, Or<Char<'p'>, Or<Char<'q'>, Or<Char<'r'>, Or<Char<'s'>, Or<Char<'t'>,
-  Or<Char<'u'>, Or<Char<'v'>, Or<Char<'w'>, Or<Char<'x'>, Or<Char<'y'>, Or<Char<'z'>,
-  Or<Char<'{'>, Or<Char<'|'>, Or<Char<'}'>, Char<'~'>
->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
-template<FixedString Pattern, size_t Pos>
-struct EscapeImpl<'s', Pattern, Pos> {
-  using type = WhitespaceRegex;
-  static constexpr size_t next = Pos + 2;
-};
-template<FixedString Pattern, size_t Pos>
-struct EscapeImpl<'S', Pattern, Pos> {
-  using type = NegativeWhitespaceRegex;
-  static constexpr size_t next = Pos + 2;
-};
-template<FixedString Pattern, size_t Pos>
-struct EscapeImpl<'n', Pattern, Pos> {
-  using type = Char<'\n'>; static constexpr size_t next = Pos + 2;
-};
-template<FixedString Pattern, size_t Pos>
-struct EscapeImpl<'t', Pattern, Pos> {
-  using type = Char<'\t'>; static constexpr size_t next = Pos + 2;
-};
-template<FixedString Pattern, size_t Pos>
-struct EscapeImpl<'f', Pattern, Pos> {
-  using type = Char<'\f'>; static constexpr size_t next = Pos + 2;
-};
-template<FixedString Pattern, size_t Pos>
-struct EscapeImpl<'r', Pattern, Pos> {
-  using type = Char<'\r'>; static constexpr size_t next = Pos + 2;
-};
-template<FixedString Pattern, size_t Pos>
-struct EscapeImpl<'x', Pattern, Pos> {
-  static_assert(
-    Pos + 2 < Pattern.length && (
-      (Pattern[Pos + 2] >= '0' && Pattern[Pos + 2] <= '9')
-      || (Pattern[Pos + 2] >= 'a' && Pattern[Pos + 2] <= 'f')
-      || (Pattern[Pos + 2] >= 'A' && Pattern[Pos + 2] <= 'F')
-    ),
-    "no value specified for `\\x`"
-  );
-  using HexParse = ParseHexN<Pattern, Pos + 2, 2>;
-  using type = Char<HexParse::value>;
-  static constexpr size_t next = HexParse::next;
-};
-
-template <FixedString Pattern, size_t Pos>
-struct ParseEscape {
-  static_assert(Pos + 1 < Pattern.length, "ParseEscape: cannot find escape character");
-  using chosen = EscapeImpl<Pattern[Pos + 1], Pattern, Pos>;
-  using type = typename chosen::type;
-  static constexpr size_t next = chosen::next;
-};
-
-constexpr size_t utf8_sequence_length(uint8_t lead) {
-  if (lead < 0x80) return 1;
-  if ((lead & 0xE0) == 0xC0) return 2;
-  if ((lead & 0xF0) == 0xE0) return 3;
-  if ((lead & 0xF8) == 0xF0) return 4;
-  return 0;
-}
-
-template<uint32_t code>
-struct CodePoint {
-  static constexpr uint32_t value = code;
-};
-
-template<FixedString Pattern, size_t Pos>
-struct ParseUtf8CodePoint {
-  static_assert(Pos < Pattern.length, "unexpected end of pattern");
-  static constexpr size_t len = ((Pattern[Pos] & 0x80) == 0)
-    ? 1
-    : ((Pattern[Pos] & 0xE0) == 0xC0)
-      ? 2
-      : ((Pattern[Pos] & 0xF0) == 0xE0)
-        ? 3
-        : ((Pattern[Pos] & 0xF8) == 0xF0) ? 4 : 0;
-  static_assert(len > 0, "UTF-8 decode error");
-  static_assert(Pos + len <= Pattern.length, "unexpected end of pattern");
-  static_assert(
-    len != 2 || ((Pattern[Pos + 1] & 0xC0) == 0x80),
-    "UTF-8 decode error, invalid continuation byte"
-  );
-  static_assert(
-    len != 3 || (((Pattern[Pos + 1] & 0xC0) == 0x80) && (((Pattern[Pos + 2] & 0xC0) == 0x80))),
-    "UTF-8 decode error, invalid continuation byte"
-  );
-  static_assert(
-    len != 4 || (
-      ((Pattern[Pos + 1] & 0xC0) == 0x80)
-      && ((Pattern[Pos + 2] & 0xC0) == 0x80)
-      && ((Pattern[Pos + 3] & 0xC0) == 0x80)
-    ), "UTF-8 decode error, invalid continuation byte"
-  );
-  static constexpr uint32_t value = len == 1
-    ? Pattern[Pos]
-    : len == 2
-      ? (((Pattern[Pos] & 0x1F) << 6) | (Pattern[Pos + 1] & 0x3F))
-      : len == 3
-        ? (((Pattern[Pos] & 0x0F) << 12) | ((Pattern[Pos + 1] & 0x3F) << 6) | (Pattern[Pos + 2] & 0x3F))
-        : (((Pattern[Pos] & 0x07) << 18) | ((Pattern[Pos + 1] & 0x3F) << 12)
-          | ((Pattern[Pos + 2] & 0x3F) << 6) | (Pattern[Pos + 3] & 0x3F));
-  static constexpr size_t next = Pos + len;
-  static_assert(value <= 0x10FFFF, "UTF-8 decode error, code point overflow");
-};
-
-template<uint32_t Code>
-struct BuildUtf8ByteStreamRegex {
-  using type = decltype([]{
-    if constexpr (Code <= 0x7F) {
-      return Char<Code>{};
-    } else if constexpr (Code <= 0x7FF) {
-      return Concat<Char<0xC0 | (Code >> 6)>, Char<0x80 | (Code & 0x3F)>>{};
-    } else if constexpr (Code <= 0xFFFF) {
-      return Concat<Concat<
-        Char<0xE0 | (Code >> 12)>,
-        Char<0x80 | ((Code >> 6) & 0x3F)>>,
-        Char<0x80 | (Code & 0x3F)>>{};
-    } else /* Code <= 0x10FFFF */ { 
-      return Concat<Concat<Concat<
-        Char<0xF0 | (Code >> 18)>,
-        Char<0x80 | ((Code >> 12) & 0x3F)>>,
-        Char<0x80 | ((Code >> 6) & 0x3F)>>,
-        Char<0x80 | (Code & 0x3F)>>{};
-    }
-  }());
-};
-
-/* ParseCHAR : [VALID CHAR] | Escape */
-template <FixedString Pattern, size_t Pos>
-struct ParseCHAR {
-  static_assert(
-    Pos < Pattern.length && (Pattern[Pos] == '\\' || is_valid_char(Pattern[Pos])),
-    "ParseCHAR: unknown character"
-  );
-
-  struct impl_escape {
-    using EscapeParse = ParseEscape<Pattern, Pos>;
-    using type = typename EscapeParse::type;
-    static constexpr size_t next = ParseEscape<Pattern, Pos>::next;
-  };
-
-  struct impl_simple {
-    using CodePoint = ParseUtf8CodePoint<Pattern, Pos>;
-    using type = typename BuildUtf8ByteStreamRegex<CodePoint::value>::type;
-    static constexpr size_t next = CodePoint::next;
-  };
-
-  static constexpr bool is_escape = Pattern[Pos] == '\\';
-  using chosen = std::conditional_t<is_escape, impl_escape, impl_simple>;
-  using type = typename chosen::type;
-  static constexpr size_t next = chosen::next;
-};
-
-template<typename List1, typename List2, typename List3, typename List4>
-struct ByteListPack {
-  using list1 = List1;
-  using list2 = List2;
-  using list3 = List3;
-  using list4 = List4;
-};
-
-template<uint32_t Code>
-struct Utf8Encoding {
-  static constexpr size_t length =
-    (Code <= 0x7F) ? 1 :
-    (Code <= 0x7FF) ? 2 :
-    (Code <= 0xFFFF) ? 3 : 4;
-  static constexpr uint8_t b0 =
-    (length == 1) ? static_cast<uint8_t>(Code)
-    : (length == 2) ? static_cast<uint8_t>(0xC0 | (Code >> 6))
-    : (length == 3) ? static_cast<uint8_t>(0xE0 | (Code >> 12))
-    : static_cast<uint8_t>(0xF0 | (Code >> 18));
-  static constexpr uint8_t b1 =
-    (length == 1) ? 0
-    : (length == 2) ? static_cast<uint8_t>(0x80 | (Code & 0x3F))
-    : static_cast<uint8_t>(0x80 | ((Code >> 6) & 0x3F));
-  static constexpr uint8_t b2 =
-    (length <= 2) ? 0
-    : (length == 3) ? static_cast<uint8_t>(0x80 | (Code & 0x3F))
-    : static_cast<uint8_t>(0x80 | ((Code >> 6) & 0x3F));
-  static constexpr uint8_t b3 =
-    (length <= 3) ? 0
-    : static_cast<uint8_t>(0x80 | (Code & 0x3F));
-};
-
-template<typename Pack>
-struct PackToIn;
-template<typename List1, typename List2, typename List3, typename List4>
-struct PackToIn<ByteListPack<List1, List2, List3, List4>> {
-  using type = In<List1, List2, List3, List4>;
-};
-
-template<typename Pack>
-struct PackToExcept;
-template<typename List1, typename List2, typename List3, typename List4>
-struct PackToExcept<ByteListPack<List1, List2, List3, List4>> {
-  using type = Except<List1, List2, List3, List4>;
-};
-
-template<typename CodePointList, typename Pack>
-struct BuildInPack;
-template<typename Pack>
-struct BuildInPack<TypeList<>, Pack> {
-  using type = typename PackToIn<Pack>::type;
-};
-template<typename List1, typename List2, typename List3, typename List4, typename Head, typename... Tails>
-struct BuildInPack<TypeList<Head, Tails...>, ByteListPack<List1, List2, List3, List4>> {
-  using Enc = Utf8Encoding<Head::value>;
-  using NextPack = std::conditional_t<
-    Enc::length == 1,
-    ByteListPack<
-      typename PushBackUnique<List1, Char<Enc::b0>>::type,
-      List2, List3, List4
-    >,
-    std::conditional_t<
-      Enc::length == 2,
-      ByteListPack<
-        typename PushBackUnique<List1, Char<Enc::b0>>::type,
-        List2,
-        List3,
-        typename PushBackUnique<List4, Char<Enc::b1>>::type
-      >,
-      std::conditional_t<
-        Enc::length == 3,
-        ByteListPack<
-          typename PushBackUnique<List1, Char<Enc::b0>>::type,
-          List2,
-          typename PushBackUnique<List3, Char<Enc::b1>>::type,
-          typename PushBackUnique<List4, Char<Enc::b2>>::type
-        >,
-        ByteListPack<
-          typename PushBackUnique<List1, Char<Enc::b0>>::type,
-          typename PushBackUnique<List2, Char<Enc::b1>>::type,
-          typename PushBackUnique<List3, Char<Enc::b2>>::type,
-          typename PushBackUnique<List4, Char<Enc::b3>>::type
-        >
-      >
-    >
-  >;
-  using type = typename BuildInPack<TypeList<Tails...>, NextPack>::type;
-};
-
-template<typename CodePointList, typename Pack>
-struct BuildExceptPack;
-template<typename Pack>
-struct BuildExceptPack<TypeList<>, Pack> {
-  using type = typename PackToExcept<Pack>::type;
-};
-template<typename List1, typename List2, typename List3, typename List4, typename Head, typename... Tails>
-struct BuildExceptPack<TypeList<Head, Tails...>, ByteListPack<List1, List2, List3, List4>> {
-  using Enc = Utf8Encoding<Head::value>;
-  using NextPack = std::conditional_t<
-    Enc::length == 1,
-    ByteListPack<
-      typename PushBackUnique<List1, Char<Enc::b0>>::type,
-      List2, List3, List4
-    >,
-    std::conditional_t<
-      Enc::length == 2,
-      ByteListPack<
-        typename PushBackUnique<List1, Char<Enc::b0>>::type,
-        List2,
-        List3,
-        typename PushBackUnique<List4, Char<Enc::b1>>::type
-      >,
-      std::conditional_t<
-        Enc::length == 3,
-        ByteListPack<
-          typename PushBackUnique<List1, Char<Enc::b0>>::type,
-          List2,
-          typename PushBackUnique<List3, Char<Enc::b1>>::type,
-          typename PushBackUnique<List4, Char<Enc::b2>>::type
-        >,
-        ByteListPack<
-          typename PushBackUnique<List1, Char<Enc::b0>>::type,
-          typename PushBackUnique<List2, Char<Enc::b1>>::type,
-          typename PushBackUnique<List3, Char<Enc::b2>>::type,
-          typename PushBackUnique<List4, Char<Enc::b3>>::type
-        >
-      >
-    >
-  >;
-  using type = typename BuildExceptPack<TypeList<Tails...>, NextPack>::type;
-};
-
-template<typename CodePointList>
-struct BuildIn {
-  using type = typename BuildInPack<
-    CodePointList,
-    ByteListPack<TypeList<>, TypeList<>, TypeList<>, TypeList<>>
-  >::type;
-};
-
-template<typename CodePointList>
-struct BuildExcept {
-  using type = typename BuildExceptPack<
-    CodePointList,
-    ByteListPack<TypeList<>, TypeList<>, TypeList<>, TypeList<>>
-  >::type;
-};
-
-/* ParseCharSetAtom: [IN CLASS CHAR] | [IN CLASS CHAR] '-' [IN CLASS CHAR] | Escape */
-template<FixedString Pattern, size_t Pos>
-struct ParseCharSetAtom {
-  static_assert(Pos < Pattern.length, "ParseCharSetAtom: unexpected pattern ending");
-  static_assert(is_in_class_char(Pattern[Pos]), "ParseCharSetAtom: unknown character");
-
-  template<uint32_t Code>
-  struct UCodePoint {
-    static constexpr uint32_t value = Code;
-  };
-
-  template<uint32_t Start, uint32_t End>
-  struct BuildCodePointRange {
-    static_assert(Start <= End, "ParseCharSetAtom: invalid char range");
-
-    template<typename Indices>
-    struct Impl;
-    template<size_t... Is>
-    struct Impl<std::index_sequence<Is...>> {
-      using type = TypeList<UCodePoint<Start + static_cast<uint32_t>(Is)>...>;
-    };
-
-    using type = typename Impl<std::make_index_sequence<End - Start + 1>>::type;
-  };
-
-  template<typename CodePointList, typename Pack>
-  struct BuildInPack;
-  template<typename List1, typename List2, typename List3, typename List4>
-  struct BuildInPack<TypeList<>, ByteListPack<List1, List2, List3, List4>> {
-    using type = In<List1, List2, List3, List4>;
-  };
-  template<typename List1, typename List2, typename List3, typename List4, typename Head, typename... Tails>
-  struct BuildInPack<TypeList<Head, Tails...>, ByteListPack<List1, List2, List3, List4>> {
-    using Enc = Utf8Encoding<Head::value>;
-    using NextPack = std::conditional_t<
-      Enc::length == 1,
-      ByteListPack<
-        typename PushBackUnique<List1, Char<Enc::b0>>::type,
-        List2, List3, List4
-      >,
-      std::conditional_t<
-        Enc::length == 2,
-        ByteListPack<
-          typename PushBackUnique<List1, Char<Enc::b0>>::type,
-          List2,
-          List3,
-          typename PushBackUnique<List4, Char<Enc::b1>>::type
-        >,
-        std::conditional_t<
-          Enc::length == 3,
-          ByteListPack<
-            typename PushBackUnique<List1, Char<Enc::b0>>::type,
-            List2,
-            typename PushBackUnique<List3, Char<Enc::b1>>::type,
-            typename PushBackUnique<List4, Char<Enc::b2>>::type
-          >,
-          ByteListPack<
-            typename PushBackUnique<List1, Char<Enc::b0>>::type,
-            typename PushBackUnique<List2, Char<Enc::b1>>::type,
-            typename PushBackUnique<List3, Char<Enc::b2>>::type,
-            typename PushBackUnique<List4, Char<Enc::b3>>::type
-          >
-        >
-      >
-    >;
-    using type = typename BuildInPack<TypeList<Tails...>, NextPack>::type;
-  };
-
-  template<typename CodePointList, typename Pack>
-  struct BuildExceptPack;
-  template<typename List1, typename List2, typename List3, typename List4>
-  struct BuildExceptPack<TypeList<>, ByteListPack<List1, List2, List3, List4>> {
-    using type = Except<List1, List2, List3, List4>;
-  };
-  template<typename List1, typename List2, typename List3, typename List4, typename Head, typename... Tails>
-  struct BuildExceptPack<TypeList<Head, Tails...>, ByteListPack<List1, List2, List3, List4>> {
-    using Enc = Utf8Encoding<Head::value>;
-    using NextPack = std::conditional_t<
-      Enc::length == 1,
-      ByteListPack<
-        typename PushBackUnique<List1, Char<Enc::b0>>::type,
-        List2, List3, List4
-      >,
-      std::conditional_t<
-        Enc::length == 2,
-        ByteListPack<
-          typename PushBackUnique<List1, Char<Enc::b0>>::type,
-          List2,
-          List3,
-          typename PushBackUnique<List4, Char<Enc::b1>>::type
-        >,
-        std::conditional_t<
-          Enc::length == 3,
-          ByteListPack<
-            typename PushBackUnique<List1, Char<Enc::b0>>::type,
-            List2,
-            typename PushBackUnique<List3, Char<Enc::b1>>::type,
-            typename PushBackUnique<List4, Char<Enc::b2>>::type
-          >,
-          ByteListPack<
-            typename PushBackUnique<List1, Char<Enc::b0>>::type,
-            typename PushBackUnique<List2, Char<Enc::b1>>::type,
-            typename PushBackUnique<List3, Char<Enc::b2>>::type,
-            typename PushBackUnique<List4, Char<Enc::b3>>::type
-          >
-        >
-      >
-    >;
-    using type = typename BuildExceptPack<TypeList<Tails...>, NextPack>::type;
-  };
-
-  struct impl_char {
-    using CodePointParse = ParseUtf8CodePoint<Pattern, Pos>;
-    using type = typename BuildCodePointRange<CodePointParse::value, CodePointParse::value>::type;
-    static constexpr size_t next = CodePointParse::next;
-  };
-
-  struct impl_seq {
-    using Start = ParseUtf8CodePoint<Pattern, Pos>;
-    static_assert(Start::next < Pattern.length && Pattern[Start::next] == '-',
-      "ParseCharSetAtom: `-` has no ending");
-    using End = ParseUtf8CodePoint<Pattern, Start::next + 1>;
-    using type = typename BuildCodePointRange<Start::value, End::value>::type;
-    static constexpr size_t next = End::next;
-  };
-
-  struct impl_escape {
-    static_assert(Pos + 1 < Pattern.length, "ParseCharSetAtom: incomplete escape");
-    static constexpr char esc = Pattern[Pos + 1];
-    using type = std::conditional_t<
-      esc == 'n', TypeList<UCodePoint<'\n'>>,
-      std::conditional_t<
-        esc == 't', TypeList<UCodePoint<'\t'>>,
-        std::conditional_t<
-          esc == 'f', TypeList<UCodePoint<'\f'>>,
-          std::conditional_t<
-            esc == 'r', TypeList<UCodePoint<'\r'>>,
-            std::conditional_t<
-              esc == 'x', TypeList<UCodePoint<ParseHexN<Pattern, Pos + 2, 2>::value>>,
-              std::conditional_t<
-                esc == 'd', typename BuildCodePointRange<'0', '9'>::type,
-                std::conditional_t<
-                  esc == 's', TypeList<UCodePoint<' '>, UCodePoint<'\t'>, UCodePoint<'\n'>, UCodePoint<'\r'>, UCodePoint<'\f'>, UCodePoint<'\v'>>,
-                  std::conditional_t<
-                    esc == 'w',
-                    typename Join<
-                      typename BuildCodePointRange<'0', '9'>::type,
-                      typename Join<
-                        typename BuildCodePointRange<'A', 'Z'>::type,
-                        typename Join<
-                          typename BuildCodePointRange<'a', 'z'>::type,
-                          TypeList<UCodePoint<'_'>>
-                        >::type
-                      >::type
-                    >::type,
-                    TypeList<UCodePoint<static_cast<uint8_t>(esc)>>
-                  >
-                >
-              >
-            >
-          >
-        >
-      >
-    >;
-    static constexpr size_t next = esc == 'x' ? ParseHexN<Pattern, Pos + 2, 2>::next : Pos + 2;
-  };
-
-  static constexpr bool is_escape = Pattern[Pos] == '\\';
-  static constexpr bool has_hyphen = !is_escape
-    && ParseUtf8CodePoint<Pattern, Pos>::next < Pattern.length
-    && Pattern[ParseUtf8CodePoint<Pattern, Pos>::next] == '-';
-  using chosen = std::conditional_t<
-    is_escape,
-    impl_escape,
-    std::conditional_t<has_hyphen, impl_seq, impl_char>
-  >;
-  using type = typename chosen::type;
-  static constexpr size_t next = chosen::next;
-};
-
-/* ParseCharSet: CharSetAtom CharSet | CharSetAtom */
-template<FixedString Pattern, size_t Pos>
-struct ParseCharSet {
-  using CharSetAtom = ParseCharSetAtom<Pattern, Pos>;
-  static_assert(CharSetAtom::next <= Pattern.length,
-    "ParseCharSet: char set atom parsing overflow");
-
-  struct impl_run_on {
-    using Next = ParseCharSet<Pattern, CharSetAtom::next>;
-    static_assert(Next::next <= Pattern.length, "ParseCharSet: next parsing overflow");
-    using type = typename JoinUnique<typename CharSetAtom::type, typename Next::type>::type;
-    static constexpr size_t next = Next::next;
-  };
-
-  struct impl_stop {
-    using type = typename CharSetAtom::type;
-    static constexpr size_t next = CharSetAtom::next;
-  };
-
-  static constexpr bool run_on = CharSetAtom::next < Pattern.length
-    && is_in_class_char(Pattern[CharSetAtom::next]);
-  using chosen = std::conditional_t<run_on, impl_run_on, impl_stop>;
-  using type = typename chosen::type;
-  static constexpr size_t next = chosen::next;
-};
-
-/* ParseCharGroup: '[' CharSet ']' | '[' '^' CharSet ']' */
-template<FixedString Pattern, size_t Pos>
-struct ParseCharGroup {
-  struct impl_pos {
-    using CharSet = ParseCharSet<Pattern, Pos + 1>;
-    static_assert(CharSet::next <= Pattern.length, "ParseCharGroup: char set parsing overflow");
-    static_assert(CharSet::next < Pattern.length && Pattern[CharSet::next] == ']',
-      "ParseCharGroup: ']' not closed");
-    using type = typename BuildIn<typename CharSet::type>::type;
-    static constexpr size_t next = CharSet::next + 1;
-  };
-
-  struct impl_neg {
-    using CharSet = ParseCharSet<Pattern, Pos + 2>;
-    static_assert(CharSet::next <= Pattern.length, "ParseCharGroup: char set parsing overflow");
-    static_assert(CharSet::next < Pattern.length && Pattern[CharSet::next] == ']',
-      "ParseCharGroup: ']' not closed");
-    using type = typename BuildExcept<typename CharSet::type>::type;
-    static constexpr size_t next = CharSet::next + 1;
-  };
-
-  static constexpr bool is_neg = Pos + 1 < Pattern.length && Pattern[Pos + 1] == '^';
-  using chosen = std::conditional_t<is_neg, impl_neg, impl_pos>;
-  using type = typename chosen::type;
-  static constexpr size_t next = chosen::next;
-};
-
-/* ParseAtom: '(' Regex ')' | '[' CharSet ']' |  CHAR | '.' */
-template<FixedString Pattern, size_t Pos, size_t CapIdx>
-struct ParseAtom {
-  static_assert(
-    Pos < Pattern.length && (
-      Pattern[Pos] == '(' || Pattern[Pos] == '[' || Pattern[Pos] == '.'
-      || Pattern[Pos] == '\\' || is_valid_char(Pattern[Pos])
-    ), "ParseAtom: unknown character"
-  );
-
-  /* case '(' Regex ')' or '(?:' Regex ')' */
-  struct impl_paren {
-    static constexpr bool is_non_capturing =
-      Pos + 2 < Pattern.length && Pattern[Pos + 1] == '?' && Pattern[Pos + 2] == ':';
-    using Regex = ParseRegex<Pattern, Pos + (is_non_capturing ? 3 : 1), CapIdx + (is_non_capturing ? 0 : 1)>;
-    static_assert(Regex::next <= Pattern.length, "ParseAtom: regex parse overflow");
-    static_assert(Regex::next < Pattern.length && Pattern[Regex::next] == ')',
-      "ParseAtom impl_paren: missing closing ')' in pattern");
-    using type = std::conditional_t<
-      is_non_capturing,
-      typename Regex::type,
-      Concat<
-        SetSlot<2 * CapIdx>,
-        Concat<typename Regex::type, SetSlot<2 * CapIdx + 1>>
-      >
-    >;
-    static constexpr size_t next = Regex::next + 1;
-    static constexpr size_t next_cap_idx = Regex::next_cap_idx;
-  };
-
-  /* case CharGroup */
-  struct impl_square {
-    using CharGroup = ParseCharGroup<Pattern, Pos>;
-    static_assert(CharGroup::next <= Pattern.length, "ParseAtom: char set parse overflow");
-    using type = typename CharGroup::type;
-    static constexpr size_t next = CharGroup::next;
-    static constexpr size_t next_cap_idx = CapIdx;
-  };
-
-  /* case CHAR */
-  struct impl_char {
-    using CHAR = ParseCHAR<Pattern, Pos>;
-    static_assert(CHAR::next <= Pattern.length, "ParseAtom: char parse overflow");
-    using type = typename CHAR::type;
-    static constexpr size_t next = CHAR::next;
-    static constexpr size_t next_cap_idx = CapIdx;
-  };
-
-  /* case '.' */
-  struct impl_full_match {
-    using type = Wildcard;
-    static constexpr size_t next = Pos + 1;
-    static constexpr size_t next_cap_idx = CapIdx;
-  };
-
-  using chosen = std::conditional_t<
-    Pattern[Pos] == '(',
-    impl_paren,
-    std::conditional_t<
-      Pattern[Pos] == '[',
-      impl_square,
-      std::conditional_t<
-        Pattern[Pos] == '.',
-        impl_full_match,
-        impl_char
-      >
-    >
-  >;
-  using type = typename chosen::type;
-  static constexpr size_t next = chosen::next;
-  static constexpr size_t next_cap_idx = chosen::next_cap_idx;
-};
-
-template<typename AtomType, int64_t Min, int64_t Max>
-struct BuildQuantifier {
-  using type = Concat<AtomType, typename BuildQuantifier<AtomType, Min - 1, Max - 1>::type>;
-};
-template<typename AtomType, int64_t Max>
-struct BuildQuantifier<AtomType, 0, Max> {
-  struct inf {
-    using type = Closure<AtomType>;
-  };
-  struct non_inf {
-    using type = Or<
-      Epsilon,
-      Concat<AtomType, typename BuildQuantifier<AtomType, 0, Max - 1>::type>
-    >;
-  };
-  using type = typename std::conditional_t<Max < 0, inf, non_inf>::type;
-};
-template<typename AtomType>
-struct BuildQuantifier<AtomType, 0, 0> {
-  using type = Epsilon;
-};
-
-/* ParseFactor: Atom ('*')? | Atom ('+')? | Atom ('?')?
- *            | Atom '{' Number ',' '}' | Atom '{' Number ',' Number '}'
- *            | Atom '{' ',' Number '}' | '{' Number '}'
- */
-template<FixedString Pattern, size_t Pos, size_t CapIdx>
-struct ParseFactor {
-  using Atom = ParseAtom<Pattern, Pos, CapIdx>;
-
-  static_assert(Atom::next <= Pattern.length, "ParseFactor: atom parse overflow");
-
-  struct star {
-    using type = Closure<typename Atom::type>;
-    static constexpr size_t next = Atom::next + 1;
-  };
-
-  struct plus {
-    using type = Concat<typename Atom::type, Closure<typename Atom::type>>;
-    static constexpr size_t next = Atom::next + 1;
-  };
-
-  struct question {
-    using type = Or<Epsilon, typename Atom::type>;
-    static constexpr size_t next = Atom::next + 1;
-  };
-
-  struct curly {
-    static_assert(Atom::next + 1 < Pattern.length, "ParseFactor: incomplete quantifier");
-
-    static_assert(Pattern[Atom::next + 1] != '}', "ParseFactor: empty quantifier '{}' is invalid");
-
-    using ParseMin = ParseDecimal<Pattern, Atom::next + 1>;
-    static constexpr bool min_missing = (Pattern[Atom::next + 1] == ',');
-    static constexpr int64_t Min = min_missing ? 0 : ParseMin::value;
-
-    static_assert(ParseMin::next < Pattern.length
-      && (Pattern[ParseMin::next] == ',' || Pattern[ParseMin::next] == '}'),
-      "ParseFactor: incomplete quantifier");
-
-    struct single_num {
-      static constexpr int64_t Max = Min;
-      static constexpr size_t next = ParseMin::next + 1;
-    };
-
-    struct multiple_num {
-      static_assert(ParseMin::next + 1 < Pattern.length, "ParseFactor: incomplete quantifier");
-
-      static_assert(!(min_missing && Pattern[ParseMin::next + 1] == '}'),
-        "ParseFactor: quantifier must contain at least one number");
-
-      using ParseMax = ParseDecimal<Pattern, ParseMin::next + 1>;
-      static_assert(ParseMax::next < Pattern.length && Pattern[ParseMax::next] == '}',
-        "ParseFactor: incomplete quantifier (missing '}')");
-
-      static constexpr int64_t Max =
-        (Pattern[ParseMin::next + 1] == '}') ? -1 : ParseMax::value;
-      static constexpr size_t next = ParseMax::next + 1;
-    };
-
-    using chosen = std::conditional_t<Pattern[ParseMin::next] == '}', single_num, multiple_num>;
-    static constexpr int64_t Max = chosen::Max;
-
-    static_assert(Max < 0 || Min <= Max, "ParseFactor: invalid quantifier");
-
-    using type = typename BuildQuantifier<typename Atom::type, Min, Max>::type;
-    static constexpr size_t next = chosen::next;
-  };
-
-  static constexpr bool has_star = (Atom::next < Pattern.length && Pattern[Atom::next] == '*');
-  static constexpr bool has_plus = (Atom::next < Pattern.length && Pattern[Atom::next] == '+');
-  static constexpr bool has_question = (Atom::next < Pattern.length && Pattern[Atom::next] == '?');
-  static constexpr bool has_curly = (Atom::next < Pattern.length && Pattern[Atom::next] == '{');
-
-  using chosen = std::conditional_t<
-    has_star,
-    star,
-    std::conditional_t<
-      has_plus,
-      plus,
-      std::conditional_t<
-        has_question,
-        question,
-        std::conditional_t<
-          has_curly,
-          curly,
-          Atom
-        >
-      >
-    >
-  >;
-  using type = typename chosen::type;
-  static constexpr size_t next = chosen::next;
-  static constexpr size_t next_cap_idx = Atom::next_cap_idx;
-};
-
-/* ParseTerm := Factor Term | (empty -> Epsilon) */
-template<FixedString Pattern, size_t Pos, size_t CapIdx>
-struct ParseTerm {
-  /* empty case */
-  struct impl_empty {
-    using type = Epsilon;
-    static constexpr size_t next = Pos;
-    static constexpr size_t next_cap_idx = CapIdx;
-  };
-  /* Factor Term case */
-  struct impl_nonempty {
-    using Factor = ParseFactor<Pattern, Pos, CapIdx>;
-    static_assert(Factor::next <= Pattern.length, "ParseTerm: factor parse overflow");
-    using Term = ParseTerm<Pattern, Factor::next, Factor::next_cap_idx>;
-    static_assert(Term::next <= Pattern.length, "ParseTerm: term parse overflow");
-    using type = Concat<typename Factor::type, typename Term::type>;
-    static constexpr size_t next = Term::next;
-    static constexpr size_t next_cap_idx = Term::next_cap_idx;
-  };
-
-  using chosen = std::conditional_t<
-    (Pos >= Pattern.length) || (Pattern[Pos] == '|') || (Pattern[Pos] == ')'),
-    impl_empty,
-    impl_nonempty
-  >;
-  using type = typename chosen::type;
-  static constexpr size_t next = chosen::next;
-  static constexpr size_t next_cap_idx = chosen::next_cap_idx;
-};
-
-/* ParseRegex := Term ('|' Regex)? */
-template<FixedString Pattern, size_t Pos, size_t CapIdx>
-struct ParseRegex {
-  using Term = ParseTerm<Pattern, Pos, CapIdx>;
-
-  static_assert(Term::next <= Pattern.length, "ParseRegex: term parse overflow");
-
-  struct impl_bar {
-    using Regex = ParseRegex<Pattern, Term::next + 1, Term::next_cap_idx>;
-    static_assert(Regex::next <= Pattern.length, "ParseRegex: regex parse overflow");
-    using type = Or<typename Term::type, typename Regex::type>;
-    static constexpr size_t next = Regex::next;
-    static constexpr size_t next_cap_idx = Regex::next_cap_idx;
-  };
-  struct impl_no_bar {
-    using type = typename Term::type;
-    static constexpr size_t next = Term::next;
-    static constexpr size_t next_cap_idx = Term::next_cap_idx;
-  };
-
-  static constexpr bool has_bar = (Term::next < Pattern.length && Pattern[Term::next] == '|');
-  using chosen = std::conditional_t<has_bar, impl_bar, impl_no_bar>;
-  using type = typename chosen::type;
-  static constexpr size_t next = chosen::next;
-  static constexpr size_t next_cap_idx = chosen::next_cap_idx;
-};
-
-template<FixedString Pattern>
-struct RegexScan {
-  using Parse = ParseRegex<Pattern, 0, 1>;
-  using type = typename Simplify<
-    Concat<SetSlot<0>, Concat<typename Parse::type, SetSlot<1>>>
-  >::type;
-  static_assert(Parse::next == Pattern.length,
-    "RegexScan: pattern not fully consumed or contains unexpected trailing characters");
-};
-
-/* for fast O(|s|) bool matching with little O(1) */
-namespace dfa {
-
-/* === classic brzozowski derivative === */
-template<typename R, uint8_t C>
-struct Derivative;
-/* d0/dc = 0 */
-template<uint8_t C>
-struct Derivative<EmptySet, C> {
-  using type = EmptySet;
-};
-/* de/dc = 0 */
-template<uint8_t C>
-struct Derivative<Epsilon, C> {
-  using type = EmptySet;
-};
-/* dx/dc = x == c ? e : 0 */
-template<uint8_t X, uint8_t C>
-struct Derivative<Char<X>, C> {
-  using type = std::conditional_t<X == C, Epsilon, EmptySet>;
-};
-template<uint8_t C>
-struct Derivative<Wildcard, C> {
-  using Dispatch = typename std::conditional<
-    0x00 <= C && C <= 0x7F,
-    Epsilon,
-    typename std::conditional<
-      0xC2 <= C && C <= 0xDF,
-      Wildcard1,
-      typename std::conditional<
-        0xE0 <= C && C <= 0xEF,
-        Wildcard2,
-        typename std::conditional<
-          0xF0 <= C && C <= 0xF4,
-          Wildcard3,
-          EmptySet
-        >::type
-      >::type
-    >::type
-  >::type;
-  #ifdef ONRE_DOTALL
-    using type = Dispatch;
-  #else
-    using type = typename std::conditional<C == '\n' || C == '\r', EmptySet, Dispatch>::type;
-  #endif
-};
-template<uint8_t C>
-struct Derivative<Wildcard3, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF, Wildcard2, EmptySet>::type;
-};
-template<uint8_t C>
-struct Derivative<Wildcard2, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF, Wildcard1, EmptySet>::type;
-};
-template<uint8_t C>
-struct Derivative<Wildcard1, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF, Epsilon, EmptySet>::type;
-};
-template<typename List1, typename List2, typename List3, typename List4, uint8_t C>
-struct Derivative<In<List1, List2, List3, List4>, C> {
-  using type = typename std::conditional<List1::template Contains<Char<C>>, 
-    typename std::conditional<
-      0x00 <= C && C <= 0x7F,
-      Epsilon,
-      typename std::conditional<
-        0xC2 <= C && C <= 0xDF,
-        In1<List4>,
-        typename std::conditional<
-          0xE0 <= C && C <= 0xEF,
-          In2<List3, List4>,
-          typename std::conditional<
-            0xF0 <= C && C <= 0xF4,
-            In3<List2, List3, List4>,
-            EmptySet
-          >::type
-        >::type
-      >::type
-    >::type,
-    EmptySet
-  >::type;
-};
-template<typename List2, typename List3, typename List4, uint8_t C>
-struct Derivative<In3<List2, List3, List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List2::template Contains<Char<C>>, In2<List3, List4>, EmptySet>::type;
-};
-template<typename List3, typename List4, uint8_t C>
-struct Derivative<In2<List3, List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List3::template Contains<Char<C>>, In1<List4>, EmptySet>::type;
-};
-template<typename List4, uint8_t C>
-struct Derivative<In1<List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List4::template Contains<Char<C>>, Epsilon, EmptySet>::type;
-};
-template<typename List1, typename List2, typename List3, typename List4, uint8_t C>
-struct Derivative<Except<List1, List2, List3, List4>, C> {
-  using type = typename std::conditional<!List1::template Contains<Char<C>>, 
-    typename std::conditional<
-      0x00 <= C && C <= 0x7F,
-      Epsilon,
-      typename std::conditional<
-        0xC2 <= C && C <= 0xDF,
-        Except1<List4>,
-        typename std::conditional<
-          0xE0 <= C && C <= 0xEF,
-          Except2<List3, List4>,
-          typename std::conditional<
-            0xF0 <= C && C <= 0xF4,
-            Except3<List2, List3, List4>,
-            EmptySet
-          >::type
-        >::type
-      >::type
-    >::type,
-    EmptySet
-  >::type;
-};
-template<typename List2, typename List3, typename List4, uint8_t C>
-struct Derivative<Except3<List2, List3, List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List2::template Contains<Char<C>>, Except2<List3, List4>, EmptySet>::type;
-};
-template<typename List3, typename List4, uint8_t C>
-struct Derivative<Except2<List3, List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List3::template Contains<Char<C>>, Except1<List4>, EmptySet>::type;
-};
-template<typename List4, uint8_t C>
-struct Derivative<Except1<List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List4::template Contains<Char<C>>, Epsilon, EmptySet>::type;
-};
-/* d(R|S)/dc = dR/dc | dS/dc */
-template<typename R, typename S, uint8_t C>
-struct Derivative<Or<R, S>, C> {
-  using type = typename Simplify<
-    Or<typename Derivative<R, C>::type, typename Derivative<S, C>::type>
-  >::type;
-};
-/* d(RS)/dc = dR/dc S | (delta(R) ? dS/dc : 0)*/
-template<typename L, typename R, uint8_t C>
-struct Derivative<Concat<L, R>, C> {
-  using Part1 = Concat<typename Derivative<L, C>::type, R>;
-  using Part2 = std::conditional_t<
-    Nullable<L>::value,
-    typename Derivative<R, C>::type,
-    EmptySet
-  >;
-  using type = typename Simplify<Or<Part1, Part2>>::type;
-};
-/* d(R*)/dc = dR/dc R* */
-template<typename R, uint8_t C>
-struct Derivative<Closure<R>, C> {
-    using type = typename Simplify<Concat<typename Derivative<R, C>::type, Closure<R>>>::type;
-};
-
-/* === DFA builder === */
-template<typename R>
-struct RemoveAllAction;
-template<>
-struct RemoveAllAction<EmptySet> {
-  using type = EmptySet;
-};
-template<>
-struct RemoveAllAction<Epsilon> {
-  using type = Epsilon;
-};
-template<uint8_t C>
-struct RemoveAllAction<Char<C>> {
-  using type = Char<C>;
-};
-template<>
-struct RemoveAllAction<Wildcard> {
-  using type = Wildcard;
-};
-template<>
-struct RemoveAllAction<Wildcard3> {
-  using type = Wildcard3;
-};
-template<>
-struct RemoveAllAction<Wildcard2> {
-  using type = Wildcard2;
-};
-template<>
-struct RemoveAllAction<Wildcard1> {
-  using type = Wildcard1;
-};
-template<typename List1, typename List2, typename List3, typename List4>
-struct RemoveAllAction<In<List1, List2, List3, List4>> {
-  using type = In<List1, List2, List3, List4>;
-};
-template<typename List2, typename List3, typename List4>
-struct RemoveAllAction<In3<List2, List3, List4>> {
-  using type = In3<List2, List3, List4>;
-};
-template<typename List3, typename List4>
-struct RemoveAllAction<In2<List3, List4>> {
-  using type = In2<List3, List4>;
-};
-template<typename List4>
-struct RemoveAllAction<In1<List4>> {
-  using type = In1<List4>;
-};
-template<typename List1, typename List2, typename List3, typename List4>
-struct RemoveAllAction<Except<List1, List2, List3, List4>> {
-  using type = Except<List1, List2, List3, List4>;
-};
-template<typename List2, typename List3, typename List4>
-struct RemoveAllAction<Except3<List2, List3, List4>> {
-  using type = Except3<List2, List3, List4>;
-};
-template<typename List3, typename List4>
-struct RemoveAllAction<Except2<List3, List4>> {
-  using type = Except2<List3, List4>;
-};
-template<typename List4>
-struct RemoveAllAction<Except1<List4>> {
-  using type = Except1<List4>;
-};
-template<size_t I>
-struct RemoveAllAction<SetSlot<I>> {
-  using type = Epsilon;
-};
-template<typename L, typename R>
-struct RemoveAllAction<Or<L, R>> {
-  using type = typename Simplify<
-    Or<typename RemoveAllAction<L>::type, typename RemoveAllAction<R>::type>
-  >::type;
-};
-template<typename L, typename R>
-struct RemoveAllAction<Concat<L, R>> {
-  using type = typename Simplify<
-    Concat<typename RemoveAllAction<L>::type, typename RemoveAllAction<R>::type>
-  >::type;
-};
-template<typename R>
-struct RemoveAllAction<Closure<R>> {
-  using type = typename Simplify<
-    Closure<typename RemoveAllAction<R>::type>
-  >::type;
-};
-
-template<typename R>
-struct State {
-  using re = R;
-  static constexpr bool accepting = Nullable<R>::value;
-};
-
-template<std::size_t From, uint8_t C, std::size_t To>
-struct Edge {
-  static constexpr std::size_t from = From;
-  static constexpr uint8_t ch = C;
-  static constexpr std::size_t to = To;
-};
-
-template<uint8_t C, typename State>
-struct CharStatePair {
-  static constexpr uint8_t c = C;
-  using state = State;
-};
-
-template<typename CharStatePairAcc, typename State, typename Alphabet>
-struct DerivNewStates;
-template<typename Acc, typename S>
-struct DerivNewStates<Acc, S, TypeList<>> {
-  using type = Acc;
-};
-template<typename Acc, typename S, uint8_t C, typename... Tails>
-struct DerivNewStates<Acc, S, TypeList<Char<C>, Tails...>> {
-  using Der = typename Derivative<typename S::re, C>::type;
-  using type = typename std::conditional_t<
-    std::is_same_v<Der, EmptySet>,
-    std::type_identity<Acc>,
-    DerivNewStates<
-      typename PushBack<Acc, CharStatePair<C, State<Der>>>::type,
-      S,
-      TypeList<Tails...>
-    >
-  >::type;
-};
-
-template<
-  typename StateAcc,
-  typename EdgeAcc,
-  typename ToBeProcessList,
-  typename StartState,
-  typename NewCharStates
->
-struct PushNewStates;
-template<typename SA, typename EA, typename TBP, typename StartState>
-struct PushNewStates<SA, EA, TBP, StartState, TypeList<>> {
-  using StateAcc = SA;
-  using EdgeAcc = EA;
-  using ToBeProcessList = TBP;
-};
-template<
-  typename SA,
-  typename EA,
-  typename TBP,
-  typename StartState,
-  typename HeadPair,
-  typename... TailPairs
->
-struct PushNewStates<SA, EA, TBP, StartState, TypeList<HeadPair, TailPairs...>> {
-  using FromState = StartState;
-  using ToState = typename HeadPair::state;
-  static constexpr uint8_t C = HeadPair::c;
-  static constexpr bool IsStateNew = !SA::template Contains<ToState>;
-  using NextStateAcc = typename PushBackUnique<SA, ToState>::type;
-  using NextToBeProcessList = typename std::conditional_t<
-    IsStateNew,
-    PushBack<TBP, ToState>,
-    std::type_identity<TBP>
-  >::type;
-  using NextEdgeAcc = typename PushBack<
-    EA,
-    Edge<
-      NextStateAcc::template IndexOf<FromState>,
-      C,
-      NextStateAcc::template IndexOf<ToState>
-    >
-  >::type;
-  using NextIt = PushNewStates<
-    NextStateAcc,
-    NextEdgeAcc,
-    NextToBeProcessList,
-    StartState,
-    TypeList<TailPairs...>
-  >;
-  using StateAcc = typename NextIt::StateAcc;
-  using EdgeAcc = typename NextIt::EdgeAcc;
-  using ToBeProcessList = typename NextIt::ToBeProcessList;
-};
-
-template<typename StateAcc, typename EdgeAcc, typename ToBeProcessList>
-struct BuildDFA;
-template<typename StateAcc, typename EdgeAcc>
-struct BuildDFA<StateAcc, EdgeAcc, TypeList<>> {
-  using States = StateAcc;
-  using Edges = EdgeAcc;
-};
-template<typename StateAcc, typename EdgeAcc, typename StateHead, typename... StateTails>
-struct BuildDFA<StateAcc, EdgeAcc, TypeList<StateHead, StateTails...>> {
-  using NewCharStates = typename DerivNewStates<
-    TypeList<>,
-    StateHead,
-    typename First<typename StateHead::re, TypeList<>>::type
-  >::type;
-  using Processed = PushNewStates<
-    StateAcc,
-    EdgeAcc,
-    TypeList<StateTails...>,
-    StateHead,
-    NewCharStates
-  >;
-  using NextIt = BuildDFA<
-    typename Processed::StateAcc,
-    typename Processed::EdgeAcc,
-    typename Processed::ToBeProcessList
-  >;
-  using States = typename NextIt::States;
-  using Edges = typename NextIt::Edges;
-};
-
-template<typename RE>
-struct AllStatesAndEdgesGenerator {
-public:
-  using type = BuildDFA<TypeList<State<RE>>, TypeList<>, TypeList<State<RE>>>;
-  using States = typename type::States;
-  using Edges  = typename type::Edges;
-};
-
-/* aliases */
-template<typename RE> using AllStateEdgePair = typename AllStatesAndEdgesGenerator<RE>::type;
-template<typename RE> using AllStatesList = typename AllStatesAndEdgesGenerator<RE>::States;
-template<typename RE> using AllEdgesList  = typename AllStatesAndEdgesGenerator<RE>::Edges;
-
-/* === table builder, convert sparse graph representation into jump table representation === */
-template<size_t NrStates, typename EdgesList>
-struct BuildTable;
-template<size_t NrStates, typename... Edges>
-struct BuildTable<NrStates, TypeList<Edges...>> {
-  static constexpr std::array<std::array<int32_t, nr_byte>, NrStates> make() {
-    std::array<std::array<int32_t, nr_byte>, NrStates> table{};
-    for (auto &row : table) row.fill(-1);
-    ((table[Edges::from][static_cast<std::size_t>(Edges::ch)] = Edges::to), ...);
-    return table;
-  }
-};
-
-template<typename StatesList>
-struct BuildAccepts;
-template<typename... Ss>
-struct BuildAccepts<TypeList<Ss...>> {
-  static constexpr std::array<bool, sizeof...(Ss)> make() {
-    return std::array<bool, sizeof...(Ss)>{ Ss::accepting... };
-  }
-};
-
-} /* namespace dfa */
+} /* namespace impl */
+} /* namespace onre */
+
+namespace onre {
+namespace impl {
 
 /*
  * for slower O(|s| * #capture * 2^|pattern|) matching with capture group.
@@ -2025,73 +759,6 @@ struct BuildAccepts<TypeList<Ss...>> {
  * of the pattern (in the worst case exponential), and have  a bigger O(1).
  * compile such automata would take considerably more time than DFA.
  */
-
-/* === action algebra === */
-struct Omega {
-  static constexpr size_t length = 0;
-};
-template<size_t I>
-struct Set {
-  static constexpr size_t i = I, length = 1;
-};
-template<typename... As>
-struct Seq {
-  static constexpr size_t length = (As::length + ...);
-};
-
-template<typename A>
-struct is_omega : std::false_type {};
-template<>
-struct is_omega<Omega> : std::true_type {};
-template<typename A>
-struct is_set : std::false_type {};
-template<size_t I>
-struct is_set<Set<I>> : std::true_type {};
-template<typename A>
-struct is_seq : std::false_type {};
-template<typename... As>
-struct is_seq<Seq<As...>> : std::true_type {};
-
-template<typename A1, typename A2>
-struct CatAction;
-template<>
-struct CatAction<Omega, Omega> {
-  using type = Omega;
-};
-template<size_t I>
-struct CatAction<Omega, Set<I>> {
-  using type = Set<I>;
-};
-template<typename... As>
-struct CatAction<Omega, Seq<As...>> {
-  using type = Seq<As...>;
-};
-template<size_t I>
-struct CatAction<Set<I>, Omega> {
-  using type = Set<I>;
-};
-template<size_t I1, size_t I2>
-struct CatAction<Set<I1>, Set<I2>> {
-  using type = Seq<Set<I1>, Set<I2>>;
-};
-template<size_t I, typename... As>
-struct CatAction<Set<I>, Seq<As...>> {
-  using type = Seq<Set<I>, As...>;
-};
-template<typename... As>
-struct CatAction<Seq<As...>, Omega> {
-  using type = Seq<As...>;
-};
-template<typename... As, size_t I>
-struct CatAction<Seq<As...>, Set<I>> {
-  using type = Seq<As..., Set<I>>;
-};
-template<typename... As1, typename... As2>
-struct CatAction<Seq<As1...>, Seq<As2...>> {
-  using type = Seq<As1..., As2...>;
-};
-template<typename Seq, typename A> using CarAction_t = typename CatAction<Seq, A>::type;
-
 namespace tnfa {
 
 /* === v notation === */
@@ -2862,8 +1529,1389 @@ struct MutualGroups {
 };
 
 } /* namespace tnfa */
+} /* namespace impl */
+} /* namespace onre */
+
+namespace onre {
+namespace impl {
+
+/* === regex parser === */
+/*
+  Grammar:
+    Regex       := Term ('|' Regex)?
+    Term        := Factor Term | (empty)
+    Factor      := Atom ('*')? | Atom ('+')? | Atom ('?')?
+                | Atom '{' Number ',' '}' | Atom '{' Number ',' Number '}'
+                | Atom '{' ',' Number '}'
+    Atom        := '(' Regex ')' | CharGroup | CHAR | '.'
+    CharGroup   := '[' CharSet ']' | '[' '^' CharSet ']'
+    CharSet     := CharSetAtom CharSet | CharSetAtom
+    CharSetAtom := [IN CLASS CHAR] | [IN CLASS CHAR] '-' [IN CLASS CHAR] | Escape
+    CHAR        := [VALID CHAR] | Escape
+    Escape      := '\' [VISIBLE CHAR] | '\' 'x' Number
+    Empty input -> Epsilon
+*/
+
+/* forward declarations */
+template<FixedString Pattern, size_t Pos, size_t CapIdx>
+struct ParseRegex;
+template<FixedString Pattern, size_t Pos, size_t CapIdx>
+struct ParseTerm;
+template<FixedString Pattern, size_t Pos, size_t CapIdx>
+struct ParseFactor;
+template<FixedString Pattern, size_t Pos, size_t CapIdx>
+struct ParseAtom;
+template<FixedString Pattern, size_t Pos>
+struct ParseCharGroup;
+template<FixedString Pattern, size_t Pos>
+struct ParseCharSet;
+template<FixedString Pattern, size_t Pos>
+struct ParseCharSetAtom;
+template<FixedString Pattern, size_t Pos>
+struct ParseCHAR;
+template<FixedString Pattern, size_t Pos>
+struct ParseEscape;
+
+template<typename CharList>
+struct CharListToOrSequential {
+  template<typename X, typename Y>
+  struct BuildOr {
+    using type = Or<X, Y>;
+  };
+  using type = typename RightFold<BuildOr, CharList, EmptySet>::type;
+};
+
+template<FixedString Pattern, size_t Pos, int64_t Acc = 0>
+struct ParseDecimal {
+  struct is_digit_impl {
+    using next_parse = ParseDecimal<Pattern, Pos + 1, 10 * Acc + (Pattern[Pos] - '0')>;
+    static constexpr int64_t value = next_parse::value;
+    static constexpr size_t next = next_parse::next;
+  };
+  struct not_digit_impl {
+    static constexpr int64_t value = Acc;
+    static constexpr size_t next = Pos;
+  };
+  using chosen = std::conditional_t<
+    Pos < Pattern.length && Pattern[Pos] >= '0' && Pattern[Pos] <= '9',
+    is_digit_impl,
+    not_digit_impl
+  >;
+  static constexpr int64_t value = chosen::value;
+  static constexpr size_t next = chosen::next;
+};
+
+template<FixedString Pattern, size_t Pos, size_t N, int64_t Acc = 0>
+struct ParseHexN {
+  struct is_digit_impl {
+    static constexpr uint8_t ch = Pattern[Pos];
+    static constexpr int64_t digit_value = (ch >= '0' && ch <= '9')
+      ? ch - '0'
+      : (ch >= 'A' && ch <= 'F')
+        ? ch - 'A' + 10
+        : ch - 'a' + 10
+    ;
+    using next_parse = ParseHexN<Pattern, Pos + 1, N - 1, 16 * Acc + digit_value>;
+    static constexpr int64_t value = next_parse::value;
+    static constexpr size_t next = next_parse::next;
+  };
+  struct not_digit_impl {
+    static constexpr int64_t value = Acc;
+    static constexpr size_t next = Pos;
+  };
+  using chosen = std::conditional_t<
+    (N > 0) && Pos < Pattern.length && (
+      (Pattern[Pos] >= '0' && Pattern[Pos] <= '9')
+      || (Pattern[Pos] >= 'a' && Pattern[Pos] <= 'f')
+      || (Pattern[Pos] >= 'A' && Pattern[Pos] <= 'F')
+    ),
+    is_digit_impl,
+    not_digit_impl
+  >;
+  static constexpr int64_t value = chosen::value;
+  static constexpr size_t next = chosen::next;
+};
+
+template<uint8_t C, FixedString Pattern, size_t Pos>
+struct EscapeImpl {
+  using type = Char<Pattern[Pos + 1]>;
+  static constexpr size_t next = Pos + 2;
+};
+using WordRegex =
+  Or<Char<'a'>, Or<Char<'b'>, Or<Char<'c'>, Or<Char<'d'>, Or<Char<'e'>, Or<Char<'f'>,
+  Or<Char<'g'>, Or<Char<'h'>, Or<Char<'i'>, Or<Char<'j'>, Or<Char<'k'>, Or<Char<'l'>,
+  Or<Char<'m'>, Or<Char<'n'>, Or<Char<'o'>, Or<Char<'p'>, Or<Char<'q'>, Or<Char<'r'>,
+  Or<Char<'s'>, Or<Char<'t'>, Or<Char<'u'>, Or<Char<'v'>, Or<Char<'w'>, Or<Char<'x'>,
+  Or<Char<'y'>, Or<Char<'z'>, Or<Char<'A'>, Or<Char<'B'>, Or<Char<'C'>, Or<Char<'D'>,
+  Or<Char<'E'>, Or<Char<'F'>, Or<Char<'G'>, Or<Char<'H'>, Or<Char<'I'>, Or<Char<'J'>,
+  Or<Char<'K'>, Or<Char<'L'>, Or<Char<'M'>, Or<Char<'N'>, Or<Char<'O'>, Or<Char<'P'>,
+  Or<Char<'Q'>, Or<Char<'R'>, Or<Char<'S'>, Or<Char<'T'>, Or<Char<'U'>, Or<Char<'V'>,
+  Or<Char<'W'>, Or<Char<'X'>, Or<Char<'Y'>, Or<Char<'Z'>, Or<Char<'0'>, Or<Char<'1'>,
+  Or<Char<'2'>, Or<Char<'3'>, Or<Char<'4'>, Or<Char<'5'>, Or<Char<'6'>, Or<Char<'7'>,
+  Or<Char<'8'>, Or<Char<'9'>, Char<'_'>
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
+using NegativeWordRegex =
+  Or<Char<'\t'>, Or<Char<'\n'>, Or<Char<'\v'>, Or<Char<'\f'>, Or<Char<'\r'>, Or<Char<' '>,
+  Or<Char<'!'>, Or<Char<'"'>, Or<Char<'#'>, Or<Char<'$'>, Or<Char<'%'>, Or<Char<'&'>,
+  Or<Char<'\''>, Or<Char<'('>, Or<Char<')'>, Or<Char<'*'>, Or<Char<'+'>, Or<Char<','>,
+  Or<Char<'-'>, Or<Char<'.'>, Or<Char<'/'>, Or<Char<':'>, Or<Char<';'>, Or<Char<'<'>,
+  Or<Char<'='>, Or<Char<'>'>, Or<Char<'?'>, Or<Char<'@'>, Or<Char<'['>, Or<Char<'\\'>,
+  Or<Char<']'>, Or<Char<'^'>, Or<Char<'`'>, Or<Char<'{'>, Or<Char<'|'>, Or<Char<'}'>, Char<'~'>
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'w', Pattern, Pos> {
+  using type = WordRegex;
+  static constexpr size_t next = Pos + 2;
+};
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'W', Pattern, Pos> {
+  using type = NegativeWordRegex;
+  static constexpr size_t next = Pos + 2;
+};
+using DigitalRegex =
+  Or<Char<'0'>, Or<Char<'1'>, Or<Char<'2'>, Or<Char<'3'>, Or<Char<'4'>,
+  Or<Char<'5'>, Or<Char<'6'>, Or<Char<'7'>, Or<Char<'8'>, Char<'9'>
+>>>>>>>>>;
+using NegativeDigitalRegex =
+  Or<Char<'\t'>, Or<Char<'\n'>, Or<Char<'\v'>, Or<Char<'\f'>, Or<Char<'\r'>, Or<Char<' '>,
+  Or<Char<'!'>, Or<Char<'"'>, Or<Char<'#'>, Or<Char<'$'>, Or<Char<'%'>, Or<Char<'&'>,
+  Or<Char<'\''>, Or<Char<'('>, Or<Char<')'>, Or<Char<'*'>, Or<Char<'+'>, Or<Char<','>,
+  Or<Char<'-'>, Or<Char<'.'>, Or<Char<'/'>, Or<Char<':'>, Or<Char<';'>, Or<Char<'<'>,
+  Or<Char<'='>, Or<Char<'>'>, Or<Char<'?'>, Or<Char<'@'>, Or<Char<'A'>, Or<Char<'B'>,
+  Or<Char<'C'>, Or<Char<'D'>, Or<Char<'E'>, Or<Char<'F'>, Or<Char<'G'>, Or<Char<'H'>,
+  Or<Char<'I'>, Or<Char<'J'>, Or<Char<'K'>, Or<Char<'L'>, Or<Char<'M'>, Or<Char<'N'>,
+  Or<Char<'O'>, Or<Char<'P'>, Or<Char<'Q'>, Or<Char<'R'>, Or<Char<'S'>, Or<Char<'T'>,
+  Or<Char<'U'>, Or<Char<'V'>, Or<Char<'W'>, Or<Char<'X'>, Or<Char<'Y'>, Or<Char<'Z'>,
+  Or<Char<'['>, Or<Char<'\\'>, Or<Char<']'>, Or<Char<'^'>, Or<Char<'_'>, Or<Char<'`'>,
+  Or<Char<'a'>, Or<Char<'b'>, Or<Char<'c'>, Or<Char<'d'>, Or<Char<'e'>, Or<Char<'f'>,
+  Or<Char<'g'>, Or<Char<'h'>, Or<Char<'i'>, Or<Char<'j'>, Or<Char<'k'>, Or<Char<'l'>,
+  Or<Char<'m'>, Or<Char<'n'>, Or<Char<'o'>, Or<Char<'p'>, Or<Char<'q'>, Or<Char<'r'>,
+  Or<Char<'s'>, Or<Char<'t'>, Or<Char<'u'>, Or<Char<'v'>, Or<Char<'w'>, Or<Char<'x'>,
+  Or<Char<'y'>, Or<Char<'z'>, Or<Char<'{'>, Or<Char<'|'>, Or<Char<'}'>, Char<'~'>
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'d', Pattern, Pos> {
+  using type = DigitalRegex;
+  static constexpr size_t next = Pos + 2;
+};
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'D', Pattern, Pos> {
+  using type = NegativeDigitalRegex;
+  static constexpr size_t next = Pos + 2;
+};
+using WhitespaceRegex =
+  Or<Char<'\t'>, Or<Char<'\n'>, Or<Char<'\v'>, Or<Char<'\f'>, Or<Char<'\r'>, Char<' '>
+>>>>>;
+using NegativeWhitespaceRegex =
+  Or<Char<'!'>, Or<Char<'"'>, Or<Char<'#'>, Or<Char<'$'>, Or<Char<'%'>, Or<Char<'&'>,
+  Or<Char<'\''>, Or<Char<'('>, Or<Char<')'>, Or<Char<'*'>, Or<Char<'+'>, Or<Char<','>,
+  Or<Char<'-'>, Or<Char<'.'>, Or<Char<'/'>, Or<Char<'0'>, Or<Char<'1'>, Or<Char<'2'>,
+  Or<Char<'3'>, Or<Char<'4'>, Or<Char<'5'>, Or<Char<'6'>, Or<Char<'7'>, Or<Char<'8'>,
+  Or<Char<'9'>, Or<Char<':'>, Or<Char<';'>, Or<Char<'<'>, Or<Char<'='>, Or<Char<'>'>,
+  Or<Char<'?'>, Or<Char<'@'>, Or<Char<'A'>, Or<Char<'B'>, Or<Char<'C'>, Or<Char<'D'>,
+  Or<Char<'E'>, Or<Char<'F'>, Or<Char<'G'>, Or<Char<'H'>, Or<Char<'I'>, Or<Char<'J'>,
+  Or<Char<'K'>, Or<Char<'L'>, Or<Char<'M'>, Or<Char<'N'>, Or<Char<'O'>, Or<Char<'P'>,
+  Or<Char<'Q'>, Or<Char<'R'>, Or<Char<'S'>, Or<Char<'T'>, Or<Char<'U'>, Or<Char<'V'>,
+  Or<Char<'W'>, Or<Char<'X'>, Or<Char<'Y'>, Or<Char<'Z'>, Or<Char<'['>, Or<Char<'\\'>,
+  Or<Char<']'>, Or<Char<'^'>, Or<Char<'_'>, Or<Char<'`'>, Or<Char<'a'>, Or<Char<'b'>,
+  Or<Char<'c'>, Or<Char<'d'>, Or<Char<'e'>, Or<Char<'f'>, Or<Char<'g'>, Or<Char<'h'>,
+  Or<Char<'i'>, Or<Char<'j'>, Or<Char<'k'>, Or<Char<'l'>, Or<Char<'m'>, Or<Char<'n'>,
+  Or<Char<'o'>, Or<Char<'p'>, Or<Char<'q'>, Or<Char<'r'>, Or<Char<'s'>, Or<Char<'t'>,
+  Or<Char<'u'>, Or<Char<'v'>, Or<Char<'w'>, Or<Char<'x'>, Or<Char<'y'>, Or<Char<'z'>,
+  Or<Char<'{'>, Or<Char<'|'>, Or<Char<'}'>, Char<'~'>
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'s', Pattern, Pos> {
+  using type = WhitespaceRegex;
+  static constexpr size_t next = Pos + 2;
+};
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'S', Pattern, Pos> {
+  using type = NegativeWhitespaceRegex;
+  static constexpr size_t next = Pos + 2;
+};
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'n', Pattern, Pos> {
+  using type = Char<'\n'>; static constexpr size_t next = Pos + 2;
+};
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'t', Pattern, Pos> {
+  using type = Char<'\t'>; static constexpr size_t next = Pos + 2;
+};
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'f', Pattern, Pos> {
+  using type = Char<'\f'>; static constexpr size_t next = Pos + 2;
+};
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'r', Pattern, Pos> {
+  using type = Char<'\r'>; static constexpr size_t next = Pos + 2;
+};
+template<FixedString Pattern, size_t Pos>
+struct EscapeImpl<'x', Pattern, Pos> {
+  static_assert(
+    Pos + 2 < Pattern.length && (
+      (Pattern[Pos + 2] >= '0' && Pattern[Pos + 2] <= '9')
+      || (Pattern[Pos + 2] >= 'a' && Pattern[Pos + 2] <= 'f')
+      || (Pattern[Pos + 2] >= 'A' && Pattern[Pos + 2] <= 'F')
+    ),
+    "no value specified for `\\x`"
+  );
+  using HexParse = ParseHexN<Pattern, Pos + 2, 2>;
+  using type = Char<HexParse::value>;
+  static constexpr size_t next = HexParse::next;
+};
+
+template <FixedString Pattern, size_t Pos>
+struct ParseEscape {
+  static_assert(Pos + 1 < Pattern.length, "ParseEscape: cannot find escape character");
+  using chosen = EscapeImpl<Pattern[Pos + 1], Pattern, Pos>;
+  using type = typename chosen::type;
+  static constexpr size_t next = chosen::next;
+};
+
+constexpr size_t utf8_sequence_length(uint8_t lead) {
+  if (lead < 0x80) return 1;
+  if ((lead & 0xE0) == 0xC0) return 2;
+  if ((lead & 0xF0) == 0xE0) return 3;
+  if ((lead & 0xF8) == 0xF0) return 4;
+  return 0;
+}
+
+template<uint32_t code>
+struct CodePoint {
+  static constexpr uint32_t value = code;
+};
+
+template<FixedString Pattern, size_t Pos>
+struct ParseUtf8CodePoint {
+  static_assert(Pos < Pattern.length, "unexpected end of pattern");
+  static constexpr size_t len = ((Pattern[Pos] & 0x80) == 0)
+    ? 1
+    : ((Pattern[Pos] & 0xE0) == 0xC0)
+      ? 2
+      : ((Pattern[Pos] & 0xF0) == 0xE0)
+        ? 3
+        : ((Pattern[Pos] & 0xF8) == 0xF0) ? 4 : 0;
+  static_assert(len > 0, "UTF-8 decode error");
+  static_assert(Pos + len <= Pattern.length, "unexpected end of pattern");
+  static_assert(
+    len != 2 || ((Pattern[Pos + 1] & 0xC0) == 0x80),
+    "UTF-8 decode error, invalid continuation byte"
+  );
+  static_assert(
+    len != 3 || (((Pattern[Pos + 1] & 0xC0) == 0x80) && (((Pattern[Pos + 2] & 0xC0) == 0x80))),
+    "UTF-8 decode error, invalid continuation byte"
+  );
+  static_assert(
+    len != 4 || (
+      ((Pattern[Pos + 1] & 0xC0) == 0x80)
+      && ((Pattern[Pos + 2] & 0xC0) == 0x80)
+      && ((Pattern[Pos + 3] & 0xC0) == 0x80)
+    ), "UTF-8 decode error, invalid continuation byte"
+  );
+  static constexpr uint32_t value = len == 1
+    ? Pattern[Pos]
+    : len == 2
+      ? (((Pattern[Pos] & 0x1F) << 6) | (Pattern[Pos + 1] & 0x3F))
+      : len == 3
+        ? (((Pattern[Pos] & 0x0F) << 12) | ((Pattern[Pos + 1] & 0x3F) << 6) | (Pattern[Pos + 2] & 0x3F))
+        : (((Pattern[Pos] & 0x07) << 18) | ((Pattern[Pos + 1] & 0x3F) << 12)
+          | ((Pattern[Pos + 2] & 0x3F) << 6) | (Pattern[Pos + 3] & 0x3F));
+  static constexpr size_t next = Pos + len;
+  static_assert(value <= 0x10FFFF, "UTF-8 decode error, code point overflow");
+};
+
+template<uint32_t Code>
+struct BuildUtf8ByteStreamRegex {
+  using type = decltype([]{
+    if constexpr (Code <= 0x7F) {
+      return Char<Code>{};
+    } else if constexpr (Code <= 0x7FF) {
+      return Concat<Char<0xC0 | (Code >> 6)>, Char<0x80 | (Code & 0x3F)>>{};
+    } else if constexpr (Code <= 0xFFFF) {
+      return Concat<Concat<
+        Char<0xE0 | (Code >> 12)>,
+        Char<0x80 | ((Code >> 6) & 0x3F)>>,
+        Char<0x80 | (Code & 0x3F)>>{};
+    } else /* Code <= 0x10FFFF */ {
+      return Concat<Concat<Concat<
+        Char<0xF0 | (Code >> 18)>,
+        Char<0x80 | ((Code >> 12) & 0x3F)>>,
+        Char<0x80 | ((Code >> 6) & 0x3F)>>,
+        Char<0x80 | (Code & 0x3F)>>{};
+    }
+  }());
+};
+
+/* ParseCHAR : [VALID CHAR] | Escape */
+template <FixedString Pattern, size_t Pos>
+struct ParseCHAR {
+  static_assert(
+    Pos < Pattern.length && (Pattern[Pos] == '\\' || is_valid_char(Pattern[Pos])),
+    "ParseCHAR: unknown character"
+  );
+
+  struct impl_escape {
+    using EscapeParse = ParseEscape<Pattern, Pos>;
+    using type = typename EscapeParse::type;
+    static constexpr size_t next = ParseEscape<Pattern, Pos>::next;
+  };
+
+  struct impl_simple {
+    using CodePoint = ParseUtf8CodePoint<Pattern, Pos>;
+    using type = typename BuildUtf8ByteStreamRegex<CodePoint::value>::type;
+    static constexpr size_t next = CodePoint::next;
+  };
+
+  static constexpr bool is_escape = Pattern[Pos] == '\\';
+  using chosen = std::conditional_t<is_escape, impl_escape, impl_simple>;
+  using type = typename chosen::type;
+  static constexpr size_t next = chosen::next;
+};
+
+template<typename List1, typename List2, typename List3, typename List4>
+struct ByteListPack {
+  using list1 = List1;
+  using list2 = List2;
+  using list3 = List3;
+  using list4 = List4;
+};
+
+template<uint32_t Code>
+struct Utf8Encoding {
+  static constexpr size_t length =
+    (Code <= 0x7F) ? 1 :
+    (Code <= 0x7FF) ? 2 :
+    (Code <= 0xFFFF) ? 3 : 4;
+  static constexpr uint8_t b0 =
+    (length == 1) ? static_cast<uint8_t>(Code)
+    : (length == 2) ? static_cast<uint8_t>(0xC0 | (Code >> 6))
+    : (length == 3) ? static_cast<uint8_t>(0xE0 | (Code >> 12))
+    : static_cast<uint8_t>(0xF0 | (Code >> 18));
+  static constexpr uint8_t b1 =
+    (length == 1) ? 0
+    : (length == 2) ? static_cast<uint8_t>(0x80 | (Code & 0x3F))
+    : static_cast<uint8_t>(0x80 | ((Code >> 6) & 0x3F));
+  static constexpr uint8_t b2 =
+    (length <= 2) ? 0
+    : (length == 3) ? static_cast<uint8_t>(0x80 | (Code & 0x3F))
+    : static_cast<uint8_t>(0x80 | ((Code >> 6) & 0x3F));
+  static constexpr uint8_t b3 =
+    (length <= 3) ? 0
+    : static_cast<uint8_t>(0x80 | (Code & 0x3F));
+};
+
+template<typename Pack>
+struct PackToIn;
+template<typename List1, typename List2, typename List3, typename List4>
+struct PackToIn<ByteListPack<List1, List2, List3, List4>> {
+  using type = In<List1, List2, List3, List4>;
+};
+
+template<typename Pack>
+struct PackToExcept;
+template<typename List1, typename List2, typename List3, typename List4>
+struct PackToExcept<ByteListPack<List1, List2, List3, List4>> {
+  using type = Except<List1, List2, List3, List4>;
+};
+
+template<typename CodePointList, typename Pack>
+struct BuildInPack;
+template<typename Pack>
+struct BuildInPack<TypeList<>, Pack> {
+  using type = typename PackToIn<Pack>::type;
+};
+template<typename List1, typename List2, typename List3, typename List4, typename Head, typename... Tails>
+struct BuildInPack<TypeList<Head, Tails...>, ByteListPack<List1, List2, List3, List4>> {
+  using Enc = Utf8Encoding<Head::value>;
+  using NextPack = std::conditional_t<
+    Enc::length == 1,
+    ByteListPack<
+      typename PushBackUnique<List1, Char<Enc::b0>>::type,
+      List2, List3, List4
+    >,
+    std::conditional_t<
+      Enc::length == 2,
+      ByteListPack<
+        typename PushBackUnique<List1, Char<Enc::b0>>::type,
+        List2,
+        List3,
+        typename PushBackUnique<List4, Char<Enc::b1>>::type
+      >,
+      std::conditional_t<
+        Enc::length == 3,
+        ByteListPack<
+          typename PushBackUnique<List1, Char<Enc::b0>>::type,
+          List2,
+          typename PushBackUnique<List3, Char<Enc::b1>>::type,
+          typename PushBackUnique<List4, Char<Enc::b2>>::type
+        >,
+        ByteListPack<
+          typename PushBackUnique<List1, Char<Enc::b0>>::type,
+          typename PushBackUnique<List2, Char<Enc::b1>>::type,
+          typename PushBackUnique<List3, Char<Enc::b2>>::type,
+          typename PushBackUnique<List4, Char<Enc::b3>>::type
+        >
+      >
+    >
+  >;
+  using type = typename BuildInPack<TypeList<Tails...>, NextPack>::type;
+};
+
+template<typename CodePointList, typename Pack>
+struct BuildExceptPack;
+template<typename Pack>
+struct BuildExceptPack<TypeList<>, Pack> {
+  using type = typename PackToExcept<Pack>::type;
+};
+template<typename List1, typename List2, typename List3, typename List4, typename Head, typename... Tails>
+struct BuildExceptPack<TypeList<Head, Tails...>, ByteListPack<List1, List2, List3, List4>> {
+  using Enc = Utf8Encoding<Head::value>;
+  using NextPack = std::conditional_t<
+    Enc::length == 1,
+    ByteListPack<
+      typename PushBackUnique<List1, Char<Enc::b0>>::type,
+      List2, List3, List4
+    >,
+    std::conditional_t<
+      Enc::length == 2,
+      ByteListPack<
+        typename PushBackUnique<List1, Char<Enc::b0>>::type,
+        List2,
+        List3,
+        typename PushBackUnique<List4, Char<Enc::b1>>::type
+      >,
+      std::conditional_t<
+        Enc::length == 3,
+        ByteListPack<
+          typename PushBackUnique<List1, Char<Enc::b0>>::type,
+          List2,
+          typename PushBackUnique<List3, Char<Enc::b1>>::type,
+          typename PushBackUnique<List4, Char<Enc::b2>>::type
+        >,
+        ByteListPack<
+          typename PushBackUnique<List1, Char<Enc::b0>>::type,
+          typename PushBackUnique<List2, Char<Enc::b1>>::type,
+          typename PushBackUnique<List3, Char<Enc::b2>>::type,
+          typename PushBackUnique<List4, Char<Enc::b3>>::type
+        >
+      >
+    >
+  >;
+  using type = typename BuildExceptPack<TypeList<Tails...>, NextPack>::type;
+};
+
+template<typename CodePointList>
+struct BuildIn {
+  using type = typename BuildInPack<
+    CodePointList,
+    ByteListPack<TypeList<>, TypeList<>, TypeList<>, TypeList<>>
+  >::type;
+};
+
+template<typename CodePointList>
+struct BuildExcept {
+  using type = typename BuildExceptPack<
+    CodePointList,
+    ByteListPack<TypeList<>, TypeList<>, TypeList<>, TypeList<>>
+  >::type;
+};
+
+/* ParseCharSetAtom: [IN CLASS CHAR] | [IN CLASS CHAR] '-' [IN CLASS CHAR] | Escape */
+template<FixedString Pattern, size_t Pos>
+struct ParseCharSetAtom {
+  static_assert(Pos < Pattern.length, "ParseCharSetAtom: unexpected pattern ending");
+  static_assert(is_in_class_char(Pattern[Pos]), "ParseCharSetAtom: unknown character");
+
+  template<uint32_t Code>
+  struct UCodePoint {
+    static constexpr uint32_t value = Code;
+  };
+
+  template<uint32_t Start, uint32_t End>
+  struct BuildCodePointRange {
+    static_assert(Start <= End, "ParseCharSetAtom: invalid char range");
+
+    template<typename Indices>
+    struct Impl;
+    template<size_t... Is>
+    struct Impl<std::index_sequence<Is...>> {
+      using type = TypeList<UCodePoint<Start + static_cast<uint32_t>(Is)>...>;
+    };
+
+    using type = typename Impl<std::make_index_sequence<End - Start + 1>>::type;
+  };
+
+  template<typename CodePointList, typename Pack>
+  struct BuildInPack;
+  template<typename List1, typename List2, typename List3, typename List4>
+  struct BuildInPack<TypeList<>, ByteListPack<List1, List2, List3, List4>> {
+    using type = In<List1, List2, List3, List4>;
+  };
+  template<typename List1, typename List2, typename List3, typename List4, typename Head, typename... Tails>
+  struct BuildInPack<TypeList<Head, Tails...>, ByteListPack<List1, List2, List3, List4>> {
+    using Enc = Utf8Encoding<Head::value>;
+    using NextPack = std::conditional_t<
+      Enc::length == 1,
+      ByteListPack<
+        typename PushBackUnique<List1, Char<Enc::b0>>::type,
+        List2, List3, List4
+      >,
+      std::conditional_t<
+        Enc::length == 2,
+        ByteListPack<
+          typename PushBackUnique<List1, Char<Enc::b0>>::type,
+          List2,
+          List3,
+          typename PushBackUnique<List4, Char<Enc::b1>>::type
+        >,
+        std::conditional_t<
+          Enc::length == 3,
+          ByteListPack<
+            typename PushBackUnique<List1, Char<Enc::b0>>::type,
+            List2,
+            typename PushBackUnique<List3, Char<Enc::b1>>::type,
+            typename PushBackUnique<List4, Char<Enc::b2>>::type
+          >,
+          ByteListPack<
+            typename PushBackUnique<List1, Char<Enc::b0>>::type,
+            typename PushBackUnique<List2, Char<Enc::b1>>::type,
+            typename PushBackUnique<List3, Char<Enc::b2>>::type,
+            typename PushBackUnique<List4, Char<Enc::b3>>::type
+          >
+        >
+      >
+    >;
+    using type = typename BuildInPack<TypeList<Tails...>, NextPack>::type;
+  };
+
+  template<typename CodePointList, typename Pack>
+  struct BuildExceptPack;
+  template<typename List1, typename List2, typename List3, typename List4>
+  struct BuildExceptPack<TypeList<>, ByteListPack<List1, List2, List3, List4>> {
+    using type = Except<List1, List2, List3, List4>;
+  };
+  template<typename List1, typename List2, typename List3, typename List4, typename Head, typename... Tails>
+  struct BuildExceptPack<TypeList<Head, Tails...>, ByteListPack<List1, List2, List3, List4>> {
+    using Enc = Utf8Encoding<Head::value>;
+    using NextPack = std::conditional_t<
+      Enc::length == 1,
+      ByteListPack<
+        typename PushBackUnique<List1, Char<Enc::b0>>::type,
+        List2, List3, List4
+      >,
+      std::conditional_t<
+        Enc::length == 2,
+        ByteListPack<
+          typename PushBackUnique<List1, Char<Enc::b0>>::type,
+          List2,
+          List3,
+          typename PushBackUnique<List4, Char<Enc::b1>>::type
+        >,
+        std::conditional_t<
+          Enc::length == 3,
+          ByteListPack<
+            typename PushBackUnique<List1, Char<Enc::b0>>::type,
+            List2,
+            typename PushBackUnique<List3, Char<Enc::b1>>::type,
+            typename PushBackUnique<List4, Char<Enc::b2>>::type
+          >,
+          ByteListPack<
+            typename PushBackUnique<List1, Char<Enc::b0>>::type,
+            typename PushBackUnique<List2, Char<Enc::b1>>::type,
+            typename PushBackUnique<List3, Char<Enc::b2>>::type,
+            typename PushBackUnique<List4, Char<Enc::b3>>::type
+          >
+        >
+      >
+    >;
+    using type = typename BuildExceptPack<TypeList<Tails...>, NextPack>::type;
+  };
+
+  struct impl_char {
+    using CodePointParse = ParseUtf8CodePoint<Pattern, Pos>;
+    using type = typename BuildCodePointRange<CodePointParse::value, CodePointParse::value>::type;
+    static constexpr size_t next = CodePointParse::next;
+  };
+
+  struct impl_seq {
+    using Start = ParseUtf8CodePoint<Pattern, Pos>;
+    static_assert(Start::next < Pattern.length && Pattern[Start::next] == '-',
+      "ParseCharSetAtom: `-` has no ending");
+    using End = ParseUtf8CodePoint<Pattern, Start::next + 1>;
+    using type = typename BuildCodePointRange<Start::value, End::value>::type;
+    static constexpr size_t next = End::next;
+  };
+
+  struct impl_escape {
+    static_assert(Pos + 1 < Pattern.length, "ParseCharSetAtom: incomplete escape");
+    static constexpr char esc = Pattern[Pos + 1];
+    using type = std::conditional_t<
+      esc == 'n', TypeList<UCodePoint<'\n'>>,
+      std::conditional_t<
+        esc == 't', TypeList<UCodePoint<'\t'>>,
+        std::conditional_t<
+          esc == 'f', TypeList<UCodePoint<'\f'>>,
+          std::conditional_t<
+            esc == 'r', TypeList<UCodePoint<'\r'>>,
+            std::conditional_t<
+              esc == 'x', TypeList<UCodePoint<ParseHexN<Pattern, Pos + 2, 2>::value>>,
+              std::conditional_t<
+                esc == 'd', typename BuildCodePointRange<'0', '9'>::type,
+                std::conditional_t<
+                  esc == 's', TypeList<UCodePoint<' '>, UCodePoint<'\t'>, UCodePoint<'\n'>, UCodePoint<'\r'>, UCodePoint<'\f'>, UCodePoint<'\v'>>,
+                  std::conditional_t<
+                    esc == 'w',
+                    typename Join<
+                      typename BuildCodePointRange<'0', '9'>::type,
+                      typename Join<
+                        typename BuildCodePointRange<'A', 'Z'>::type,
+                        typename Join<
+                          typename BuildCodePointRange<'a', 'z'>::type,
+                          TypeList<UCodePoint<'_'>>
+                        >::type
+                      >::type
+                    >::type,
+                    TypeList<UCodePoint<static_cast<uint8_t>(esc)>>
+                  >
+                >
+              >
+            >
+          >
+        >
+      >
+    >;
+    static constexpr size_t next = esc == 'x' ? ParseHexN<Pattern, Pos + 2, 2>::next : Pos + 2;
+  };
+
+  static constexpr bool is_escape = Pattern[Pos] == '\\';
+  static constexpr bool has_hyphen = !is_escape
+    && ParseUtf8CodePoint<Pattern, Pos>::next < Pattern.length
+    && Pattern[ParseUtf8CodePoint<Pattern, Pos>::next] == '-';
+  using chosen = std::conditional_t<
+    is_escape,
+    impl_escape,
+    std::conditional_t<has_hyphen, impl_seq, impl_char>
+  >;
+  using type = typename chosen::type;
+  static constexpr size_t next = chosen::next;
+};
+
+/* ParseCharSet: CharSetAtom CharSet | CharSetAtom */
+template<FixedString Pattern, size_t Pos>
+struct ParseCharSet {
+  using CharSetAtom = ParseCharSetAtom<Pattern, Pos>;
+  static_assert(CharSetAtom::next <= Pattern.length,
+    "ParseCharSet: char set atom parsing overflow");
+
+  struct impl_run_on {
+    using Next = ParseCharSet<Pattern, CharSetAtom::next>;
+    static_assert(Next::next <= Pattern.length, "ParseCharSet: next parsing overflow");
+    using type = typename JoinUnique<typename CharSetAtom::type, typename Next::type>::type;
+    static constexpr size_t next = Next::next;
+  };
+
+  struct impl_stop {
+    using type = typename CharSetAtom::type;
+    static constexpr size_t next = CharSetAtom::next;
+  };
+
+  static constexpr bool run_on = CharSetAtom::next < Pattern.length
+    && is_in_class_char(Pattern[CharSetAtom::next]);
+  using chosen = std::conditional_t<run_on, impl_run_on, impl_stop>;
+  using type = typename chosen::type;
+  static constexpr size_t next = chosen::next;
+};
+
+/* ParseCharGroup: '[' CharSet ']' | '[' '^' CharSet ']' */
+template<FixedString Pattern, size_t Pos>
+struct ParseCharGroup {
+  struct impl_pos {
+    using CharSet = ParseCharSet<Pattern, Pos + 1>;
+    static_assert(CharSet::next <= Pattern.length, "ParseCharGroup: char set parsing overflow");
+    static_assert(CharSet::next < Pattern.length && Pattern[CharSet::next] == ']',
+      "ParseCharGroup: ']' not closed");
+    using type = typename BuildIn<typename CharSet::type>::type;
+    static constexpr size_t next = CharSet::next + 1;
+  };
+
+  struct impl_neg {
+    using CharSet = ParseCharSet<Pattern, Pos + 2>;
+    static_assert(CharSet::next <= Pattern.length, "ParseCharGroup: char set parsing overflow");
+    static_assert(CharSet::next < Pattern.length && Pattern[CharSet::next] == ']',
+      "ParseCharGroup: ']' not closed");
+    using type = typename BuildExcept<typename CharSet::type>::type;
+    static constexpr size_t next = CharSet::next + 1;
+  };
+
+  static constexpr bool is_neg = Pos + 1 < Pattern.length && Pattern[Pos + 1] == '^';
+  using chosen = std::conditional_t<is_neg, impl_neg, impl_pos>;
+  using type = typename chosen::type;
+  static constexpr size_t next = chosen::next;
+};
+
+/* ParseAtom: '(' Regex ')' | '[' CharSet ']' |  CHAR | '.' */
+template<FixedString Pattern, size_t Pos, size_t CapIdx>
+struct ParseAtom {
+  static_assert(
+    Pos < Pattern.length && (
+      Pattern[Pos] == '(' || Pattern[Pos] == '[' || Pattern[Pos] == '.'
+      || Pattern[Pos] == '\\' || is_valid_char(Pattern[Pos])
+    ), "ParseAtom: unknown character"
+  );
+
+  /* case '(' Regex ')' or '(?:' Regex ')' */
+  struct impl_paren {
+    static constexpr bool is_non_capturing =
+      Pos + 2 < Pattern.length && Pattern[Pos + 1] == '?' && Pattern[Pos + 2] == ':';
+    using Regex = ParseRegex<Pattern, Pos + (is_non_capturing ? 3 : 1), CapIdx + (is_non_capturing ? 0 : 1)>;
+    static_assert(Regex::next <= Pattern.length, "ParseAtom: regex parse overflow");
+    static_assert(Regex::next < Pattern.length && Pattern[Regex::next] == ')',
+      "ParseAtom impl_paren: missing closing ')' in pattern");
+    using type = std::conditional_t<
+      is_non_capturing,
+      typename Regex::type,
+      Concat<
+        SetSlot<2 * CapIdx>,
+        Concat<typename Regex::type, SetSlot<2 * CapIdx + 1>>
+      >
+    >;
+    static constexpr size_t next = Regex::next + 1;
+    static constexpr size_t next_cap_idx = Regex::next_cap_idx;
+  };
+
+  /* case CharGroup */
+  struct impl_square {
+    using CharGroup = ParseCharGroup<Pattern, Pos>;
+    static_assert(CharGroup::next <= Pattern.length, "ParseAtom: char set parse overflow");
+    using type = typename CharGroup::type;
+    static constexpr size_t next = CharGroup::next;
+    static constexpr size_t next_cap_idx = CapIdx;
+  };
+
+  /* case CHAR */
+  struct impl_char {
+    using CHAR = ParseCHAR<Pattern, Pos>;
+    static_assert(CHAR::next <= Pattern.length, "ParseAtom: char parse overflow");
+    using type = typename CHAR::type;
+    static constexpr size_t next = CHAR::next;
+    static constexpr size_t next_cap_idx = CapIdx;
+  };
+
+  /* case '.' */
+  struct impl_full_match {
+    using type = Wildcard;
+    static constexpr size_t next = Pos + 1;
+    static constexpr size_t next_cap_idx = CapIdx;
+  };
+
+  using chosen = std::conditional_t<
+    Pattern[Pos] == '(',
+    impl_paren,
+    std::conditional_t<
+      Pattern[Pos] == '[',
+      impl_square,
+      std::conditional_t<
+        Pattern[Pos] == '.',
+        impl_full_match,
+        impl_char
+      >
+    >
+  >;
+  using type = typename chosen::type;
+  static constexpr size_t next = chosen::next;
+  static constexpr size_t next_cap_idx = chosen::next_cap_idx;
+};
+
+template<typename AtomType, int64_t Min, int64_t Max>
+struct BuildQuantifier {
+  using type = Concat<AtomType, typename BuildQuantifier<AtomType, Min - 1, Max - 1>::type>;
+};
+template<typename AtomType, int64_t Max>
+struct BuildQuantifier<AtomType, 0, Max> {
+  struct inf {
+    using type = Closure<AtomType>;
+  };
+  struct non_inf {
+    using type = Or<
+      Epsilon,
+      Concat<AtomType, typename BuildQuantifier<AtomType, 0, Max - 1>::type>
+    >;
+  };
+  using type = typename std::conditional_t<Max < 0, inf, non_inf>::type;
+};
+template<typename AtomType>
+struct BuildQuantifier<AtomType, 0, 0> {
+  using type = Epsilon;
+};
+
+/* ParseFactor: Atom ('*')? | Atom ('+')? | Atom ('?')?
+ *            | Atom '{' Number ',' '}' | Atom '{' Number ',' Number '}'
+ *            | Atom '{' ',' Number '}' | '{' Number '}'
+ */
+template<FixedString Pattern, size_t Pos, size_t CapIdx>
+struct ParseFactor {
+  using Atom = ParseAtom<Pattern, Pos, CapIdx>;
+
+  static_assert(Atom::next <= Pattern.length, "ParseFactor: atom parse overflow");
+
+  struct star {
+    using type = Closure<typename Atom::type>;
+    static constexpr size_t next = Atom::next + 1;
+  };
+
+  struct plus {
+    using type = Concat<typename Atom::type, Closure<typename Atom::type>>;
+    static constexpr size_t next = Atom::next + 1;
+  };
+
+  struct question {
+    using type = Or<Epsilon, typename Atom::type>;
+    static constexpr size_t next = Atom::next + 1;
+  };
+
+  struct curly {
+    static_assert(Atom::next + 1 < Pattern.length, "ParseFactor: incomplete quantifier");
+
+    static_assert(Pattern[Atom::next + 1] != '}', "ParseFactor: empty quantifier '{}' is invalid");
+
+    using ParseMin = ParseDecimal<Pattern, Atom::next + 1>;
+    static constexpr bool min_missing = (Pattern[Atom::next + 1] == ',');
+    static constexpr int64_t Min = min_missing ? 0 : ParseMin::value;
+
+    static_assert(ParseMin::next < Pattern.length
+      && (Pattern[ParseMin::next] == ',' || Pattern[ParseMin::next] == '}'),
+      "ParseFactor: incomplete quantifier");
+
+    struct single_num {
+      static constexpr int64_t Max = Min;
+      static constexpr size_t next = ParseMin::next + 1;
+    };
+
+    struct multiple_num {
+      static_assert(ParseMin::next + 1 < Pattern.length, "ParseFactor: incomplete quantifier");
+
+      static_assert(!(min_missing && Pattern[ParseMin::next + 1] == '}'),
+        "ParseFactor: quantifier must contain at least one number");
+
+      using ParseMax = ParseDecimal<Pattern, ParseMin::next + 1>;
+      static_assert(ParseMax::next < Pattern.length && Pattern[ParseMax::next] == '}',
+        "ParseFactor: incomplete quantifier (missing '}')");
+
+      static constexpr int64_t Max =
+        (Pattern[ParseMin::next + 1] == '}') ? -1 : ParseMax::value;
+      static constexpr size_t next = ParseMax::next + 1;
+    };
+
+    using chosen = std::conditional_t<Pattern[ParseMin::next] == '}', single_num, multiple_num>;
+    static constexpr int64_t Max = chosen::Max;
+
+    static_assert(Max < 0 || Min <= Max, "ParseFactor: invalid quantifier");
+
+    using type = typename BuildQuantifier<typename Atom::type, Min, Max>::type;
+    static constexpr size_t next = chosen::next;
+  };
+
+  static constexpr bool has_star = (Atom::next < Pattern.length && Pattern[Atom::next] == '*');
+  static constexpr bool has_plus = (Atom::next < Pattern.length && Pattern[Atom::next] == '+');
+  static constexpr bool has_question = (Atom::next < Pattern.length && Pattern[Atom::next] == '?');
+  static constexpr bool has_curly = (Atom::next < Pattern.length && Pattern[Atom::next] == '{');
+
+  using chosen = std::conditional_t<
+    has_star,
+    star,
+    std::conditional_t<
+      has_plus,
+      plus,
+      std::conditional_t<
+        has_question,
+        question,
+        std::conditional_t<
+          has_curly,
+          curly,
+          Atom
+        >
+      >
+    >
+  >;
+  using type = typename chosen::type;
+  static constexpr size_t next = chosen::next;
+  static constexpr size_t next_cap_idx = Atom::next_cap_idx;
+};
+
+/* ParseTerm := Factor Term | (empty -> Epsilon) */
+template<FixedString Pattern, size_t Pos, size_t CapIdx>
+struct ParseTerm {
+  /* empty case */
+  struct impl_empty {
+    using type = Epsilon;
+    static constexpr size_t next = Pos;
+    static constexpr size_t next_cap_idx = CapIdx;
+  };
+  /* Factor Term case */
+  struct impl_nonempty {
+    using Factor = ParseFactor<Pattern, Pos, CapIdx>;
+    static_assert(Factor::next <= Pattern.length, "ParseTerm: factor parse overflow");
+    using Term = ParseTerm<Pattern, Factor::next, Factor::next_cap_idx>;
+    static_assert(Term::next <= Pattern.length, "ParseTerm: term parse overflow");
+    using type = Concat<typename Factor::type, typename Term::type>;
+    static constexpr size_t next = Term::next;
+    static constexpr size_t next_cap_idx = Term::next_cap_idx;
+  };
+
+  using chosen = std::conditional_t<
+    (Pos >= Pattern.length) || (Pattern[Pos] == '|') || (Pattern[Pos] == ')'),
+    impl_empty,
+    impl_nonempty
+  >;
+  using type = typename chosen::type;
+  static constexpr size_t next = chosen::next;
+  static constexpr size_t next_cap_idx = chosen::next_cap_idx;
+};
+
+/* ParseRegex := Term ('|' Regex)? */
+template<FixedString Pattern, size_t Pos, size_t CapIdx>
+struct ParseRegex {
+  using Term = ParseTerm<Pattern, Pos, CapIdx>;
+
+  static_assert(Term::next <= Pattern.length, "ParseRegex: term parse overflow");
+
+  struct impl_bar {
+    using Regex = ParseRegex<Pattern, Term::next + 1, Term::next_cap_idx>;
+    static_assert(Regex::next <= Pattern.length, "ParseRegex: regex parse overflow");
+    using type = Or<typename Term::type, typename Regex::type>;
+    static constexpr size_t next = Regex::next;
+    static constexpr size_t next_cap_idx = Regex::next_cap_idx;
+  };
+  struct impl_no_bar {
+    using type = typename Term::type;
+    static constexpr size_t next = Term::next;
+    static constexpr size_t next_cap_idx = Term::next_cap_idx;
+  };
+
+  static constexpr bool has_bar = (Term::next < Pattern.length && Pattern[Term::next] == '|');
+  using chosen = std::conditional_t<has_bar, impl_bar, impl_no_bar>;
+  using type = typename chosen::type;
+  static constexpr size_t next = chosen::next;
+  static constexpr size_t next_cap_idx = chosen::next_cap_idx;
+};
+
+template<FixedString Pattern>
+struct RegexScan {
+  using Parse = ParseRegex<Pattern, 0, 1>;
+  using type = typename Simplify<
+    Concat<SetSlot<0>, Concat<typename Parse::type, SetSlot<1>>>
+  >::type;
+  static_assert(Parse::next == Pattern.length,
+    "RegexScan: pattern not fully consumed or contains unexpected trailing characters");
+};
 
 } /* namespace impl */
+} /* namespace onre */
+
+namespace onre {
+namespace impl {
+
+/* for fast O(|s|) bool matching with little O(1) */
+namespace dfa {
+
+/* === classic brzozowski derivative === */
+template<typename R, uint8_t C>
+struct Derivative;
+/* d0/dc = 0 */
+template<uint8_t C>
+struct Derivative<EmptySet, C> {
+  using type = EmptySet;
+};
+/* de/dc = 0 */
+template<uint8_t C>
+struct Derivative<Epsilon, C> {
+  using type = EmptySet;
+};
+/* dx/dc = x == c ? e : 0 */
+template<uint8_t X, uint8_t C>
+struct Derivative<Char<X>, C> {
+  using type = std::conditional_t<X == C, Epsilon, EmptySet>;
+};
+template<uint8_t C>
+struct Derivative<Wildcard, C> {
+  using Dispatch = typename std::conditional<
+    0x00 <= C && C <= 0x7F,
+    Epsilon,
+    typename std::conditional<
+      0xC2 <= C && C <= 0xDF,
+      Wildcard1,
+      typename std::conditional<
+        0xE0 <= C && C <= 0xEF,
+        Wildcard2,
+        typename std::conditional<
+          0xF0 <= C && C <= 0xF4,
+          Wildcard3,
+          EmptySet
+        >::type
+      >::type
+    >::type
+  >::type;
+  #ifdef ONRE_DOTALL
+    using type = Dispatch;
+  #else
+    using type = typename std::conditional<C == '\n' || C == '\r', EmptySet, Dispatch>::type;
+  #endif
+};
+template<uint8_t C>
+struct Derivative<Wildcard3, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF, Wildcard2, EmptySet>::type;
+};
+template<uint8_t C>
+struct Derivative<Wildcard2, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF, Wildcard1, EmptySet>::type;
+};
+template<uint8_t C>
+struct Derivative<Wildcard1, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF, Epsilon, EmptySet>::type;
+};
+template<typename List1, typename List2, typename List3, typename List4, uint8_t C>
+struct Derivative<In<List1, List2, List3, List4>, C> {
+  using type = typename std::conditional<List1::template Contains<Char<C>>,
+    typename std::conditional<
+      0x00 <= C && C <= 0x7F,
+      Epsilon,
+      typename std::conditional<
+        0xC2 <= C && C <= 0xDF,
+        In1<List4>,
+        typename std::conditional<
+          0xE0 <= C && C <= 0xEF,
+          In2<List3, List4>,
+          typename std::conditional<
+            0xF0 <= C && C <= 0xF4,
+            In3<List2, List3, List4>,
+            EmptySet
+          >::type
+        >::type
+      >::type
+    >::type,
+    EmptySet
+  >::type;
+};
+template<typename List2, typename List3, typename List4, uint8_t C>
+struct Derivative<In3<List2, List3, List4>, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List2::template Contains<Char<C>>, In2<List3, List4>, EmptySet>::type;
+};
+template<typename List3, typename List4, uint8_t C>
+struct Derivative<In2<List3, List4>, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List3::template Contains<Char<C>>, In1<List4>, EmptySet>::type;
+};
+template<typename List4, uint8_t C>
+struct Derivative<In1<List4>, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List4::template Contains<Char<C>>, Epsilon, EmptySet>::type;
+};
+template<typename List1, typename List2, typename List3, typename List4, uint8_t C>
+struct Derivative<Except<List1, List2, List3, List4>, C> {
+  using type = typename std::conditional<!List1::template Contains<Char<C>>,
+    typename std::conditional<
+      0x00 <= C && C <= 0x7F,
+      Epsilon,
+      typename std::conditional<
+        0xC2 <= C && C <= 0xDF,
+        Except1<List4>,
+        typename std::conditional<
+          0xE0 <= C && C <= 0xEF,
+          Except2<List3, List4>,
+          typename std::conditional<
+            0xF0 <= C && C <= 0xF4,
+            Except3<List2, List3, List4>,
+            EmptySet
+          >::type
+        >::type
+      >::type
+    >::type,
+    EmptySet
+  >::type;
+};
+template<typename List2, typename List3, typename List4, uint8_t C>
+struct Derivative<Except3<List2, List3, List4>, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List2::template Contains<Char<C>>, Except2<List3, List4>, EmptySet>::type;
+};
+template<typename List3, typename List4, uint8_t C>
+struct Derivative<Except2<List3, List4>, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List3::template Contains<Char<C>>, Except1<List4>, EmptySet>::type;
+};
+template<typename List4, uint8_t C>
+struct Derivative<Except1<List4>, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List4::template Contains<Char<C>>, Epsilon, EmptySet>::type;
+};
+/* d(R|S)/dc = dR/dc | dS/dc */
+template<typename R, typename S, uint8_t C>
+struct Derivative<Or<R, S>, C> {
+  using type = typename Simplify<
+    Or<typename Derivative<R, C>::type, typename Derivative<S, C>::type>
+  >::type;
+};
+/* d(RS)/dc = dR/dc S | (delta(R) ? dS/dc : 0)*/
+template<typename L, typename R, uint8_t C>
+struct Derivative<Concat<L, R>, C> {
+  using Part1 = Concat<typename Derivative<L, C>::type, R>;
+  using Part2 = std::conditional_t<
+    Nullable<L>::value,
+    typename Derivative<R, C>::type,
+    EmptySet
+  >;
+  using type = typename Simplify<Or<Part1, Part2>>::type;
+};
+/* d(R*)/dc = dR/dc R* */
+template<typename R, uint8_t C>
+struct Derivative<Closure<R>, C> {
+    using type = typename Simplify<Concat<typename Derivative<R, C>::type, Closure<R>>>::type;
+};
+
+/* === DFA builder === */
+template<typename R>
+struct RemoveAllAction;
+template<>
+struct RemoveAllAction<EmptySet> {
+  using type = EmptySet;
+};
+template<>
+struct RemoveAllAction<Epsilon> {
+  using type = Epsilon;
+};
+template<uint8_t C>
+struct RemoveAllAction<Char<C>> {
+  using type = Char<C>;
+};
+template<>
+struct RemoveAllAction<Wildcard> {
+  using type = Wildcard;
+};
+template<>
+struct RemoveAllAction<Wildcard3> {
+  using type = Wildcard3;
+};
+template<>
+struct RemoveAllAction<Wildcard2> {
+  using type = Wildcard2;
+};
+template<>
+struct RemoveAllAction<Wildcard1> {
+  using type = Wildcard1;
+};
+template<typename List1, typename List2, typename List3, typename List4>
+struct RemoveAllAction<In<List1, List2, List3, List4>> {
+  using type = In<List1, List2, List3, List4>;
+};
+template<typename List2, typename List3, typename List4>
+struct RemoveAllAction<In3<List2, List3, List4>> {
+  using type = In3<List2, List3, List4>;
+};
+template<typename List3, typename List4>
+struct RemoveAllAction<In2<List3, List4>> {
+  using type = In2<List3, List4>;
+};
+template<typename List4>
+struct RemoveAllAction<In1<List4>> {
+  using type = In1<List4>;
+};
+template<typename List1, typename List2, typename List3, typename List4>
+struct RemoveAllAction<Except<List1, List2, List3, List4>> {
+  using type = Except<List1, List2, List3, List4>;
+};
+template<typename List2, typename List3, typename List4>
+struct RemoveAllAction<Except3<List2, List3, List4>> {
+  using type = Except3<List2, List3, List4>;
+};
+template<typename List3, typename List4>
+struct RemoveAllAction<Except2<List3, List4>> {
+  using type = Except2<List3, List4>;
+};
+template<typename List4>
+struct RemoveAllAction<Except1<List4>> {
+  using type = Except1<List4>;
+};
+template<size_t I>
+struct RemoveAllAction<SetSlot<I>> {
+  using type = Epsilon;
+};
+template<typename L, typename R>
+struct RemoveAllAction<Or<L, R>> {
+  using type = typename Simplify<
+    Or<typename RemoveAllAction<L>::type, typename RemoveAllAction<R>::type>
+  >::type;
+};
+template<typename L, typename R>
+struct RemoveAllAction<Concat<L, R>> {
+  using type = typename Simplify<
+    Concat<typename RemoveAllAction<L>::type, typename RemoveAllAction<R>::type>
+  >::type;
+};
+template<typename R>
+struct RemoveAllAction<Closure<R>> {
+  using type = typename Simplify<
+    Closure<typename RemoveAllAction<R>::type>
+  >::type;
+};
+
+template<typename R>
+struct State {
+  using re = R;
+  static constexpr bool accepting = Nullable<R>::value;
+};
+
+template<std::size_t From, uint8_t C, std::size_t To>
+struct Edge {
+  static constexpr std::size_t from = From;
+  static constexpr uint8_t ch = C;
+  static constexpr std::size_t to = To;
+};
+
+template<uint8_t C, typename State>
+struct CharStatePair {
+  static constexpr uint8_t c = C;
+  using state = State;
+};
+
+template<typename CharStatePairAcc, typename State, typename Alphabet>
+struct DerivNewStates;
+template<typename Acc, typename S>
+struct DerivNewStates<Acc, S, TypeList<>> {
+  using type = Acc;
+};
+template<typename Acc, typename S, uint8_t C, typename... Tails>
+struct DerivNewStates<Acc, S, TypeList<Char<C>, Tails...>> {
+  using Der = typename Derivative<typename S::re, C>::type;
+  using type = typename std::conditional_t<
+    std::is_same_v<Der, EmptySet>,
+    std::type_identity<Acc>,
+    DerivNewStates<
+      typename PushBack<Acc, CharStatePair<C, State<Der>>>::type,
+      S,
+      TypeList<Tails...>
+    >
+  >::type;
+};
+
+template<
+  typename StateAcc,
+  typename EdgeAcc,
+  typename ToBeProcessList,
+  typename StartState,
+  typename NewCharStates
+>
+struct PushNewStates;
+template<typename SA, typename EA, typename TBP, typename StartState>
+struct PushNewStates<SA, EA, TBP, StartState, TypeList<>> {
+  using StateAcc = SA;
+  using EdgeAcc = EA;
+  using ToBeProcessList = TBP;
+};
+template<
+  typename SA,
+  typename EA,
+  typename TBP,
+  typename StartState,
+  typename HeadPair,
+  typename... TailPairs
+>
+struct PushNewStates<SA, EA, TBP, StartState, TypeList<HeadPair, TailPairs...>> {
+  using FromState = StartState;
+  using ToState = typename HeadPair::state;
+  static constexpr uint8_t C = HeadPair::c;
+  static constexpr bool IsStateNew = !SA::template Contains<ToState>;
+  using NextStateAcc = typename PushBackUnique<SA, ToState>::type;
+  using NextToBeProcessList = typename std::conditional_t<
+    IsStateNew,
+    PushBack<TBP, ToState>,
+    std::type_identity<TBP>
+  >::type;
+  using NextEdgeAcc = typename PushBack<
+    EA,
+    Edge<
+      NextStateAcc::template IndexOf<FromState>,
+      C,
+      NextStateAcc::template IndexOf<ToState>
+    >
+  >::type;
+  using NextIt = PushNewStates<
+    NextStateAcc,
+    NextEdgeAcc,
+    NextToBeProcessList,
+    StartState,
+    TypeList<TailPairs...>
+  >;
+  using StateAcc = typename NextIt::StateAcc;
+  using EdgeAcc = typename NextIt::EdgeAcc;
+  using ToBeProcessList = typename NextIt::ToBeProcessList;
+};
+
+template<typename StateAcc, typename EdgeAcc, typename ToBeProcessList>
+struct BuildDFA;
+template<typename StateAcc, typename EdgeAcc>
+struct BuildDFA<StateAcc, EdgeAcc, TypeList<>> {
+  using States = StateAcc;
+  using Edges = EdgeAcc;
+};
+template<typename StateAcc, typename EdgeAcc, typename StateHead, typename... StateTails>
+struct BuildDFA<StateAcc, EdgeAcc, TypeList<StateHead, StateTails...>> {
+  using NewCharStates = typename DerivNewStates<
+    TypeList<>,
+    StateHead,
+    typename First<typename StateHead::re, TypeList<>>::type
+  >::type;
+  using Processed = PushNewStates<
+    StateAcc,
+    EdgeAcc,
+    TypeList<StateTails...>,
+    StateHead,
+    NewCharStates
+  >;
+  using NextIt = BuildDFA<
+    typename Processed::StateAcc,
+    typename Processed::EdgeAcc,
+    typename Processed::ToBeProcessList
+  >;
+  using States = typename NextIt::States;
+  using Edges = typename NextIt::Edges;
+};
+
+template<typename RE>
+struct AllStatesAndEdgesGenerator {
+public:
+  using type = BuildDFA<TypeList<State<RE>>, TypeList<>, TypeList<State<RE>>>;
+  using States = typename type::States;
+  using Edges  = typename type::Edges;
+};
+
+/* aliases */
+template<typename RE> using AllStateEdgePair = typename AllStatesAndEdgesGenerator<RE>::type;
+template<typename RE> using AllStatesList = typename AllStatesAndEdgesGenerator<RE>::States;
+template<typename RE> using AllEdgesList  = typename AllStatesAndEdgesGenerator<RE>::Edges;
+
+/* === table builder, convert sparse graph representation into jump table representation === */
+template<size_t NrStates, typename EdgesList>
+struct BuildTable;
+template<size_t NrStates, typename... Edges>
+struct BuildTable<NrStates, TypeList<Edges...>> {
+  static constexpr std::array<std::array<int32_t, nr_byte>, NrStates> make() {
+    std::array<std::array<int32_t, nr_byte>, NrStates> table{};
+    for (auto &row : table) row.fill(-1);
+    ((table[Edges::from][static_cast<std::size_t>(Edges::ch)] = Edges::to), ...);
+    return table;
+  }
+};
+
+template<typename StatesList>
+struct BuildAccepts;
+template<typename... Ss>
+struct BuildAccepts<TypeList<Ss...>> {
+  static constexpr std::array<bool, sizeof...(Ss)> make() {
+    return std::array<bool, sizeof...(Ss)>{ Ss::accepting... };
+  }
+};
+
+} /* namespace dfa */
+} /* namespace impl */
+} /* namespace onre */
+
+namespace onre {
 
 /* === interface === */
 template<impl::FixedString Pattern>
@@ -3079,5 +3127,6 @@ inline std::string replace(std::string_view replace_rule, std::string_view str) 
 }
 
 } /* namespace onre */
+
 
 #endif /* #ifndef ONRE_REGEX_HPP__ */

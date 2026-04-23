@@ -421,6 +421,12 @@ However, we can approximate it through heuristic indicators and algorithms to fa
 make test -j20
 ```
 
+## 🏗️ Header-Only Build
+
+`make build` scans all `src/*.hxx` files, reads the `#include "..."` lines that appear before `// === snippet begin ===`, uses `tsort` to compute a topological order, and then concatenates each snippet into the root-level [onre.hpp](onre.hpp). The generated file is the single latest build result for the repository.
+
+This repository does not publish Release artifacts. The root-level [onre.hpp](onre.hpp) is always the current generated result after code changes.
+
 ## 🔗 Dependencies
 
 Verified lowest compiler versions:
