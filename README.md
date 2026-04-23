@@ -14,7 +14,7 @@ A header-only regex engine with zero-cost abstraction and strictly linear-time m
 * ✔️ Single-header file; just `include` to use.
 * ✔️ **Supports capture groups** and replacement based on capture groups.
 * ✔️ Uses Brzozowski derivatives with type-level functional metaprogramming to ensure fast compilation and almost always produce minimal automata, and **it’s cool**!
-* ✔️ Full UTF-8 support.
+* ✔️ Full UTF-8 support, including a code-point-aware wildcard `.`.
 * ✔️ Supports standard regular expressions (concatenation, alternation `|`, Kleene star `*`, parentheses `()`); supports `+` and `?`; supports wildcard `.`; supports character classes (like `[^a-z012]`); supports escapes (`\n`, `\t`, `\d`, `\s`, `\w`, `\xHH` (two hex digits), `\[`, `\]`, `\*`, ...); supports non-capturing groups `(?:...)`; supports quantifiers (`{n}`, `{n,}`, `{,m}`, `{n,m}`). By default, `.` does not match `\n` or `\r`; define `ONRE_DOTALL` at compile time to make `.` match them as well.
 * ❌️ Does not support zero-width assertions.
 * ❌️ Does not support backreferences.
@@ -77,6 +77,7 @@ sys     0m12.996s
 pattern: 你好                      str: 你好                 result: true
 pattern: こんにちは                str: こんにちは            result: true
 pattern: 😀                        str: 😀                   result: true
+pattern: a.b                       str: a😀b                 result: true
 pattern: a..b                      str: aéb                  result: true
 pattern: (😀)(世界)                 replace_rule: $2/$1        result: 世界/😀
 ```
@@ -433,8 +434,6 @@ Version >= 12
 `--std=c++20` or higher (if supported). It has been tested, but complex patterns compile so slowly that it is not practical for normal use.
 
 ## 😭 Known issues
-
-- ❗ Wildcard `.` is byte-wise, not UTF-8 code-point-wise. For example, a 3-byte UTF-8 character needs `...` to match. This is outside the current scope.
 
 - ❗ To keep compilation time acceptable, the current implementation does not use semantic equivalence when merging states; it uses syntactic equivalence instead. As a result it does not support some expressions that have multiple interpretations inside closures, examples include `(ab|ababab|c)*`, `(aa|aaa)*`, `(a*|aa)*`, or `(a*aa)*`. Instead, equivalent forms like `(ab|c)*`, `(|aaa*)`, `a*`, or `(aa)*` are preferred; otherwise compilation may fail. An Exact mode might be added in future to relax this, but compilation time will predictably become unacceptable.
 
