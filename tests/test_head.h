@@ -140,6 +140,7 @@ void character_class_test();
 void extended_alphabet_and_escape_test();
 void quantifier_test();
 void divisible_test();
+void comment_test();
 void utf8_test();
 void notdotall_test();
 void dotall_test();

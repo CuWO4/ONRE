@@ -1543,7 +1543,7 @@ namespace impl {
     Factor      := Atom ('*')? | Atom ('+')? | Atom ('?')?
                 | Atom '{' Number ',' '}' | Atom '{' Number ',' Number '}'
                 | Atom '{' ',' Number '}'
-    Atom        := '(' Regex ')' | CharGroup | CHAR | '.'
+    Atom        := '(' ('?:')? Regex ')' | CharGroup | CHAR | '.' | '(#?' comment ')'
     CharGroup   := '[' CharSet ']' | '[' '^' CharSet ']'
     CharSet     := CharSetAtom CharSet | CharSetAtom
     CharSetAtom := [IN CLASS CHAR] | [IN CLASS CHAR] '-' [IN CLASS CHAR] | Escape
@@ -2221,7 +2221,21 @@ struct ParseCharGroup {
   static constexpr size_t next = chosen::next;
 };
 
-/* ParseAtom: '(' Regex ')' | '[' CharSet ']' |  CHAR | '.' */
+template<FixedString Pattern, size_t Pos>
+struct ParseComment {
+  static_assert(Pos < Pattern.length, "comment not close");
+
+  struct impl_close {
+    static constexpr size_t next = Pos + 1;
+  };
+  struct impl_run_on {
+    static constexpr size_t next = ParseComment<Pattern, Pos + 1>::next;
+  };
+
+  static constexpr size_t next = std::conditional<Pattern[Pos] == ')', impl_close, impl_run_on>::type::next;
+};
+
+/* ParseAtom: '(' ('?:')? Regex ')' | '[' CharSet ']' |  CHAR | '.' | '(?#' comment ')' */
 template<FixedString Pattern, size_t Pos, size_t CapIdx>
 struct ParseAtom {
   static_assert(
@@ -2231,24 +2245,40 @@ struct ParseAtom {
     ), "ParseAtom: unknown character"
   );
 
-  /* case '(' Regex ')' or '(?:' Regex ')' */
+  /* case '(' Regex ')' or '(?:' Regex ')' or '(?#' comment ')' */
   struct impl_paren {
-    static constexpr bool is_non_capturing =
-      Pos + 2 < Pattern.length && Pattern[Pos + 1] == '?' && Pattern[Pos + 2] == ':';
-    using Regex = ParseRegex<Pattern, Pos + (is_non_capturing ? 3 : 1), CapIdx + (is_non_capturing ? 0 : 1)>;
-    static_assert(Regex::next <= Pattern.length, "ParseAtom: regex parse overflow");
-    static_assert(Regex::next < Pattern.length && Pattern[Regex::next] == ')',
-      "ParseAtom impl_paren: missing closing ')' in pattern");
-    using type = std::conditional_t<
-      is_non_capturing,
-      typename Regex::type,
-      Concat<
-        SetSlot<2 * CapIdx>,
-        Concat<typename Regex::type, SetSlot<2 * CapIdx + 1>>
-      >
-    >;
-    static constexpr size_t next = Regex::next + 1;
-    static constexpr size_t next_cap_idx = Regex::next_cap_idx;
+    static constexpr bool is_comment =
+      Pos + 2 < Pattern.length && Pattern[Pos + 1] == '?' && Pattern[Pos + 2] == '#';
+
+    struct impl_regular {
+      static constexpr bool is_non_capturing =
+        Pos + 2 < Pattern.length && Pattern[Pos + 1] == '?' && Pattern[Pos + 2] == ':';
+      using Regex = ParseRegex<Pattern, Pos + (is_non_capturing ? 3 : 1), CapIdx + (is_non_capturing ? 0 : 1)>;
+      static_assert(Regex::next <= Pattern.length, "ParseAtom: regex parse overflow");
+      static_assert(Regex::next < Pattern.length && Pattern[Regex::next] == ')',
+        "ParseAtom impl_paren: missing closing ')' in pattern");
+      using type = std::conditional_t<
+        is_non_capturing,
+        typename Regex::type,
+        Concat<
+          SetSlot<2 * CapIdx>,
+          Concat<typename Regex::type, SetSlot<2 * CapIdx + 1>>
+        >
+      >;
+      static constexpr size_t next = Regex::next + 1;
+      static constexpr size_t next_cap_idx = Regex::next_cap_idx;
+    };
+
+    struct impl_comment {
+      using type = Epsilon;
+      static constexpr size_t next = ParseComment<Pattern, Pos>::next;
+      static constexpr size_t next_cap_idx = CapIdx;
+    };
+
+    using chosen = typename std::conditional<is_comment, impl_comment, impl_regular>::type;
+    using type = typename chosen::type;
+    static constexpr size_t next = chosen::next;
+    static constexpr size_t next_cap_idx = chosen::next_cap_idx;
   };
 
   /* case CharGroup */

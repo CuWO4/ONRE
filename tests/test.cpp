@@ -26,6 +26,7 @@ int main(int argc, char** argv) {
   extended_alphabet_and_escape_test();
   quantifier_test();
   divisible_test();
+  comment_test();
   notdotall_test();
   dotall_test();
 
