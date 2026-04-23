@@ -15,7 +15,7 @@ A header-only regex engine with zero-cost abstraction and strictly linear-time m
 * ✔️ **Supports capture groups** and replacement based on capture groups.
 * ✔️ Uses Brzozowski derivatives with type-level functional metaprogramming to ensure fast compilation and almost always produce minimal automata, and **it’s cool**!
 * ✔️ Full UTF-8 support, including code-point-aware wildcard `.` and code-point-aware character classes/ranges.
-* ✔️ Supports standard regular expressions (concatenation, alternation `|`, Kleene star `*`, parentheses `()`); supports `+` and `?`; supports wildcard `.`; supports character classes (like `[^a-z012]` and `[^一-上]`); supports escapes (`\n`, `\t`, `\d`, `\s`, `\w`, `\xHH` (two hex digits), `\[`, `\]`, `\*`, ...); supports non-capturing groups `(?:...)`; supports quantifiers (`{n}`, `{n,}`, `{,m}`, `{n,m}`). By default, `.` does not match `\n` or `\r`; define `ONRE_DOTALL` at compile time to make `.` match them as well.
+* ✔️ Supports standard regular expressions (concatenation, alternation `|`, Kleene star `*`, parentheses `()`); supports `+` and `?`; supports wildcard `.`; supports character classes (like `[^a-z012]` and `[^一-上]`); supports escapes (`\n`, `\t`, `\d`, `\s`, `\w`, `\xHH` (two hex digits), `\u{H...}` (Unicode code points), `\[`, `\]`, `\*`, ...); supports non-capturing groups `(?:...)`; supports quantifiers (`{n}`, `{n,}`, `{,m}`, `{n,m}`). By default, `.` does not match `\n` or `\r`; define `ONRE_DOTALL` at compile time to make `.` match them as well.
 * ❌️ Does not support zero-width assertions.
 * ❌️ Does not support backreferences.
 * ❌️ Capture disambiguation rules are not guaranteed to conform to POSIX or Perl standards.
@@ -79,6 +79,7 @@ pattern: こんにちは                str: こんにちは            result: 
 pattern: 😀                        str: 😀                   result: true
 pattern: a.b                       str: a😀b                 result: true
 pattern: a..b                      str: aéb                  result: true
+pattern: \u{4F60}\u{597D}         str: 你好                 result: true
 pattern: [一-上]                   str: 字                   result: false
 pattern: [^一-上]                  str: 字                   result: true
 pattern: (😀)(世界)                 replace_rule: $2/$1        result: 世界/😀

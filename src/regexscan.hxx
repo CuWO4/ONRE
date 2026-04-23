@@ -24,7 +24,7 @@ namespace impl {
     CharSet     := CharSetAtom CharSet | CharSetAtom
     CharSetAtom := [IN CLASS CHAR] | [IN CLASS CHAR] '-' [IN CLASS CHAR] | Escape
     CHAR        := [VALID CHAR] | Escape
-    Escape      := '\' [VISIBLE CHAR] | '\' 'x' Number
+    Escape      := '\' [VISIBLE CHAR] | '\' 'x' HexNumber | '\u''{' HexNumber '}'
     Empty input -> Epsilon
 */
 
