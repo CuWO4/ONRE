@@ -71,6 +71,18 @@ struct PopFront<TypeList<Head, Tails...>> {
   using type = TypeList<Tails...>;
 };
 
+template <typename List1, typename List2>
+struct Join;
+template <typename List1, typename Head, typename... Tail>
+struct Join<List1, TypeList<Head, Tail...>> {
+  using TmpAcc = typename PushBack<List1, Head>::type;
+  using type = typename Join<TmpAcc, TypeList<Tail...>>::type;
+};
+template <typename List1>
+struct Join<List1, TypeList<>> {
+  using type = List1;
+};
+
 template<typename List, typename T>
 struct PushBackUnique;
 template<typename... Ts, typename T>
@@ -170,6 +182,70 @@ FixedString(const char (&str)[N]) -> FixedString<N>;
 template<size_t N>
 FixedString(const char8_t (&str)[N]) -> FixedString<N>;
 
+/* === compile-time alphabet and helper function === */
+constexpr size_t nr_byte = 256;
+
+constexpr std::array<bool, nr_byte> make_valid_table() {
+  std::array<bool, nr_byte> table {};
+  for (size_t i = 0; i < nr_byte; i++) {
+    table[i] = i != '|' && i != '*' && i != '+' && i != '?'
+      && i != '(' && i != ')' && i != '[' && i != ']' && i != '\\' && i != '.';
+  }
+  return table;
+}
+
+constexpr auto valid_table = make_valid_table();
+
+constexpr bool is_valid_char(uint8_t ch) {
+  return valid_table[ch];
+}
+
+constexpr bool is_in_class_char(uint8_t ch) {
+  return ch != ']';
+}
+
+template <uint8_t c>
+struct Char;
+
+template <uint8_t Start, uint8_t End>
+struct BuildCharList {
+  static_assert(Start <= End, "invalid char range");
+
+  template <typename Indices>
+  struct Impl;
+  template <size_t... Is>
+  struct Impl<std::index_sequence<Is...>> {
+    using type = TypeList<Char<Start + Is>...>;
+  };
+
+  using type = typename Impl<std::make_index_sequence<End - Start + 1>>::type;
+};
+
+using Alphabet = typename BuildCharList<0x00, 0xFF>::type;
+
+using Utf8FirstByteAlphabet = typename Join<
+  typename BuildCharList<0x00, 0x7F>::type,
+  typename Join<
+    typename BuildCharList<0xC2, 0xDF>::type,
+    typename Join<
+      typename BuildCharList<0xE0, 0xEF>::type,
+      typename BuildCharList<0xF0, 0xF4>::type
+    >::type
+  >::type
+>::type;
+using Utf8ContinuationByteAlphabet = typename BuildCharList<0x80, 0xBF>::type;
+
+template<typename CharT>
+struct NotWildcardExcluded {
+  static constexpr bool value = !std::is_same_v<CharT, Char<'\n'>>
+    && !std::is_same_v<CharT, Char<'\r'>>;
+};
+#ifdef ONRE_DOTALL
+  using WildcardAlphabet = Utf8FirstByteAlphabet;
+#else
+  using WildcardAlphabet = typename Filter<NotWildcardExcluded, Utf8FirstByteAlphabet>::type;
+#endif
+
 /* === extended regular expression tree representation with zero-width action === */
 struct EmptySet {};
 struct Epsilon {};
@@ -178,6 +254,9 @@ struct Char {
   static constexpr uint8_t c = C;
 };
 struct Wildcard {};
+struct Wildcard3 {};
+struct Wildcard2 {};
+struct Wildcard1 {};
 template<std::size_t I>
 struct SetSlot {
   static constexpr std::size_t i = I;
@@ -206,6 +285,12 @@ template<uint8_t C>
 struct Nullable<Char<C>> : std::false_type {};
 template<>
 struct Nullable<Wildcard> : std::false_type {};
+template<>
+struct Nullable<Wildcard3> : std::false_type {};
+template<>
+struct Nullable<Wildcard2> : std::false_type {};
+template<>
+struct Nullable<Wildcard1> : std::false_type {};
 template<size_t I>
 struct Nullable<SetSlot<I>> : std::true_type {};
 template<typename L, typename R>
@@ -234,6 +319,22 @@ struct First<Epsilon, Acc> {
 template <uint8_t C, typename Acc>
 struct First<Char<C>, Acc> {
   using type = typename PushBackUnique<Acc, Char<C>>::type;
+};
+template<typename Acc>
+struct First<Wildcard, Acc> {
+  using type = typename JoinUnique<Acc, WildcardAlphabet>::type;
+};
+template<typename Acc>
+struct First<Wildcard3, Acc> {
+  using type = typename JoinUnique<Acc, Utf8ContinuationByteAlphabet>::type;
+};
+template<typename Acc>
+struct First<Wildcard2, Acc> {
+  using type = typename JoinUnique<Acc, Utf8ContinuationByteAlphabet>::type;
+};
+template<typename Acc>
+struct First<Wildcard1, Acc> {
+  using type = typename JoinUnique<Acc, Utf8ContinuationByteAlphabet>::type;
 };
 template <size_t I, typename Acc>
 struct First<SetSlot<I>, Acc> {
@@ -474,67 +575,6 @@ struct Simplify<Closure<R>> {
   using simplified = Closure<typename Simplify<R>::type>;
   static constexpr bool is_same = std::is_same<simplified, Closure<R>>::value;
   using type = typename SimplifyFixedPoint<Closure<R>, simplified, is_same>::type;
-};
-
-/* === compile-time alphabet and helper function === */
-constexpr size_t nr_byte = 256;
-
-constexpr std::array<bool, nr_byte> make_valid_table() {
-  std::array<bool, nr_byte> table {};
-  for (size_t i = 0; i < nr_byte; i++) {
-    table[i] = i != '|' && i != '*' && i != '+' && i != '?'
-      && i != '(' && i != ')' && i != '[' && i != ']' && i != '\\' && i != '.';
-  }
-  return table;
-}
-
-constexpr auto valid_table = make_valid_table();
-
-constexpr bool is_valid_char(uint8_t ch) {
-  return valid_table[ch];
-}
-
-constexpr bool is_in_class_char(uint8_t ch) {
-  return ch != ']';
-}
-
-template<typename Indices>
-struct BuildAlphabetImpl;
-template<size_t... Is>
-struct BuildAlphabetImpl<std::index_sequence<Is...>> {
-  using type = TypeList<Char<static_cast<uint8_t>(Is)>...>;
-};
-
-using Alphabet = typename BuildAlphabetImpl<std::make_index_sequence<nr_byte>>::type;
-
-template<typename CharT>
-struct NotWildcardExcluded {
-  static constexpr bool value = !std::is_same_v<CharT, Char<'\n'>>
-    && !std::is_same_v<CharT, Char<'\r'>>;
-};
-#ifdef ONRE_DOTALL
-  using WildcardAlphabet = Alphabet;
-#else
-  using WildcardAlphabet = typename Filter<NotWildcardExcluded, Alphabet>::type;
-#endif
-
-template<typename Acc>
-struct First<Wildcard, Acc> {
-  using type = typename JoinUnique<Acc, WildcardAlphabet>::type;
-};
-
-template <uint8_t Start, uint8_t End>
-struct BuildCharList {
-  static_assert(Start <= End, "invalid char range");
-
-  template <typename Indices>
-  struct Impl;
-  template <size_t... Is>
-  struct Impl<std::index_sequence<Is...>> {
-    using type = TypeList<Char<Start + Is>...>;
-  };
-
-  using type = typename Impl<std::make_index_sequence<End - Start + 1>>::type;
 };
 
 /* === regex parser === */
@@ -1206,11 +1246,40 @@ struct Derivative<Char<X>, C> {
 };
 template<uint8_t C>
 struct Derivative<Wildcard, C> {
+  using Dispatch = typename std::conditional<
+    0x00 <= C && C <= 0x7F,
+    Epsilon,
+    typename std::conditional<
+      0xC2 <= C && C <= 0xDF,
+      Wildcard1,
+      typename std::conditional<
+        0xE0 <= C && C <= 0xEF,
+        Wildcard2,
+        typename std::conditional<
+          0xF0 <= C && C <= 0xF4,
+          Wildcard3,
+          EmptySet
+        >::type
+      >::type
+    >::type
+  >::type;
   #ifdef ONRE_DOTALL
-    using type = Epsilon;
+    using type = Dispatch;
   #else
-    using type = typename std::conditional<C == '\n' || C == '\r', EmptySet, Epsilon>::type;
+    using type = typename std::conditional<C == '\n' || C == '\r', EmptySet, Dispatch>::type;
   #endif
+};
+template<uint8_t C>
+struct Derivative<Wildcard3, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF, Wildcard2, EmptySet>::type;
+};
+template<uint8_t C>
+struct Derivative<Wildcard2, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF, Wildcard1, EmptySet>::type;
+};
+template<uint8_t C>
+struct Derivative<Wildcard1, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF, Epsilon, EmptySet>::type;
 };
 /* d(R|S)/dc = dR/dc | dS/dc */
 template<typename R, typename S, uint8_t C>
@@ -1254,6 +1323,18 @@ struct RemoveAllAction<Char<C>> {
 template<>
 struct RemoveAllAction<Wildcard> {
   using type = Wildcard;
+};
+template<>
+struct RemoveAllAction<Wildcard3> {
+  using type = Wildcard3;
+};
+template<>
+struct RemoveAllAction<Wildcard2> {
+  using type = Wildcard2;
+};
+template<>
+struct RemoveAllAction<Wildcard1> {
+  using type = Wildcard1;
 };
 template<size_t I>
 struct RemoveAllAction<SetSlot<I>> {
@@ -1556,7 +1637,19 @@ struct v<Char<C>> {
 };
 template<>
 struct v<Wildcard> {
-  using type = TypeList<Omega>;
+  using type = TypeList<>;
+};
+template<>
+struct v<Wildcard3> {
+  using type = TypeList<>;
+};
+template<>
+struct v<Wildcard2> {
+  using type = TypeList<>;
+};
+template<>
+struct v<Wildcard1> {
+  using type = TypeList<>;
 };
 template<size_t I>
 struct v<SetSlot<I>> {
@@ -1607,15 +1700,56 @@ struct Derivative<Char<y>, C> {
 };
 template <uint8_t C>
 struct Derivative<Wildcard, C> {
+  using Dispatch = typename std::conditional<
+    0x00 <= C && C <= 0x7F,
+    Epsilon,
+    typename std::conditional<
+      0xC2 <= C && C <= 0xDF,
+      Wildcard1,
+      typename std::conditional<
+        0xE0 <= C && C <= 0xEF,
+        Wildcard2,
+        typename std::conditional<
+          0xF0 <= C && C <= 0xF4,
+          Wildcard3,
+          EmptySet
+        >::type
+      >::type
+    >::type
+  >::type;
   #ifdef ONRE_DOTALL
-    using type = TypeList<DerivedPair<Epsilon, Omega>>;
+    using type = TypeList<DerivedPair<Dispatch, Omega>>;
   #else
     using type = typename std::conditional<
       C == '\n' || C == '\r',
       TypeList<>,
-      TypeList<DerivedPair<Epsilon, Omega>>
+      TypeList<DerivedPair<Dispatch, Omega>>
     >::type;
   #endif
+};
+template <uint8_t C>
+struct Derivative<Wildcard3, C> {
+  using type = std::conditional_t<
+    0x80 <= C && C <= 0xBF,
+    TypeList<DerivedPair<Wildcard2, Omega>>,
+    TypeList<>
+  >;
+};
+template <uint8_t C>
+struct Derivative<Wildcard2, C> {
+  using type = std::conditional_t<
+    0x80 <= C && C <= 0xBF,
+    TypeList<DerivedPair<Wildcard1, Omega>>,
+    TypeList<>
+  >;
+};
+template <uint8_t C>
+struct Derivative<Wildcard1, C> {
+  using type = std::conditional_t<
+    0x80 <= C && C <= 0xBF,
+    TypeList<DerivedPair<Epsilon, Omega>>,
+    TypeList<>
+  >;
 };
 /* d(R|S)/dx = dR/dx U dS/dx */
 template <typename R, typename S, uint8_t C>
