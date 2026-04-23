@@ -32,6 +32,15 @@ void utf8_test() {
   test_match_and_log<u8"(ab|a😀)*c">((char const*)u8"a😀abc", true);
   test_match_and_log<u8"(😀|中|[a-z])+!">((char const*)u8"😀中abc!", true);
   test_match_and_log<u8"(hello|你好)(世界|world)">((char const*)u8"你好世界", true);
+  test_match_and_log<u8"[一-上]">((char const*)u8"一", true);
+  test_match_and_log<u8"[一-上]">((char const*)u8"上", true);
+  test_match_and_log<u8"[一-上]">((char const*)u8"丁", true);
+  test_match_and_log<u8"[一-上]">((char const*)u8"字", false);
+  test_match_and_log<u8"[^一-上]">((char const*)u8"一", false);
+  test_match_and_log<u8"[^一-上]">((char const*)u8"上", false);
+  test_match_and_log<u8"[^一-上]">((char const*)u8"丁", false);
+  test_match_and_log<u8"[^一-上]">((char const*)u8"字", true);
+  test_match_and_log<u8"([a-z]|[一-上]|[0-9])+😀*">((char const*)u8"abc一上丁123😀😀", true);
 
   const char invalid_utf8_1[] = "\x80";
   const char invalid_utf8_2[] = "\xC0\xAF";
@@ -41,6 +50,8 @@ void utf8_test() {
   test_match_and_log<u8".">(std::string_view(invalid_utf8_2, sizeof(invalid_utf8_2) - 1), false);
   test_match_and_log<u8".">(std::string_view(invalid_utf8_3, sizeof(invalid_utf8_3) - 1), false);
   test_match_and_log<u8".">(std::string_view(invalid_utf8_4, sizeof(invalid_utf8_4) - 1), false);
+  test_match_and_log<u8"[一-上]">(std::string_view(invalid_utf8_1, sizeof(invalid_utf8_1) - 1), false);
+  test_match_and_log<u8"[^一-上]">(std::string_view(invalid_utf8_2, sizeof(invalid_utf8_2) - 1), false);
 
   test_replace_and_log<u8"(你好)">("$1", (char const*)u8"你好", (char const*)u8"你好");
   test_replace_and_log<u8"(é)(中)">("$2-$1", (char const*)u8"é中", (char const*)u8"中-é");

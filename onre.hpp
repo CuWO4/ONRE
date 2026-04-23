@@ -221,6 +221,15 @@ struct BuildCharList {
   using type = typename Impl<std::make_index_sequence<End - Start + 1>>::type;
 };
 
+template<typename CharList, typename Alphabet>
+struct CharListNegation {
+  template <typename Char>
+  struct NotInList {
+    static constexpr bool value = !CharList::template Contains<Char>;
+  };
+  using type = typename Filter<NotInList, Alphabet>::type;
+};
+
 using Alphabet = typename BuildCharList<0x00, 0xFF>::type;
 
 using Utf8FirstByteAlphabet = typename Join<
@@ -257,6 +266,22 @@ struct Wildcard {};
 struct Wildcard3 {};
 struct Wildcard2 {};
 struct Wildcard1 {};
+template<typename List1, typename List2, typename List3, typename List4>
+struct In {};
+template<typename List2, typename List3, typename List4>
+struct In3 {};
+template<typename List3, typename List4>
+struct In2 {};
+template<typename List4>
+struct In1 {};
+template<typename List1, typename List2, typename List3, typename List4>
+struct Except {};
+template<typename List2, typename List3, typename List4>
+struct Except3 {};
+template<typename List3, typename List4>
+struct Except2 {};
+template<typename List4>
+struct Except1 {};
 template<std::size_t I>
 struct SetSlot {
   static constexpr std::size_t i = I;
@@ -291,6 +316,22 @@ template<>
 struct Nullable<Wildcard2> : std::false_type {};
 template<>
 struct Nullable<Wildcard1> : std::false_type {};
+template<typename... Lists>
+struct Nullable<In<Lists...>> : std::false_type {};
+template<typename... Lists>
+struct Nullable<In3<Lists...>> : std::false_type {};
+template<typename... Lists>
+struct Nullable<In2<Lists...>> : std::false_type {};
+template<typename... Lists>
+struct Nullable<In1<Lists...>> : std::false_type {};
+template<typename... Lists>
+struct Nullable<Except<Lists...>> : std::false_type {};
+template<typename... Lists>
+struct Nullable<Except3<Lists...>> : std::false_type {};
+template<typename... Lists>
+struct Nullable<Except2<Lists...>> : std::false_type {};
+template<typename... Lists>
+struct Nullable<Except1<Lists...>> : std::false_type {};
 template<size_t I>
 struct Nullable<SetSlot<I>> : std::true_type {};
 template<typename L, typename R>
@@ -335,6 +376,38 @@ struct First<Wildcard2, Acc> {
 template<typename Acc>
 struct First<Wildcard1, Acc> {
   using type = typename JoinUnique<Acc, Utf8ContinuationByteAlphabet>::type;
+};
+template<typename List1, typename... Lists, typename Acc>
+struct First<In<List1, Lists...>, Acc> {
+  using type = typename JoinUnique<Acc, List1>::type;
+};
+template<typename List2, typename... Lists, typename Acc>
+struct First<In3<List2, Lists...>, Acc> {
+  using type = typename JoinUnique<Acc, List2>::type;
+};
+template<typename List3, typename... Lists, typename Acc>
+struct First<In2<List3, Lists...>, Acc> {
+  using type = typename JoinUnique<Acc, List3>::type;
+};
+template<typename List4, typename Acc>
+struct First<In1<List4>, Acc> {
+  using type = typename JoinUnique<Acc, List4>::type;
+};
+template<typename List1, typename... Lists, typename Acc>
+struct First<Except<List1, Lists...>, Acc> {
+  using type = typename JoinUnique<Acc, typename CharListNegation<List1, Utf8FirstByteAlphabet>::type>::type;
+};
+template<typename List2, typename... Lists, typename Acc>
+struct First<Except3<List2, Lists...>, Acc> {
+  using type = typename JoinUnique<Acc, typename CharListNegation<List2, Utf8ContinuationByteAlphabet>::type>::type;
+};
+template<typename List3, typename... Lists, typename Acc>
+struct First<Except2<List3, Lists...>, Acc> {
+  using type = typename JoinUnique<Acc, typename CharListNegation<List3, Utf8ContinuationByteAlphabet>::type>::type;
+};
+template<typename List4, typename Acc>
+struct First<Except1<List4>, Acc> {
+  using type = typename JoinUnique<Acc, typename CharListNegation<List4, Utf8ContinuationByteAlphabet>::type>::type;
 };
 template <size_t I, typename Acc>
 struct First<SetSlot<I>, Acc> {
@@ -623,15 +696,6 @@ struct CharListToOrSequential {
   using type = typename RightFold<BuildOr, CharList, EmptySet>::type;
 };
 
-template<typename CharList, typename Alphabet>
-struct CharListNegation {
-  template <typename Char>
-  struct NotInList {
-    static constexpr bool value = !CharList::template Contains<Char>;
-  };
-  using type = typename Filter<NotInList, Alphabet>::type;
-};
-
 template<FixedString Pattern, size_t Pos, int64_t Acc = 0>
 struct ParseDecimal {
   struct is_digit_impl {
@@ -828,29 +892,70 @@ constexpr size_t utf8_sequence_length(uint8_t lead) {
   return 0;
 }
 
-template<FixedString Pattern, size_t Pos, size_t Len>
-struct ParseUtf8LiteralImpl {
-  static_assert((Pattern[Pos + 1] & 0xC0) == 0x80, "ParseUtf8LiteralImpl: invalid utf-8 continuation byte");
-  using type = typename std::conditional<
-    Len == 1,
-    Char<Pattern[Pos]>,
-    Concat<Char<Pattern[Pos]>, typename ParseUtf8LiteralImpl<Pattern, Pos + 1, Len - 1>::type>
-  >::type;
+template<uint32_t code>
+struct CodePoint {
+  static constexpr uint32_t value = code;
 };
 
 template<FixedString Pattern, size_t Pos>
-struct ParseUtf8LiteralImpl<Pattern, Pos, 1> {
-  static_assert(Pos < Pattern.length, "ParseUtf8LiteralImpl: unexpected pattern ending");
-  using type = Char<Pattern[Pos]>;
-};
-
-template<FixedString Pattern, size_t Pos>
-struct ParseUtf8Literal {
-  static constexpr size_t len = utf8_sequence_length(Pattern[Pos]);
-  static_assert(len != 0, "ParseUtf8Literal: invalid utf-8 leading byte");
-  static_assert(Pos + len <= Pattern.length, "ParseUtf8Literal: truncated utf-8 sequence");
-  using type = typename ParseUtf8LiteralImpl<Pattern, Pos, len>::type;
+struct ParseUtf8CodePoint {
+  static_assert(Pos < Pattern.length, "unexpected end of pattern");
+  static constexpr size_t len = ((Pattern[Pos] & 0x80) == 0)
+    ? 1
+    : ((Pattern[Pos] & 0xE0) == 0xC0)
+      ? 2
+      : ((Pattern[Pos] & 0xF0) == 0xE0)
+        ? 3
+        : ((Pattern[Pos] & 0xF8) == 0xF0) ? 4 : 0;
+  static_assert(len > 0, "UTF-8 decode error");
+  static_assert(Pos + len <= Pattern.length, "unexpected end of pattern");
+  static_assert(
+    len != 2 || ((Pattern[Pos + 1] & 0xC0) == 0x80),
+    "UTF-8 decode error, invalid continuation byte"
+  );
+  static_assert(
+    len != 3 || (((Pattern[Pos + 1] & 0xC0) == 0x80) && (((Pattern[Pos + 2] & 0xC0) == 0x80))),
+    "UTF-8 decode error, invalid continuation byte"
+  );
+  static_assert(
+    len != 4 || (
+      ((Pattern[Pos + 1] & 0xC0) == 0x80)
+      && ((Pattern[Pos + 2] & 0xC0) == 0x80)
+      && ((Pattern[Pos + 3] & 0xC0) == 0x80)
+    ), "UTF-8 decode error, invalid continuation byte"
+  );
+  static constexpr uint32_t value = len == 1
+    ? Pattern[Pos]
+    : len == 2
+      ? (((Pattern[Pos] & 0x1F) << 6) | (Pattern[Pos + 1] & 0x3F))
+      : len == 3
+        ? (((Pattern[Pos] & 0x0F) << 12) | ((Pattern[Pos + 1] & 0x3F) << 6) | (Pattern[Pos + 2] & 0x3F))
+        : (((Pattern[Pos] & 0x07) << 18) | ((Pattern[Pos + 1] & 0x3F) << 12)
+          | ((Pattern[Pos + 2] & 0x3F) << 6) | (Pattern[Pos + 3] & 0x3F));
   static constexpr size_t next = Pos + len;
+  static_assert(value <= 0x10FFFF, "UTF-8 decode error, code point overflow");
+};
+
+template<uint32_t Code>
+struct BuildUtf8ByteStreamRegex {
+  using type = decltype([]{
+    if constexpr (Code <= 0x7F) {
+      return Char<Code>{};
+    } else if constexpr (Code <= 0x7FF) {
+      return Concat<Char<0xC0 | (Code >> 6)>, Char<0x80 | (Code & 0x3F)>>{};
+    } else if constexpr (Code <= 0xFFFF) {
+      return Concat<Concat<
+        Char<0xE0 | (Code >> 12)>,
+        Char<0x80 | ((Code >> 6) & 0x3F)>>,
+        Char<0x80 | (Code & 0x3F)>>{};
+    } else /* Code <= 0x10FFFF */ { 
+      return Concat<Concat<Concat<
+        Char<0xF0 | (Code >> 18)>,
+        Char<0x80 | ((Code >> 12) & 0x3F)>>,
+        Char<0x80 | ((Code >> 6) & 0x3F)>>,
+        Char<0x80 | (Code & 0x3F)>>{};
+    }
+  }());
 };
 
 /* ParseCHAR : [VALID CHAR] | Escape */
@@ -868,8 +973,9 @@ struct ParseCHAR {
   };
 
   struct impl_simple {
-    using type = typename ParseUtf8Literal<Pattern, Pos>::type;
-    static constexpr size_t next = ParseUtf8Literal<Pattern, Pos>::next;
+    using CodePoint = ParseUtf8CodePoint<Pattern, Pos>;
+    using type = typename BuildUtf8ByteStreamRegex<CodePoint::value>::type;
+    static constexpr size_t next = CodePoint::next;
   };
 
   static constexpr bool is_escape = Pattern[Pos] == '\\';
@@ -878,32 +984,325 @@ struct ParseCHAR {
   static constexpr size_t next = chosen::next;
 };
 
+template<typename List1, typename List2, typename List3, typename List4>
+struct ByteListPack {
+  using list1 = List1;
+  using list2 = List2;
+  using list3 = List3;
+  using list4 = List4;
+};
+
+template<uint32_t Code>
+struct Utf8Encoding {
+  static constexpr size_t length =
+    (Code <= 0x7F) ? 1 :
+    (Code <= 0x7FF) ? 2 :
+    (Code <= 0xFFFF) ? 3 : 4;
+  static constexpr uint8_t b0 =
+    (length == 1) ? static_cast<uint8_t>(Code)
+    : (length == 2) ? static_cast<uint8_t>(0xC0 | (Code >> 6))
+    : (length == 3) ? static_cast<uint8_t>(0xE0 | (Code >> 12))
+    : static_cast<uint8_t>(0xF0 | (Code >> 18));
+  static constexpr uint8_t b1 =
+    (length == 1) ? 0
+    : (length == 2) ? static_cast<uint8_t>(0x80 | (Code & 0x3F))
+    : static_cast<uint8_t>(0x80 | ((Code >> 6) & 0x3F));
+  static constexpr uint8_t b2 =
+    (length <= 2) ? 0
+    : (length == 3) ? static_cast<uint8_t>(0x80 | (Code & 0x3F))
+    : static_cast<uint8_t>(0x80 | ((Code >> 6) & 0x3F));
+  static constexpr uint8_t b3 =
+    (length <= 3) ? 0
+    : static_cast<uint8_t>(0x80 | (Code & 0x3F));
+};
+
+template<typename Pack>
+struct PackToIn;
+template<typename List1, typename List2, typename List3, typename List4>
+struct PackToIn<ByteListPack<List1, List2, List3, List4>> {
+  using type = In<List1, List2, List3, List4>;
+};
+
+template<typename Pack>
+struct PackToExcept;
+template<typename List1, typename List2, typename List3, typename List4>
+struct PackToExcept<ByteListPack<List1, List2, List3, List4>> {
+  using type = Except<List1, List2, List3, List4>;
+};
+
+template<typename CodePointList, typename Pack>
+struct BuildInPack;
+template<typename Pack>
+struct BuildInPack<TypeList<>, Pack> {
+  using type = typename PackToIn<Pack>::type;
+};
+template<typename List1, typename List2, typename List3, typename List4, typename Head, typename... Tails>
+struct BuildInPack<TypeList<Head, Tails...>, ByteListPack<List1, List2, List3, List4>> {
+  using Enc = Utf8Encoding<Head::value>;
+  using NextPack = std::conditional_t<
+    Enc::length == 1,
+    ByteListPack<
+      typename PushBackUnique<List1, Char<Enc::b0>>::type,
+      List2, List3, List4
+    >,
+    std::conditional_t<
+      Enc::length == 2,
+      ByteListPack<
+        typename PushBackUnique<List1, Char<Enc::b0>>::type,
+        List2,
+        List3,
+        typename PushBackUnique<List4, Char<Enc::b1>>::type
+      >,
+      std::conditional_t<
+        Enc::length == 3,
+        ByteListPack<
+          typename PushBackUnique<List1, Char<Enc::b0>>::type,
+          List2,
+          typename PushBackUnique<List3, Char<Enc::b1>>::type,
+          typename PushBackUnique<List4, Char<Enc::b2>>::type
+        >,
+        ByteListPack<
+          typename PushBackUnique<List1, Char<Enc::b0>>::type,
+          typename PushBackUnique<List2, Char<Enc::b1>>::type,
+          typename PushBackUnique<List3, Char<Enc::b2>>::type,
+          typename PushBackUnique<List4, Char<Enc::b3>>::type
+        >
+      >
+    >
+  >;
+  using type = typename BuildInPack<TypeList<Tails...>, NextPack>::type;
+};
+
+template<typename CodePointList, typename Pack>
+struct BuildExceptPack;
+template<typename Pack>
+struct BuildExceptPack<TypeList<>, Pack> {
+  using type = typename PackToExcept<Pack>::type;
+};
+template<typename List1, typename List2, typename List3, typename List4, typename Head, typename... Tails>
+struct BuildExceptPack<TypeList<Head, Tails...>, ByteListPack<List1, List2, List3, List4>> {
+  using Enc = Utf8Encoding<Head::value>;
+  using NextPack = std::conditional_t<
+    Enc::length == 1,
+    ByteListPack<
+      typename PushBackUnique<List1, Char<Enc::b0>>::type,
+      List2, List3, List4
+    >,
+    std::conditional_t<
+      Enc::length == 2,
+      ByteListPack<
+        typename PushBackUnique<List1, Char<Enc::b0>>::type,
+        List2,
+        List3,
+        typename PushBackUnique<List4, Char<Enc::b1>>::type
+      >,
+      std::conditional_t<
+        Enc::length == 3,
+        ByteListPack<
+          typename PushBackUnique<List1, Char<Enc::b0>>::type,
+          List2,
+          typename PushBackUnique<List3, Char<Enc::b1>>::type,
+          typename PushBackUnique<List4, Char<Enc::b2>>::type
+        >,
+        ByteListPack<
+          typename PushBackUnique<List1, Char<Enc::b0>>::type,
+          typename PushBackUnique<List2, Char<Enc::b1>>::type,
+          typename PushBackUnique<List3, Char<Enc::b2>>::type,
+          typename PushBackUnique<List4, Char<Enc::b3>>::type
+        >
+      >
+    >
+  >;
+  using type = typename BuildExceptPack<TypeList<Tails...>, NextPack>::type;
+};
+
+template<typename CodePointList>
+struct BuildIn {
+  using type = typename BuildInPack<
+    CodePointList,
+    ByteListPack<TypeList<>, TypeList<>, TypeList<>, TypeList<>>
+  >::type;
+};
+
+template<typename CodePointList>
+struct BuildExcept {
+  using type = typename BuildExceptPack<
+    CodePointList,
+    ByteListPack<TypeList<>, TypeList<>, TypeList<>, TypeList<>>
+  >::type;
+};
+
 /* ParseCharSetAtom: [IN CLASS CHAR] | [IN CLASS CHAR] '-' [IN CLASS CHAR] | Escape */
 template<FixedString Pattern, size_t Pos>
 struct ParseCharSetAtom {
   static_assert(Pos < Pattern.length, "ParseCharSetAtom: unexpected pattern ending");
   static_assert(is_in_class_char(Pattern[Pos]), "ParseCharSetAtom: unknown character");
 
-  struct impl_seq {
-    static_assert(Pos + 2 < Pattern.length && is_in_class_char(Pattern[Pos + 2]),
-      "ParseCharSetAtom: `-` has no ending");
-    using type = typename BuildCharList<Pattern[Pos], Pattern[Pos + 2]>::type;
-    static constexpr size_t next = Pos + 3;
+  template<uint32_t Code>
+  struct UCodePoint {
+    static constexpr uint32_t value = Code;
+  };
+
+  template<uint32_t Start, uint32_t End>
+  struct BuildCodePointRange {
+    static_assert(Start <= End, "ParseCharSetAtom: invalid char range");
+
+    template<typename Indices>
+    struct Impl;
+    template<size_t... Is>
+    struct Impl<std::index_sequence<Is...>> {
+      using type = TypeList<UCodePoint<Start + static_cast<uint32_t>(Is)>...>;
+    };
+
+    using type = typename Impl<std::make_index_sequence<End - Start + 1>>::type;
+  };
+
+  template<typename CodePointList, typename Pack>
+  struct BuildInPack;
+  template<typename List1, typename List2, typename List3, typename List4>
+  struct BuildInPack<TypeList<>, ByteListPack<List1, List2, List3, List4>> {
+    using type = In<List1, List2, List3, List4>;
+  };
+  template<typename List1, typename List2, typename List3, typename List4, typename Head, typename... Tails>
+  struct BuildInPack<TypeList<Head, Tails...>, ByteListPack<List1, List2, List3, List4>> {
+    using Enc = Utf8Encoding<Head::value>;
+    using NextPack = std::conditional_t<
+      Enc::length == 1,
+      ByteListPack<
+        typename PushBackUnique<List1, Char<Enc::b0>>::type,
+        List2, List3, List4
+      >,
+      std::conditional_t<
+        Enc::length == 2,
+        ByteListPack<
+          typename PushBackUnique<List1, Char<Enc::b0>>::type,
+          List2,
+          List3,
+          typename PushBackUnique<List4, Char<Enc::b1>>::type
+        >,
+        std::conditional_t<
+          Enc::length == 3,
+          ByteListPack<
+            typename PushBackUnique<List1, Char<Enc::b0>>::type,
+            List2,
+            typename PushBackUnique<List3, Char<Enc::b1>>::type,
+            typename PushBackUnique<List4, Char<Enc::b2>>::type
+          >,
+          ByteListPack<
+            typename PushBackUnique<List1, Char<Enc::b0>>::type,
+            typename PushBackUnique<List2, Char<Enc::b1>>::type,
+            typename PushBackUnique<List3, Char<Enc::b2>>::type,
+            typename PushBackUnique<List4, Char<Enc::b3>>::type
+          >
+        >
+      >
+    >;
+    using type = typename BuildInPack<TypeList<Tails...>, NextPack>::type;
+  };
+
+  template<typename CodePointList, typename Pack>
+  struct BuildExceptPack;
+  template<typename List1, typename List2, typename List3, typename List4>
+  struct BuildExceptPack<TypeList<>, ByteListPack<List1, List2, List3, List4>> {
+    using type = Except<List1, List2, List3, List4>;
+  };
+  template<typename List1, typename List2, typename List3, typename List4, typename Head, typename... Tails>
+  struct BuildExceptPack<TypeList<Head, Tails...>, ByteListPack<List1, List2, List3, List4>> {
+    using Enc = Utf8Encoding<Head::value>;
+    using NextPack = std::conditional_t<
+      Enc::length == 1,
+      ByteListPack<
+        typename PushBackUnique<List1, Char<Enc::b0>>::type,
+        List2, List3, List4
+      >,
+      std::conditional_t<
+        Enc::length == 2,
+        ByteListPack<
+          typename PushBackUnique<List1, Char<Enc::b0>>::type,
+          List2,
+          List3,
+          typename PushBackUnique<List4, Char<Enc::b1>>::type
+        >,
+        std::conditional_t<
+          Enc::length == 3,
+          ByteListPack<
+            typename PushBackUnique<List1, Char<Enc::b0>>::type,
+            List2,
+            typename PushBackUnique<List3, Char<Enc::b1>>::type,
+            typename PushBackUnique<List4, Char<Enc::b2>>::type
+          >,
+          ByteListPack<
+            typename PushBackUnique<List1, Char<Enc::b0>>::type,
+            typename PushBackUnique<List2, Char<Enc::b1>>::type,
+            typename PushBackUnique<List3, Char<Enc::b2>>::type,
+            typename PushBackUnique<List4, Char<Enc::b3>>::type
+          >
+        >
+      >
+    >;
+    using type = typename BuildExceptPack<TypeList<Tails...>, NextPack>::type;
   };
 
   struct impl_char {
-    using type = TypeList<typename ParseUtf8Literal<Pattern, Pos>::type>;
-    static constexpr size_t next = ParseUtf8Literal<Pattern, Pos>::next;
+    using CodePointParse = ParseUtf8CodePoint<Pattern, Pos>;
+    using type = typename BuildCodePointRange<CodePointParse::value, CodePointParse::value>::type;
+    static constexpr size_t next = CodePointParse::next;
+  };
+
+  struct impl_seq {
+    using Start = ParseUtf8CodePoint<Pattern, Pos>;
+    static_assert(Start::next < Pattern.length && Pattern[Start::next] == '-',
+      "ParseCharSetAtom: `-` has no ending");
+    using End = ParseUtf8CodePoint<Pattern, Start::next + 1>;
+    using type = typename BuildCodePointRange<Start::value, End::value>::type;
+    static constexpr size_t next = End::next;
   };
 
   struct impl_escape {
-    using EscapeParse = ParseEscape<Pattern, Pos>;
-    using type = TypeList<typename EscapeParse::type>;
-    static constexpr size_t next = ParseEscape<Pattern, Pos>::next;
+    static_assert(Pos + 1 < Pattern.length, "ParseCharSetAtom: incomplete escape");
+    static constexpr char esc = Pattern[Pos + 1];
+    using type = std::conditional_t<
+      esc == 'n', TypeList<UCodePoint<'\n'>>,
+      std::conditional_t<
+        esc == 't', TypeList<UCodePoint<'\t'>>,
+        std::conditional_t<
+          esc == 'f', TypeList<UCodePoint<'\f'>>,
+          std::conditional_t<
+            esc == 'r', TypeList<UCodePoint<'\r'>>,
+            std::conditional_t<
+              esc == 'x', TypeList<UCodePoint<ParseHexN<Pattern, Pos + 2, 2>::value>>,
+              std::conditional_t<
+                esc == 'd', typename BuildCodePointRange<'0', '9'>::type,
+                std::conditional_t<
+                  esc == 's', TypeList<UCodePoint<' '>, UCodePoint<'\t'>, UCodePoint<'\n'>, UCodePoint<'\r'>, UCodePoint<'\f'>, UCodePoint<'\v'>>,
+                  std::conditional_t<
+                    esc == 'w',
+                    typename Join<
+                      typename BuildCodePointRange<'0', '9'>::type,
+                      typename Join<
+                        typename BuildCodePointRange<'A', 'Z'>::type,
+                        typename Join<
+                          typename BuildCodePointRange<'a', 'z'>::type,
+                          TypeList<UCodePoint<'_'>>
+                        >::type
+                      >::type
+                    >::type,
+                    TypeList<UCodePoint<static_cast<uint8_t>(esc)>>
+                  >
+                >
+              >
+            >
+          >
+        >
+      >
+    >;
+    static constexpr size_t next = esc == 'x' ? ParseHexN<Pattern, Pos + 2, 2>::next : Pos + 2;
   };
 
   static constexpr bool is_escape = Pattern[Pos] == '\\';
-  static constexpr bool has_hyphen = Pos + 1 < Pattern.length && Pattern[Pos + 1] == '-';
+  static constexpr bool has_hyphen = !is_escape
+    && ParseUtf8CodePoint<Pattern, Pos>::next < Pattern.length
+    && Pattern[ParseUtf8CodePoint<Pattern, Pos>::next] == '-';
   using chosen = std::conditional_t<
     is_escape,
     impl_escape,
@@ -947,7 +1346,7 @@ struct ParseCharGroup {
     static_assert(CharSet::next <= Pattern.length, "ParseCharGroup: char set parsing overflow");
     static_assert(CharSet::next < Pattern.length && Pattern[CharSet::next] == ']',
       "ParseCharGroup: ']' not closed");
-    using type = typename CharListToOrSequential<typename CharSet::type>::type;
+    using type = typename BuildIn<typename CharSet::type>::type;
     static constexpr size_t next = CharSet::next + 1;
   };
 
@@ -956,8 +1355,7 @@ struct ParseCharGroup {
     static_assert(CharSet::next <= Pattern.length, "ParseCharGroup: char set parsing overflow");
     static_assert(CharSet::next < Pattern.length && Pattern[CharSet::next] == ']',
       "ParseCharGroup: ']' not closed");
-    using NegCharList = typename CharListNegation<typename CharSet::type, Alphabet>::type;
-    using type = typename CharListToOrSequential<NegCharList>::type;
+    using type = typename BuildExcept<typename CharSet::type>::type;
     static constexpr size_t next = CharSet::next + 1;
   };
 
@@ -1281,6 +1679,76 @@ template<uint8_t C>
 struct Derivative<Wildcard1, C> {
   using type = typename std::conditional<0x80 <= C && C <= 0xBF, Epsilon, EmptySet>::type;
 };
+template<typename List1, typename List2, typename List3, typename List4, uint8_t C>
+struct Derivative<In<List1, List2, List3, List4>, C> {
+  using type = typename std::conditional<List1::template Contains<Char<C>>, 
+    typename std::conditional<
+      0x00 <= C && C <= 0x7F,
+      Epsilon,
+      typename std::conditional<
+        0xC2 <= C && C <= 0xDF,
+        In1<List4>,
+        typename std::conditional<
+          0xE0 <= C && C <= 0xEF,
+          In2<List3, List4>,
+          typename std::conditional<
+            0xF0 <= C && C <= 0xF4,
+            In3<List2, List3, List4>,
+            EmptySet
+          >::type
+        >::type
+      >::type
+    >::type,
+    EmptySet
+  >::type;
+};
+template<typename List2, typename List3, typename List4, uint8_t C>
+struct Derivative<In3<List2, List3, List4>, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List2::template Contains<Char<C>>, In2<List3, List4>, EmptySet>::type;
+};
+template<typename List3, typename List4, uint8_t C>
+struct Derivative<In2<List3, List4>, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List3::template Contains<Char<C>>, In1<List4>, EmptySet>::type;
+};
+template<typename List4, uint8_t C>
+struct Derivative<In1<List4>, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List4::template Contains<Char<C>>, Epsilon, EmptySet>::type;
+};
+template<typename List1, typename List2, typename List3, typename List4, uint8_t C>
+struct Derivative<Except<List1, List2, List3, List4>, C> {
+  using type = typename std::conditional<!List1::template Contains<Char<C>>, 
+    typename std::conditional<
+      0x00 <= C && C <= 0x7F,
+      Epsilon,
+      typename std::conditional<
+        0xC2 <= C && C <= 0xDF,
+        Except1<List4>,
+        typename std::conditional<
+          0xE0 <= C && C <= 0xEF,
+          Except2<List3, List4>,
+          typename std::conditional<
+            0xF0 <= C && C <= 0xF4,
+            Except3<List2, List3, List4>,
+            EmptySet
+          >::type
+        >::type
+      >::type
+    >::type,
+    EmptySet
+  >::type;
+};
+template<typename List2, typename List3, typename List4, uint8_t C>
+struct Derivative<Except3<List2, List3, List4>, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List2::template Contains<Char<C>>, Except2<List3, List4>, EmptySet>::type;
+};
+template<typename List3, typename List4, uint8_t C>
+struct Derivative<Except2<List3, List4>, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List3::template Contains<Char<C>>, Except1<List4>, EmptySet>::type;
+};
+template<typename List4, uint8_t C>
+struct Derivative<Except1<List4>, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List4::template Contains<Char<C>>, Epsilon, EmptySet>::type;
+};
 /* d(R|S)/dc = dR/dc | dS/dc */
 template<typename R, typename S, uint8_t C>
 struct Derivative<Or<R, S>, C> {
@@ -1335,6 +1803,38 @@ struct RemoveAllAction<Wildcard2> {
 template<>
 struct RemoveAllAction<Wildcard1> {
   using type = Wildcard1;
+};
+template<typename List1, typename List2, typename List3, typename List4>
+struct RemoveAllAction<In<List1, List2, List3, List4>> {
+  using type = In<List1, List2, List3, List4>;
+};
+template<typename List2, typename List3, typename List4>
+struct RemoveAllAction<In3<List2, List3, List4>> {
+  using type = In3<List2, List3, List4>;
+};
+template<typename List3, typename List4>
+struct RemoveAllAction<In2<List3, List4>> {
+  using type = In2<List3, List4>;
+};
+template<typename List4>
+struct RemoveAllAction<In1<List4>> {
+  using type = In1<List4>;
+};
+template<typename List1, typename List2, typename List3, typename List4>
+struct RemoveAllAction<Except<List1, List2, List3, List4>> {
+  using type = Except<List1, List2, List3, List4>;
+};
+template<typename List2, typename List3, typename List4>
+struct RemoveAllAction<Except3<List2, List3, List4>> {
+  using type = Except3<List2, List3, List4>;
+};
+template<typename List3, typename List4>
+struct RemoveAllAction<Except2<List3, List4>> {
+  using type = Except2<List3, List4>;
+};
+template<typename List4>
+struct RemoveAllAction<Except1<List4>> {
+  using type = Except1<List4>;
 };
 template<size_t I>
 struct RemoveAllAction<SetSlot<I>> {
@@ -1651,6 +2151,38 @@ template<>
 struct v<Wildcard1> {
   using type = TypeList<>;
 };
+template<typename List1, typename List2, typename List3, typename List4>
+struct v<In<List1, List2, List3, List4>> {
+  using type = TypeList<>;
+};
+template<typename List2, typename List3, typename List4>
+struct v<In3<List2, List3, List4>> {
+  using type = TypeList<>;
+};
+template<typename List3, typename List4>
+struct v<In2<List3, List4>> {
+  using type = TypeList<>;
+};
+template<typename List4>
+struct v<In1<List4>> {
+  using type = TypeList<>;
+};
+template<typename List1, typename List2, typename List3, typename List4>
+struct v<Except<List1, List2, List3, List4>> {
+  using type = TypeList<>;
+};
+template<typename List2, typename List3, typename List4>
+struct v<Except3<List2, List3, List4>> {
+  using type = TypeList<>;
+};
+template<typename List3, typename List4>
+struct v<Except2<List3, List4>> {
+  using type = TypeList<>;
+};
+template<typename List4>
+struct v<Except1<List4>> {
+  using type = TypeList<>;
+};
 template<size_t I>
 struct v<SetSlot<I>> {
   using type = TypeList<Set<I>>;
@@ -1750,6 +2282,78 @@ struct Derivative<Wildcard1, C> {
     TypeList<DerivedPair<Epsilon, Omega>>,
     TypeList<>
   >;
+};
+template<typename List1, typename List2, typename List3, typename List4, uint8_t C>
+struct Derivative<In<List1, List2, List3, List4>, C> {
+  using type = typename std::conditional<
+    List1::template Contains<Char<C>>,
+    typename std::conditional<
+      0x00 <= C && C <= 0x7F,
+      TypeList<DerivedPair<Epsilon, Omega>>,
+      typename std::conditional<
+        0xC2 <= C && C <= 0xDF,
+        TypeList<DerivedPair<In1<List4>, Omega>>,
+        typename std::conditional<
+          0xE0 <= C && C <= 0xEF,
+          TypeList<DerivedPair<In2<List3, List4>, Omega>>,
+          typename std::conditional<
+            0xF0 <= C && C <= 0xF4,
+            TypeList<DerivedPair<In3<List2, List3, List4>, Omega>>,
+            TypeList<>
+          >::type
+        >::type
+      >::type
+    >::type,
+    TypeList<>
+  >::type;
+};
+template<typename List2, typename List3, typename List4, uint8_t C>
+struct Derivative<In3<List2, List3, List4>, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List2::template Contains<Char<C>>, TypeList<DerivedPair<In2<List3, List4>, Omega>>, TypeList<>>::type;
+};
+template<typename List3, typename List4, uint8_t C>
+struct Derivative<In2<List3, List4>, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List3::template Contains<Char<C>>, TypeList<DerivedPair<In1<List4>, Omega>>, TypeList<>>::type;
+};
+template<typename List4, uint8_t C>
+struct Derivative<In1<List4>, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List4::template Contains<Char<C>>, TypeList<DerivedPair<Epsilon, Omega>>, TypeList<>>::type;
+};
+template<typename List1, typename List2, typename List3, typename List4, uint8_t C>
+struct Derivative<Except<List1, List2, List3, List4>, C> {
+  using type = typename std::conditional<
+    !List1::template Contains<Char<C>>,
+    typename std::conditional<
+      0x00 <= C && C <= 0x7F,
+      TypeList<DerivedPair<Epsilon, Omega>>,
+      typename std::conditional<
+        0xC2 <= C && C <= 0xDF,
+        TypeList<DerivedPair<Except1<List4>, Omega>>,
+        typename std::conditional<
+          0xE0 <= C && C <= 0xEF,
+          TypeList<DerivedPair<Except2<List3, List4>, Omega>>,
+          typename std::conditional<
+            0xF0 <= C && C <= 0xF4,
+            TypeList<DerivedPair<Except3<List2, List3, List4>, Omega>>,
+            TypeList<>
+          >::type
+        >::type
+      >::type
+    >::type,
+    TypeList<>
+  >::type;
+};
+template<typename List2, typename List3, typename List4, uint8_t C>
+struct Derivative<Except3<List2, List3, List4>, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List2::template Contains<Char<C>>, TypeList<DerivedPair<Except2<List3, List4>, Omega>>, TypeList<>>::type;
+};
+template<typename List3, typename List4, uint8_t C>
+struct Derivative<Except2<List3, List4>, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List3::template Contains<Char<C>>, TypeList<DerivedPair<Except1<List4>, Omega>>, TypeList<>>::type;
+};
+template<typename List4, uint8_t C>
+struct Derivative<Except1<List4>, C> {
+  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List4::template Contains<Char<C>>, TypeList<DerivedPair<Epsilon, Omega>>, TypeList<>>::type;
 };
 /* d(R|S)/dx = dR/dx U dS/dx */
 template <typename R, typename S, uint8_t C>
