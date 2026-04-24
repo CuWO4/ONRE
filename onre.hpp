@@ -1910,7 +1910,8 @@ struct Utf8Encoding {
   static constexpr uint8_t b1 =
     (length == 1) ? 0
     : (length == 2) ? static_cast<uint8_t>(0x80 | (Code & 0x3F))
-    : static_cast<uint8_t>(0x80 | ((Code >> 6) & 0x3F));
+    : (length == 3) ? static_cast<uint8_t>(0x80 | ((Code >> 6) & 0x3F))
+    : static_cast<uint8_t>(0x80 | ((Code >> 12) & 0x3F));
   static constexpr uint8_t b2 =
     (length <= 2) ? 0
     : (length == 3) ? static_cast<uint8_t>(0x80 | (Code & 0x3F))
