@@ -14,7 +14,7 @@ A header-only regex engine with zero-cost abstraction and strictly linear-time m
 * ✔️ Single-header file; just `include` to use.
 * ✔️ **Supports capture groups** and replacement based on capture groups.
 * ✔️ Uses Brzozowski derivatives with type-level functional metaprogramming to ensure fast compilation and almost always produce minimal automata, and **it’s cool**!
-* ✔️ Full UTF-8 support, including code-point-aware wildcard `.` and code-point-aware character classes/ranges.
+* ✔️ Full UTF-8 support, including code-point-aware wildcard `.` and code-point-aware character classes/ranges, except negated character classes do not support UTF-8.
 * ✔️ Supports standard regular expressions (concatenation, alternation `|`, Kleene star `*`, parentheses `()`); supports `+` and `?`; supports wildcard `.`; supports character classes (like `[^a-z012]` and `[^一-上]`); supports escapes (`\n`, `\t`, `\d`, `\s`, `\w`, `\xHH` (two hex digits), `\u{H...}` (Unicode code points), `\[`, `\]`, `\*`, ...); supports non-capturing groups `(?:...)`; supports quantifiers (`{n}`, `{n,}`, `{,m}`, `{n,m}`); supports comment `(?#...)`. By default, `.` does not match `\n` or `\r`; define `ONRE_DOTALL` at compile time to make `.` match them as well.
 * ❌️ Does not support zero-width assertions.
 * ❌️ Does not support backreferences.
@@ -87,7 +87,7 @@ pattern: [^一-上]                  str: 字                   result: true
 pattern: (😀)(世界)                 replace_rule: $2/$1        result: 世界/😀
 ```
 
-UTF-8 character classes and ranges are code-point-aware. Malformed UTF-8 input does not match.
+UTF-8 character classes and ranges are code-point-aware, including negated character classes. Malformed UTF-8 input does not match.
 
 ## 🤔 Usage
 

@@ -61,6 +61,11 @@ struct CodePoint {
   static constexpr uint32_t value = code;
 };
 
+template<typename Char>
+struct CharToCodePoint {
+  using type = CodePoint<Char::c>;
+};
+
 template<FixedString Pattern, size_t Pos>
 struct ParseUtf8CodePoint {
   static_assert(Pos < Pattern.length, "unexpected end of pattern");
@@ -130,13 +135,17 @@ struct BuildCodePointRange {
   using type = typename Impl<std::make_index_sequence<End - Start + 1>>::type;
 };
 
-template<typename CharList>
+template<typename CodePointList>
 struct BuildOrTree {
   template<typename C1, typename C2>
-  struct Merge {
-    using type = Or<C1, C2>;
-  };
-  using type = typename RightFold<Merge, CharList, EmptySet>::type;
+  struct MergeF { using type = Or<C1, C2>; };
+  template <typename CodePoint>
+  struct MapF { using type = typename BuildUtf8ByteStreamRegex<CodePoint::value>::type; };
+  using type = typename Simplify<typename RightFold<
+    MergeF,
+    typename Map<MapF, CodePointList>::type,
+    EmptySet
+  >::type>::type;
 };
 
 template<FixedString Pattern, size_t Pos, int64_t Acc = 0>
@@ -192,77 +201,120 @@ struct ParseHexN {
 
 template<uint8_t C, FixedString Pattern, size_t Pos>
 struct EscapeImpl {
-  static constexpr uint32_t code = Pattern[Pos + 1];
-  using type = Char<Pattern[Pos + 1]>;
+  using type = TypeList<CodePoint<Pattern[Pos + 1]>>;
   static constexpr size_t next = Pos + 2;
 };
-using WordList = typename PushBack<typename Join<
-  typename BuildCharList<'a', 'z'>::type,
-  typename Join<
-    typename BuildCharList<'A', 'Z'>::type,
-    typename BuildCharList<'0', '9'>::type
-  >::type
->::type, Char<'_'>>::type;
+using WordList = TypeList<
+  CodePoint<'a'>, CodePoint<'b'>, CodePoint<'c'>, CodePoint<'d'>, CodePoint<'e'>, CodePoint<'f'>,
+  CodePoint<'g'>, CodePoint<'h'>, CodePoint<'i'>, CodePoint<'j'>, CodePoint<'k'>, CodePoint<'l'>,
+  CodePoint<'m'>, CodePoint<'n'>, CodePoint<'o'>, CodePoint<'p'>, CodePoint<'q'>, CodePoint<'r'>,
+  CodePoint<'s'>, CodePoint<'t'>, CodePoint<'u'>, CodePoint<'v'>, CodePoint<'w'>, CodePoint<'x'>,
+  CodePoint<'y'>, CodePoint<'z'>, CodePoint<'A'>, CodePoint<'B'>, CodePoint<'C'>, CodePoint<'D'>,
+  CodePoint<'E'>, CodePoint<'F'>, CodePoint<'G'>, CodePoint<'H'>, CodePoint<'I'>, CodePoint<'J'>,
+  CodePoint<'K'>, CodePoint<'L'>, CodePoint<'M'>, CodePoint<'N'>, CodePoint<'O'>, CodePoint<'P'>,
+  CodePoint<'Q'>, CodePoint<'R'>, CodePoint<'S'>, CodePoint<'T'>, CodePoint<'U'>, CodePoint<'V'>,
+  CodePoint<'W'>, CodePoint<'X'>, CodePoint<'Y'>, CodePoint<'Z'>, CodePoint<'0'>, CodePoint<'1'>,
+  CodePoint<'2'>, CodePoint<'3'>, CodePoint<'4'>, CodePoint<'5'>, CodePoint<'6'>, CodePoint<'7'>,
+  CodePoint<'8'>, CodePoint<'9'>, CodePoint<'_'>
+>;
+using NegativeWordList = TypeList<
+  CodePoint<'\t'>, CodePoint<'\n'>, CodePoint<'\v'>, CodePoint<'\f'>, CodePoint<'\r'>, CodePoint<' '>,
+  CodePoint<'!'>, CodePoint<'"'>, CodePoint<'#'>, CodePoint<'$'>, CodePoint<'%'>, CodePoint<'&'>,
+  CodePoint<'\''>, CodePoint<'('>, CodePoint<')'>, CodePoint<'*'>, CodePoint<'+'>, CodePoint<','>,
+  CodePoint<'-'>, CodePoint<'.'>, CodePoint<'/'>, CodePoint<':'>, CodePoint<';'>, CodePoint<'<'>,
+  CodePoint<'='>, CodePoint<'>'>, CodePoint<'?'>, CodePoint<'@'>, CodePoint<'['>, CodePoint<'\\'>,
+  CodePoint<']'>, CodePoint<'^'>, CodePoint<'`'>, CodePoint<'{'>, CodePoint<'|'>, CodePoint<'}'>, CodePoint<'~'>
+>;
+using DigitalList = TypeList<
+  CodePoint<'0'>, CodePoint<'1'>, CodePoint<'2'>, CodePoint<'3'>, CodePoint<'4'>,
+  CodePoint<'5'>, CodePoint<'6'>, CodePoint<'7'>, CodePoint<'8'>, CodePoint<'9'>
+>;
+using NegativeDigitalList = TypeList<
+  CodePoint<'\t'>, CodePoint<'\n'>, CodePoint<'\v'>, CodePoint<'\f'>, CodePoint<'\r'>, CodePoint<' '>,
+  CodePoint<'!'>, CodePoint<'"'>, CodePoint<'#'>, CodePoint<'$'>, CodePoint<'%'>, CodePoint<'&'>,
+  CodePoint<'\''>, CodePoint<'('>, CodePoint<')'>, CodePoint<'*'>, CodePoint<'+'>, CodePoint<','>,
+  CodePoint<'-'>, CodePoint<'.'>, CodePoint<'/'>, CodePoint<':'>, CodePoint<';'>, CodePoint<'<'>,
+  CodePoint<'='>, CodePoint<'>'>, CodePoint<'?'>, CodePoint<'@'>, CodePoint<'A'>, CodePoint<'B'>,
+  CodePoint<'C'>, CodePoint<'D'>, CodePoint<'E'>, CodePoint<'F'>, CodePoint<'G'>, CodePoint<'H'>,
+  CodePoint<'I'>, CodePoint<'J'>, CodePoint<'K'>, CodePoint<'L'>, CodePoint<'M'>, CodePoint<'N'>,
+  CodePoint<'O'>, CodePoint<'P'>, CodePoint<'Q'>, CodePoint<'R'>, CodePoint<'S'>, CodePoint<'T'>,
+  CodePoint<'U'>, CodePoint<'V'>, CodePoint<'W'>, CodePoint<'X'>, CodePoint<'Y'>, CodePoint<'Z'>,
+  CodePoint<'['>, CodePoint<'\\'>, CodePoint<']'>, CodePoint<'^'>, CodePoint<'_'>, CodePoint<'`'>,
+  CodePoint<'a'>, CodePoint<'b'>, CodePoint<'c'>, CodePoint<'d'>, CodePoint<'e'>, CodePoint<'f'>,
+  CodePoint<'g'>, CodePoint<'h'>, CodePoint<'i'>, CodePoint<'j'>, CodePoint<'k'>, CodePoint<'l'>,
+  CodePoint<'m'>, CodePoint<'n'>, CodePoint<'o'>, CodePoint<'p'>, CodePoint<'q'>, CodePoint<'r'>,
+  CodePoint<'s'>, CodePoint<'t'>, CodePoint<'u'>, CodePoint<'v'>, CodePoint<'w'>, CodePoint<'x'>,
+  CodePoint<'y'>, CodePoint<'z'>, CodePoint<'{'>, CodePoint<'|'>, CodePoint<'}'>, CodePoint<'~'>
+>;
+using WhitespaceList = TypeList<
+  CodePoint<'\t'>, CodePoint<'\n'>, CodePoint<'\v'>, CodePoint<'\f'>, CodePoint<'\r'>, CodePoint<' '>
+>;
+using NegativeWhitespaceList = TypeList<
+  CodePoint<'!'>, CodePoint<'"'>, CodePoint<'#'>, CodePoint<'$'>, CodePoint<'%'>, CodePoint<'&'>,
+  CodePoint<'\''>, CodePoint<'('>, CodePoint<')'>, CodePoint<'*'>, CodePoint<'+'>, CodePoint<','>,
+  CodePoint<'-'>, CodePoint<'.'>, CodePoint<'/'>, CodePoint<'0'>, CodePoint<'1'>, CodePoint<'2'>,
+  CodePoint<'3'>, CodePoint<'4'>, CodePoint<'5'>, CodePoint<'6'>, CodePoint<'7'>, CodePoint<'8'>,
+  CodePoint<'9'>, CodePoint<':'>, CodePoint<';'>, CodePoint<'<'>, CodePoint<'='>, CodePoint<'>'>,
+  CodePoint<'?'>, CodePoint<'@'>, CodePoint<'A'>, CodePoint<'B'>, CodePoint<'C'>, CodePoint<'D'>,
+  CodePoint<'E'>, CodePoint<'F'>, CodePoint<'G'>, CodePoint<'H'>, CodePoint<'I'>, CodePoint<'J'>,
+  CodePoint<'K'>, CodePoint<'L'>, CodePoint<'M'>, CodePoint<'N'>, CodePoint<'O'>, CodePoint<'P'>,
+  CodePoint<'Q'>, CodePoint<'R'>, CodePoint<'S'>, CodePoint<'T'>, CodePoint<'U'>, CodePoint<'V'>,
+  CodePoint<'W'>, CodePoint<'X'>, CodePoint<'Y'>, CodePoint<'Z'>, CodePoint<'['>, CodePoint<'\\'>,
+  CodePoint<']'>, CodePoint<'^'>, CodePoint<'_'>, CodePoint<'`'>, CodePoint<'a'>, CodePoint<'b'>,
+  CodePoint<'c'>, CodePoint<'d'>, CodePoint<'e'>, CodePoint<'f'>, CodePoint<'g'>, CodePoint<'h'>,
+  CodePoint<'i'>, CodePoint<'j'>, CodePoint<'k'>, CodePoint<'l'>, CodePoint<'m'>, CodePoint<'n'>,
+  CodePoint<'o'>, CodePoint<'p'>, CodePoint<'q'>, CodePoint<'r'>, CodePoint<'s'>, CodePoint<'t'>,
+  CodePoint<'u'>, CodePoint<'v'>, CodePoint<'w'>, CodePoint<'x'>, CodePoint<'y'>, CodePoint<'z'>,
+  CodePoint<'{'>, CodePoint<'|'>, CodePoint<'}'>, CodePoint<'~'>
+>;
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'w', Pattern, Pos> {
-  static constexpr uint32_t code = -1;
-  using type = typename BuildOrTree<WordList>::type;
+  using type = WordList;
   static constexpr size_t next = Pos + 2;
 };
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'W', Pattern, Pos> {
-  static constexpr uint32_t code = -1;
-  using type = typename BuildOrTree<typename CharListNegation<WordList, Alphabet>::type>::type;
+  using type = NegativeWordList;
   static constexpr size_t next = Pos + 2;
 };
-using DigitalList = typename BuildCharList<'0', '9'>::type;
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'d', Pattern, Pos> {
-  static constexpr uint32_t code = -1;
-  using type = typename BuildOrTree<DigitalList>::type;
+  using type = DigitalList;
   static constexpr size_t next = Pos + 2;
 };
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'D', Pattern, Pos> {
-  static constexpr uint32_t code = -1;
-  using type = typename BuildOrTree<typename CharListNegation<DigitalList, Alphabet>::type>::type;
+  using type = NegativeDigitalList;
   static constexpr size_t next = Pos + 2;
 };
-using WhitespaceList = TypeList<Char<'\t'>, Char<'\n'>, Char<'\v'>, Char<'\f'>, Char<'\r'>, Char<' '>>;
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'s', Pattern, Pos> {
-  static constexpr uint32_t code = -1;
-  using type = typename BuildOrTree<WhitespaceList>::type;
+  using type = WhitespaceList;
   static constexpr size_t next = Pos + 2;
 };
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'S', Pattern, Pos> {
-  static constexpr uint32_t code = -1;
-  using type = typename BuildOrTree<typename CharListNegation<WhitespaceList, Alphabet>::type>::type;
+  using type = NegativeWhitespaceList;
   static constexpr size_t next = Pos + 2;
 };
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'n', Pattern, Pos> {
-  static constexpr uint32_t code = '\n';
-  using type = Char<'\n'>;
+  using type = TypeList<CodePoint<'\n'>>;
   static constexpr size_t next = Pos + 2;
 };
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'t', Pattern, Pos> {
-  static constexpr uint32_t code = '\t';
-  using type = Char<'\t'>;
+  using type = TypeList<CodePoint<'\t'>>;
   static constexpr size_t next = Pos + 2;
 };
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'f', Pattern, Pos> {
-  static constexpr uint32_t code = '\f';
-  using type = Char<'\f'>;
+  using type = TypeList<CodePoint<'\f'>>;
   static constexpr size_t next = Pos + 2;
 };
 template<FixedString Pattern, size_t Pos>
 struct EscapeImpl<'r', Pattern, Pos> {
-  static constexpr uint32_t code = '\r';
-  using type = Char<'\r'>;
+  using type = TypeList<CodePoint<'\r'>>;
   static constexpr size_t next = Pos + 2;
 };
 template<FixedString Pattern, size_t Pos>
@@ -276,8 +328,7 @@ struct EscapeImpl<'x', Pattern, Pos> {
     "no value specified for `\\x`"
   );
   using HexParse = ParseHexN<Pattern, Pos + 2, 2>;
-  static constexpr uint32_t code = HexParse::value;
-  using type = typename BuildUtf8ByteStreamRegex<HexParse::value>::type;
+  using type = TypeList<CodePoint<HexParse::value>>;
   static constexpr size_t next = HexParse::next;
 };
 
@@ -324,8 +375,7 @@ struct EscapeImpl<'u', Pattern, Pos> {
   static_assert(Pos + 3 < Pattern.length, "ParseEscape: incomplete Unicode escape");
   static_assert(Pattern[Pos + 2] == '{', "ParseEscape: malformed Unicode escape");
   using HexParse = ParseHexBraced<Pattern, Pos + 3, 0, 0>;
-  static constexpr uint32_t code = HexParse::value;
-  using type = typename BuildUtf8ByteStreamRegex<HexParse::value>::type;
+  using type = TypeList<CodePoint<HexParse::value>>;
   static constexpr size_t next = HexParse::next;
 };
 
@@ -333,7 +383,6 @@ template <FixedString Pattern, size_t Pos>
 struct ParseEscape {
   static_assert(Pos + 1 < Pattern.length, "ParseEscape: cannot find escape character");
   using chosen = EscapeImpl<Pattern[Pos + 1], Pattern, Pos>;
-  static constexpr uint32_t code = chosen::code;
   using type = typename chosen::type;
   static constexpr size_t next = chosen::next;
 };
@@ -348,7 +397,7 @@ struct ParseCHAR {
 
   struct impl_escape {
     using EscapeParse = ParseEscape<Pattern, Pos>;
-    using type = typename EscapeParse::type;
+    using type = typename BuildOrTree<typename EscapeParse::type>::type;
     static constexpr size_t next = EscapeParse::next;
   };
 
@@ -397,238 +446,30 @@ struct Utf8Encoding {
     : static_cast<uint8_t>(0x80 | (Code & 0x3F));
 };
 
-template<typename Pack>
-struct PackToIn;
-template<typename List1, typename List2, typename List3, typename List4>
-struct PackToIn<ByteListPack<List1, List2, List3, List4>> {
-  using type = In<List1, List2, List3, List4>;
-};
-
-template<typename Pack>
-struct PackToExcept;
-template<typename List1, typename List2, typename List3, typename List4>
-struct PackToExcept<ByteListPack<List1, List2, List3, List4>> {
-  using type = Except<List1, List2, List3, List4>;
-};
-
-template<typename CodePointList, typename Pack>
-struct BuildInPack;
-template<typename Pack>
-struct BuildInPack<TypeList<>, Pack> {
-  using type = typename PackToIn<Pack>::type;
-};
-template<typename List1, typename List2, typename List3, typename List4, typename Head, typename... Tails>
-struct BuildInPack<TypeList<Head, Tails...>, ByteListPack<List1, List2, List3, List4>> {
-  using Enc = Utf8Encoding<Head::value>;
-  using NextPack = std::conditional_t<
-    Enc::length == 1,
-    ByteListPack<
-      typename PushBackUnique<List1, Char<Enc::b0>>::type,
-      List2, List3, List4
-    >,
-    std::conditional_t<
-      Enc::length == 2,
-      ByteListPack<
-        typename PushBackUnique<List1, Char<Enc::b0>>::type,
-        List2,
-        List3,
-        typename PushBackUnique<List4, Char<Enc::b1>>::type
-      >,
-      std::conditional_t<
-        Enc::length == 3,
-        ByteListPack<
-          typename PushBackUnique<List1, Char<Enc::b0>>::type,
-          List2,
-          typename PushBackUnique<List3, Char<Enc::b1>>::type,
-          typename PushBackUnique<List4, Char<Enc::b2>>::type
-        >,
-        ByteListPack<
-          typename PushBackUnique<List1, Char<Enc::b0>>::type,
-          typename PushBackUnique<List2, Char<Enc::b1>>::type,
-          typename PushBackUnique<List3, Char<Enc::b2>>::type,
-          typename PushBackUnique<List4, Char<Enc::b3>>::type
-        >
-      >
-    >
-  >;
-  using type = typename BuildInPack<TypeList<Tails...>, NextPack>::type;
-};
-
-template<typename CodePointList, typename Pack>
-struct BuildExceptPack;
-template<typename Pack>
-struct BuildExceptPack<TypeList<>, Pack> {
-  using type = typename PackToExcept<Pack>::type;
-};
-template<typename List1, typename List2, typename List3, typename List4, typename Head, typename... Tails>
-struct BuildExceptPack<TypeList<Head, Tails...>, ByteListPack<List1, List2, List3, List4>> {
-  using Enc = Utf8Encoding<Head::value>;
-  using NextPack = std::conditional_t<
-    Enc::length == 1,
-    ByteListPack<
-      typename PushBackUnique<List1, Char<Enc::b0>>::type,
-      List2, List3, List4
-    >,
-    std::conditional_t<
-      Enc::length == 2,
-      ByteListPack<
-        typename PushBackUnique<List1, Char<Enc::b0>>::type,
-        List2,
-        List3,
-        typename PushBackUnique<List4, Char<Enc::b1>>::type
-      >,
-      std::conditional_t<
-        Enc::length == 3,
-        ByteListPack<
-          typename PushBackUnique<List1, Char<Enc::b0>>::type,
-          List2,
-          typename PushBackUnique<List3, Char<Enc::b1>>::type,
-          typename PushBackUnique<List4, Char<Enc::b2>>::type
-        >,
-        ByteListPack<
-          typename PushBackUnique<List1, Char<Enc::b0>>::type,
-          typename PushBackUnique<List2, Char<Enc::b1>>::type,
-          typename PushBackUnique<List3, Char<Enc::b2>>::type,
-          typename PushBackUnique<List4, Char<Enc::b3>>::type
-        >
-      >
-    >
-  >;
-  using type = typename BuildExceptPack<TypeList<Tails...>, NextPack>::type;
-};
-
-template<typename CodePointList>
-struct BuildIn {
-  using type = typename BuildInPack<
-    CodePointList,
-    ByteListPack<TypeList<>, TypeList<>, TypeList<>, TypeList<>>
-  >::type;
-};
-
-template<typename CodePointList>
-struct BuildExcept {
-  using type = typename BuildExceptPack<
-    CodePointList,
-    ByteListPack<TypeList<>, TypeList<>, TypeList<>, TypeList<>>
-  >::type;
-};
-
 /* ParseCharSetAtom: [IN CLASS CHAR] | [IN CLASS CHAR] '-' [IN CLASS CHAR] | Escape */
 template<FixedString Pattern, size_t Pos>
 struct ParseCharSetAtom {
   static_assert(Pos < Pattern.length, "ParseCharSetAtom: unexpected pattern ending");
   static_assert(is_in_class_char(Pattern[Pos]), "ParseCharSetAtom: unknown character");
 
-  template<typename CodePointList, typename Pack>
-  struct BuildInPack;
-  template<typename List1, typename List2, typename List3, typename List4>
-  struct BuildInPack<TypeList<>, ByteListPack<List1, List2, List3, List4>> {
-    using type = In<List1, List2, List3, List4>;
-  };
-  template<typename List1, typename List2, typename List3, typename List4, typename Head, typename... Tails>
-  struct BuildInPack<TypeList<Head, Tails...>, ByteListPack<List1, List2, List3, List4>> {
-    using Enc = Utf8Encoding<Head::value>;
-    using NextPack = std::conditional_t<
-      Enc::length == 1,
-      ByteListPack<
-        typename PushBackUnique<List1, Char<Enc::b0>>::type,
-        List2, List3, List4
-      >,
-      std::conditional_t<
-        Enc::length == 2,
-        ByteListPack<
-          typename PushBackUnique<List1, Char<Enc::b0>>::type,
-          List2,
-          List3,
-          typename PushBackUnique<List4, Char<Enc::b1>>::type
-        >,
-        std::conditional_t<
-          Enc::length == 3,
-          ByteListPack<
-            typename PushBackUnique<List1, Char<Enc::b0>>::type,
-            List2,
-            typename PushBackUnique<List3, Char<Enc::b1>>::type,
-            typename PushBackUnique<List4, Char<Enc::b2>>::type
-          >,
-          ByteListPack<
-            typename PushBackUnique<List1, Char<Enc::b0>>::type,
-            typename PushBackUnique<List2, Char<Enc::b1>>::type,
-            typename PushBackUnique<List3, Char<Enc::b2>>::type,
-            typename PushBackUnique<List4, Char<Enc::b3>>::type
-          >
-        >
-      >
-    >;
-    using type = typename BuildInPack<TypeList<Tails...>, NextPack>::type;
-  };
-
-  template<typename CodePointList, typename Pack>
-  struct BuildExceptPack;
-  template<typename List1, typename List2, typename List3, typename List4>
-  struct BuildExceptPack<TypeList<>, ByteListPack<List1, List2, List3, List4>> {
-    using type = Except<List1, List2, List3, List4>;
-  };
-  template<typename List1, typename List2, typename List3, typename List4, typename Head, typename... Tails>
-  struct BuildExceptPack<TypeList<Head, Tails...>, ByteListPack<List1, List2, List3, List4>> {
-    using Enc = Utf8Encoding<Head::value>;
-    using NextPack = std::conditional_t<
-      Enc::length == 1,
-      ByteListPack<
-        typename PushBackUnique<List1, Char<Enc::b0>>::type,
-        List2, List3, List4
-      >,
-      std::conditional_t<
-        Enc::length == 2,
-        ByteListPack<
-          typename PushBackUnique<List1, Char<Enc::b0>>::type,
-          List2,
-          List3,
-          typename PushBackUnique<List4, Char<Enc::b1>>::type
-        >,
-        std::conditional_t<
-          Enc::length == 3,
-          ByteListPack<
-            typename PushBackUnique<List1, Char<Enc::b0>>::type,
-            List2,
-            typename PushBackUnique<List3, Char<Enc::b1>>::type,
-            typename PushBackUnique<List4, Char<Enc::b2>>::type
-          >,
-          ByteListPack<
-            typename PushBackUnique<List1, Char<Enc::b0>>::type,
-            typename PushBackUnique<List2, Char<Enc::b1>>::type,
-            typename PushBackUnique<List3, Char<Enc::b2>>::type,
-            typename PushBackUnique<List4, Char<Enc::b3>>::type
-          >
-        >
-      >
-    >;
-    using type = typename BuildExceptPack<TypeList<Tails...>, NextPack>::type;
-  };
-
   struct impl_char {
     using CodePointParse = ParseUtf8CodePoint<Pattern, Pos>;
-    using type = typename BuildCodePointRange<CodePointParse::value, CodePointParse::value>::type;
+    using type = TypeList<CodePoint<CodePointParse::value>>;
     static constexpr size_t next = CodePointParse::next;
   };
 
   struct impl_seq {
     using Start = ParseUtf8CodePoint<Pattern, Pos>;
-    static_assert(Start::next < Pattern.length && Pattern[Start::next] == '-',
-      "ParseCharSetAtom: `-` has no ending");
+    static_assert(Start::next + 1 < Pattern.length, "ParseCharSetAtom: `-` has no ending");
     using End = ParseUtf8CodePoint<Pattern, Start::next + 1>;
     using type = typename BuildCodePointRange<Start::value, End::value>::type;
     static constexpr size_t next = End::next;
   };
 
   struct impl_escape {
-    static_assert(Pos + 1 < Pattern.length, "unexpected ending"); 
-    static_assert(
-      Pattern[Pos + 1] != 'w' && Pattern[Pos + 1] != 'W' && Pattern[Pos + 1] != 'd' 
-      && Pattern[Pos + 1] != 'D' && Pattern[Pos + 1] != 's' && Pattern[Pos + 1] != 'S', 
-      "char set do not support \\w, \\W, \\d, \\D, \\s, \\S. please use ([...]|\\w) explicitly"
-    );
+    static_assert(Pos + 1 < Pattern.length, "unexpected ending");
     using EscapeParse = ParseEscape<Pattern, Pos>;
-    using type = TypeList<CodePoint<EscapeParse::code>>;
+    using type = typename EscapeParse::type;
     static constexpr size_t next = EscapeParse::next;
   };
 
@@ -655,7 +496,7 @@ struct ParseCharSet {
   struct impl_run_on {
     using Next = ParseCharSet<Pattern, CharSetAtom::next>;
     static_assert(Next::next <= Pattern.length, "ParseCharSet: next parsing overflow");
-    using type = typename JoinUnique<typename CharSetAtom::type, typename Next::type>::type;
+    using type = typename Join<typename CharSetAtom::type, typename Next::type>::type;
     static constexpr size_t next = Next::next;
   };
 
@@ -679,16 +520,48 @@ struct ParseCharGroup {
     static_assert(CharSet::next <= Pattern.length, "ParseCharGroup: char set parsing overflow");
     static_assert(CharSet::next < Pattern.length && Pattern[CharSet::next] == ']',
       "ParseCharGroup: ']' not closed");
-    using type = typename BuildIn<typename CharSet::type>::type;
+    using type = typename BuildOrTree<typename Unique<typename CharSet::type>::type>::type;
     static constexpr size_t next = CharSet::next + 1;
   };
 
   struct impl_neg {
+    using ASCIIVisibleAlphabet = TypeList<
+      CodePoint<'\t'>, CodePoint<'\n'>, CodePoint<'\v'>, CodePoint<'\f'>, CodePoint<'\r'>, CodePoint<' '>,
+      CodePoint<'!'>, CodePoint<'"'>, CodePoint<'#'>, CodePoint<'$'>, CodePoint<'%'>, CodePoint<'&'>, CodePoint<'\''>,
+      CodePoint<'('>, CodePoint<')'>, CodePoint<'*'>, CodePoint<'+'>, CodePoint<','>, CodePoint<'-'>, CodePoint<'.'>,
+      CodePoint<'/'>, CodePoint<'0'>, CodePoint<'1'>, CodePoint<'2'>, CodePoint<'3'>, CodePoint<'4'>, CodePoint<'5'>,
+      CodePoint<'6'>, CodePoint<'7'>, CodePoint<'8'>, CodePoint<'9'>, CodePoint<':'>, CodePoint<';'>, CodePoint<'<'>,
+      CodePoint<'='>, CodePoint<'>'>, CodePoint<'?'>, CodePoint<'@'>, CodePoint<'A'>, CodePoint<'B'>, CodePoint<'C'>,
+      CodePoint<'D'>, CodePoint<'E'>, CodePoint<'F'>, CodePoint<'G'>, CodePoint<'H'>, CodePoint<'I'>, CodePoint<'J'>,
+      CodePoint<'K'>, CodePoint<'L'>, CodePoint<'M'>, CodePoint<'N'>, CodePoint<'O'>, CodePoint<'P'>, CodePoint<'Q'>,
+      CodePoint<'R'>, CodePoint<'S'>, CodePoint<'T'>, CodePoint<'U'>, CodePoint<'V'>, CodePoint<'W'>, CodePoint<'X'>,
+      CodePoint<'Y'>, CodePoint<'Z'>, CodePoint<'['>, CodePoint<'\\'>, CodePoint<']'>, CodePoint<'^'>, CodePoint<'_'>,
+      CodePoint<'`'>, CodePoint<'a'>, CodePoint<'b'>, CodePoint<'c'>, CodePoint<'d'>, CodePoint<'e'>, CodePoint<'f'>,
+      CodePoint<'g'>, CodePoint<'h'>, CodePoint<'i'>, CodePoint<'j'>, CodePoint<'k'>, CodePoint<'l'>, CodePoint<'m'>,
+      CodePoint<'n'>, CodePoint<'o'>, CodePoint<'p'>, CodePoint<'q'>, CodePoint<'r'>, CodePoint<'s'>, CodePoint<'t'>,
+      CodePoint<'u'>, CodePoint<'v'>, CodePoint<'w'>, CodePoint<'x'>, CodePoint<'y'>, CodePoint<'z'>, CodePoint<'{'>,
+      CodePoint<'|'>, CodePoint<'}'>, CodePoint<'~'>
+    >;
+    template <typename List, typename Alphabet = ASCIIVisibleAlphabet>
+    struct CodePointListNegation;
+    template <typename List, typename Head, typename... Tails>
+    struct CodePointListNegation<List, TypeList<Head, Tails...>> {
+      using type = typename std::conditional<
+        List::template Contains<Head>,
+        typename CodePointListNegation<List, TypeList<Tails...>>::type,
+        typename PushFront<typename CodePointListNegation<List, TypeList<Tails...>>::type, Head>::type
+      >::type;
+    };
+    template <typename List>
+    struct CodePointListNegation<List, TypeList<>> {
+      using type = TypeList<>;
+    };
+
     using CharSet = ParseCharSet<Pattern, Pos + 2>;
     static_assert(CharSet::next <= Pattern.length, "ParseCharGroup: char set parsing overflow");
     static_assert(CharSet::next < Pattern.length && Pattern[CharSet::next] == ']',
       "ParseCharGroup: ']' not closed");
-    using type = typename BuildExcept<typename CharSet::type>::type;
+    using type = typename BuildOrTree<typename CodePointListNegation<typename CharSet::type>::type>::type;
     static constexpr size_t next = CharSet::next + 1;
   };
 

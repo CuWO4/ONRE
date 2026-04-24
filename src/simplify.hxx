@@ -60,6 +60,15 @@ template<>
 struct Simplify<Or<Closure<Wildcard>, Closure<Wildcard>>> {
   using type = Closure<Wildcard>;
 };
+/* TR|TS <=> T(R|S) */
+template<typename T, typename R, typename S>
+struct Simplify<Or<Concat<T, R>, Concat<T, S>>> {
+  using type = typename Simplify<Concat<T, Or<R, S>>>::type;
+};
+template<typename T, typename R>
+struct Simplify<Or<Concat<T, R>, Concat<T, R>>> {
+  using type = typename Simplify<Concat<T, R>>::type;
+};
 /* 0R <=> R0 <=> 0 */
 template<typename R>
 struct Simplify<Concat<EmptySet, R>> {

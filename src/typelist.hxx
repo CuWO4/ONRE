@@ -98,6 +98,21 @@ struct JoinUnique<List1, TypeList<>> {
   using type = List1;
 };
 
+template <typename List>
+struct Unique;
+template <typename Head, typename... Tails>
+struct Unique<TypeList<Head, Tails...>> {
+  using type = std::conditional_t<
+    TypeList<Tails...>::template Contains<Head>, 
+    typename Unique<TypeList<Tails...>>::type,
+    typename PushFront<typename Unique<TypeList<Tails...>>::type, Head>::type
+  >;
+};
+template<>
+struct Unique<TypeList<>> {
+  using type = TypeList<>;
+};
+
 template<template<typename> typename Func, typename List>
 struct Map;
 template<template<typename> typename Func, typename... Ts>

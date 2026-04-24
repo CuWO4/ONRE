@@ -37,6 +37,6 @@ void extended_alphabet_and_escape_test() {
   test_match_and_log<"\\x4fa">("Oa", true);
   test_match_and_log<"\\x4f3">("O3", true);
   test_match_and_log<"\\x4f3">("O", false);
-  test_match_and_log<"(\\s|[\\x4f])+">("O  O \n", true);
-  test_match_and_log<"(\\s|[\\x4f])+">("O  Or \n", false);
+  test_match_and_log<"([\\s\\x4f])+">("O  O \n", true);
+  test_match_and_log<"([\\s\\x4f])+">("O  Or \n", false);
 }
