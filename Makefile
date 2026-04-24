@@ -17,10 +17,6 @@ else
 	MODE_DIR := release_build
 endif
 
-ifeq ($(MAKECMDGOALS),ftime-trace)
-	CXXFLAGS += -ftime-trace
-endif
-
 ifeq ($(OS),Windows_NT)
 	OS_SUFFIX := -win_nt
 else
@@ -81,7 +77,7 @@ clean :
 
 ftime-trace :
 	$(MAKE) clean
-	$(MAKE) all
+	$(MAKE) all CXXFLAGS='$(CXXFLAGS) -ftime-trace'
 
 # link #
 $(TARGET) : $(OBJS)
