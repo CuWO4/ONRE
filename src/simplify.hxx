@@ -60,6 +60,23 @@ template<>
 struct Simplify<Or<Closure<Wildcard>, Closure<Wildcard>>> {
   using type = Closure<Wildcard>;
 };
+/* !list|a <=> a|!list <=> !list iff. a not in list*/
+template<typename CharList, uint8_t C>
+struct Simplify<Or<Except<CharList>, Char<C>>> {
+  using type = typename std::conditional<
+    CharList::template Contains<Char<C>>,
+    Or<Except<CharList>, Char<C>>,
+    Except<CharList>
+  >::type;
+};
+template<typename CharList, uint8_t C>
+struct Simplify<Or<Char<C>, Except<CharList>>> {
+  using type = typename std::conditional<
+    CharList::template Contains<Char<C>>,
+    Or<Except<CharList>, Char<C>>,
+    Except<CharList>
+  >::type;
+};
 /* TR|TS <=> T(R|S) */
 template<typename T, typename R, typename S>
 struct Simplify<Or<Concat<T, R>, Concat<T, S>>> {

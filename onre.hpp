@@ -417,22 +417,8 @@ struct Wildcard {};
 struct Wildcard3 {};
 struct Wildcard2 {};
 struct Wildcard1 {};
-template<typename List1, typename List2, typename List3, typename List4>
-struct In {};
-template<typename List2, typename List3, typename List4>
-struct In3 {};
-template<typename List3, typename List4>
-struct In2 {};
-template<typename List4>
-struct In1 {};
-template<typename List1, typename List2, typename List3, typename List4>
+template<typename CharList>
 struct Except {};
-template<typename List2, typename List3, typename List4>
-struct Except3 {};
-template<typename List3, typename List4>
-struct Except2 {};
-template<typename List4>
-struct Except1 {};
 template<std::size_t I>
 struct SetSlot {
   static constexpr std::size_t i = I;
@@ -452,37 +438,9 @@ struct Closure {
 
 /* === nullable testing, testing whether epsilon in L(R) === */
 template<typename R>
-struct Nullable {};
-template<>
-struct Nullable<EmptySet> : std::false_type {};
+struct Nullable : std::false_type {};
 template<>
 struct Nullable<Epsilon> : std::true_type {};
-template<uint8_t C>
-struct Nullable<Char<C>> : std::false_type {};
-template<>
-struct Nullable<Wildcard> : std::false_type {};
-template<>
-struct Nullable<Wildcard3> : std::false_type {};
-template<>
-struct Nullable<Wildcard2> : std::false_type {};
-template<>
-struct Nullable<Wildcard1> : std::false_type {};
-template<typename... Lists>
-struct Nullable<In<Lists...>> : std::false_type {};
-template<typename... Lists>
-struct Nullable<In3<Lists...>> : std::false_type {};
-template<typename... Lists>
-struct Nullable<In2<Lists...>> : std::false_type {};
-template<typename... Lists>
-struct Nullable<In1<Lists...>> : std::false_type {};
-template<typename... Lists>
-struct Nullable<Except<Lists...>> : std::false_type {};
-template<typename... Lists>
-struct Nullable<Except3<Lists...>> : std::false_type {};
-template<typename... Lists>
-struct Nullable<Except2<Lists...>> : std::false_type {};
-template<typename... Lists>
-struct Nullable<Except1<Lists...>> : std::false_type {};
 template<size_t I>
 struct Nullable<SetSlot<I>> : std::true_type {};
 template<typename L, typename R>
@@ -560,37 +518,12 @@ template<typename Acc>
 struct First<Wildcard1, Acc> {
   using type = typename JoinUnique<Acc, Utf8ContinuationByteAlphabet>::type;
 };
-template<typename List1, typename... Lists, typename Acc>
-struct First<In<List1, Lists...>, Acc> {
-  using type = typename JoinUnique<Acc, List1>::type;
-};
-template<typename List2, typename... Lists, typename Acc>
-struct First<In3<List2, Lists...>, Acc> {
-  using type = typename JoinUnique<Acc, List2>::type;
-};
-template<typename List3, typename... Lists, typename Acc>
-struct First<In2<List3, Lists...>, Acc> {
-  using type = typename JoinUnique<Acc, List3>::type;
-};
-template<typename List4, typename Acc>
-struct First<In1<List4>, Acc> {
-  using type = typename JoinUnique<Acc, List4>::type;
-};
-template<typename List1, typename... Lists, typename Acc>
-struct First<Except<List1, Lists...>, Acc> {
-  using type = typename JoinUnique<Acc, typename CharListNegation<List1, Utf8FirstByteAlphabet>::type>::type;
-};
-template<typename List2, typename... Lists, typename Acc>
-struct First<Except3<List2, Lists...>, Acc> {
-  using type = typename JoinUnique<Acc, typename CharListNegation<List2, Utf8ContinuationByteAlphabet>::type>::type;
-};
-template<typename List3, typename... Lists, typename Acc>
-struct First<Except2<List3, Lists...>, Acc> {
-  using type = typename JoinUnique<Acc, typename CharListNegation<List3, Utf8ContinuationByteAlphabet>::type>::type;
-};
-template<typename List4, typename Acc>
-struct First<Except1<List4>, Acc> {
-  using type = typename JoinUnique<Acc, typename CharListNegation<List4, Utf8ContinuationByteAlphabet>::type>::type;
+template <typename CharList, typename Acc>
+struct First<Except<CharList>, Acc> {
+  using type = typename JoinUnique<
+    Acc,
+    typename CharListNegation<CharList, Utf8FirstByteAlphabet>::type
+  >::type;
 };
 template <size_t I, typename Acc>
 struct First<SetSlot<I>, Acc> {
@@ -679,6 +612,23 @@ struct Simplify<Or<EmptySet, Closure<Wildcard>>> {
 template<>
 struct Simplify<Or<Closure<Wildcard>, Closure<Wildcard>>> {
   using type = Closure<Wildcard>;
+};
+/* !list|a <=> a|!list <=> !list iff. a not in list*/
+template<typename CharList, uint8_t C>
+struct Simplify<Or<Except<CharList>, Char<C>>> {
+  using type = typename std::conditional<
+    CharList::template Contains<Char<C>>,
+    Or<Except<CharList>, Char<C>>,
+    Except<CharList>
+  >::type;
+};
+template<typename CharList, uint8_t C>
+struct Simplify<Or<Char<C>, Except<CharList>>> {
+  using type = typename std::conditional<
+    CharList::template Contains<Char<C>>,
+    Or<Except<CharList>, Char<C>>,
+    Except<CharList>
+  >::type;
 };
 /* TR|TS <=> T(R|S) */
 template<typename T, typename R, typename S>
@@ -891,66 +841,12 @@ struct Product<List1, TypeList<>, Acc> {
 };
 
 template<typename RE>
-struct v;
-template<>
-struct v<EmptySet> {
+struct v {
   using type = TypeList<>;
 };
 template<>
 struct v<Epsilon> {
   using type = TypeList<Omega>;
-};
-template<uint8_t C>
-struct v<Char<C>> {
-  using type = TypeList<>;
-};
-template<>
-struct v<Wildcard> {
-  using type = TypeList<>;
-};
-template<>
-struct v<Wildcard3> {
-  using type = TypeList<>;
-};
-template<>
-struct v<Wildcard2> {
-  using type = TypeList<>;
-};
-template<>
-struct v<Wildcard1> {
-  using type = TypeList<>;
-};
-template<typename List1, typename List2, typename List3, typename List4>
-struct v<In<List1, List2, List3, List4>> {
-  using type = TypeList<>;
-};
-template<typename List2, typename List3, typename List4>
-struct v<In3<List2, List3, List4>> {
-  using type = TypeList<>;
-};
-template<typename List3, typename List4>
-struct v<In2<List3, List4>> {
-  using type = TypeList<>;
-};
-template<typename List4>
-struct v<In1<List4>> {
-  using type = TypeList<>;
-};
-template<typename List1, typename List2, typename List3, typename List4>
-struct v<Except<List1, List2, List3, List4>> {
-  using type = TypeList<>;
-};
-template<typename List2, typename List3, typename List4>
-struct v<Except3<List2, List3, List4>> {
-  using type = TypeList<>;
-};
-template<typename List3, typename List4>
-struct v<Except2<List3, List4>> {
-  using type = TypeList<>;
-};
-template<typename List4>
-struct v<Except1<List4>> {
-  using type = TypeList<>;
 };
 template<size_t I>
 struct v<SetSlot<I>> {
@@ -1052,77 +948,29 @@ struct Derivative<Wildcard1, C> {
     TypeList<>
   >;
 };
-template<typename List1, typename List2, typename List3, typename List4, uint8_t C>
-struct Derivative<In<List1, List2, List3, List4>, C> {
+template <typename CharList, uint8_t C>
+struct Derivative<Except<CharList>, C> {
   using type = typename std::conditional<
-    List1::template Contains<Char<C>>,
+    0x00 <= C && C <= 0x7F,
+    std::conditional_t<
+      CharList::template Contains<Char<C>>,
+      TypeList<>,
+      TypeList<DerivedPair<Epsilon, Omega>>
+    >,
     typename std::conditional<
-      0x00 <= C && C <= 0x7F,
-      TypeList<DerivedPair<Epsilon, Omega>>,
+      0xC2 <= C && C <= 0xDF,
+      TypeList<DerivedPair<Wildcard1, Omega>>,
       typename std::conditional<
-        0xC2 <= C && C <= 0xDF,
-        TypeList<DerivedPair<In1<List4>, Omega>>,
+        0xE0 <= C && C <= 0xEF,
+        TypeList<DerivedPair<Wildcard2, Omega>>,
         typename std::conditional<
-          0xE0 <= C && C <= 0xEF,
-          TypeList<DerivedPair<In2<List3, List4>, Omega>>,
-          typename std::conditional<
-            0xF0 <= C && C <= 0xF4,
-            TypeList<DerivedPair<In3<List2, List3, List4>, Omega>>,
-            TypeList<>
-          >::type
+          0xF0 <= C && C <= 0xF4,
+          TypeList<DerivedPair<Wildcard3, Omega>>,
+          TypeList<>
         >::type
       >::type
-    >::type,
-    TypeList<>
+    >::type
   >::type;
-};
-template<typename List2, typename List3, typename List4, uint8_t C>
-struct Derivative<In3<List2, List3, List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List2::template Contains<Char<C>>, TypeList<DerivedPair<In2<List3, List4>, Omega>>, TypeList<>>::type;
-};
-template<typename List3, typename List4, uint8_t C>
-struct Derivative<In2<List3, List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List3::template Contains<Char<C>>, TypeList<DerivedPair<In1<List4>, Omega>>, TypeList<>>::type;
-};
-template<typename List4, uint8_t C>
-struct Derivative<In1<List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List4::template Contains<Char<C>>, TypeList<DerivedPair<Epsilon, Omega>>, TypeList<>>::type;
-};
-template<typename List1, typename List2, typename List3, typename List4, uint8_t C>
-struct Derivative<Except<List1, List2, List3, List4>, C> {
-  using type = typename std::conditional<
-    !List1::template Contains<Char<C>>,
-    typename std::conditional<
-      0x00 <= C && C <= 0x7F,
-      TypeList<DerivedPair<Epsilon, Omega>>,
-      typename std::conditional<
-        0xC2 <= C && C <= 0xDF,
-        TypeList<DerivedPair<Except1<List4>, Omega>>,
-        typename std::conditional<
-          0xE0 <= C && C <= 0xEF,
-          TypeList<DerivedPair<Except2<List3, List4>, Omega>>,
-          typename std::conditional<
-            0xF0 <= C && C <= 0xF4,
-            TypeList<DerivedPair<Except3<List2, List3, List4>, Omega>>,
-            TypeList<>
-          >::type
-        >::type
-      >::type
-    >::type,
-    TypeList<>
-  >::type;
-};
-template<typename List2, typename List3, typename List4, uint8_t C>
-struct Derivative<Except3<List2, List3, List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List2::template Contains<Char<C>>, TypeList<DerivedPair<Except2<List3, List4>, Omega>>, TypeList<>>::type;
-};
-template<typename List3, typename List4, uint8_t C>
-struct Derivative<Except2<List3, List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List3::template Contains<Char<C>>, TypeList<DerivedPair<Except1<List4>, Omega>>, TypeList<>>::type;
-};
-template<typename List4, uint8_t C>
-struct Derivative<Except1<List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List4::template Contains<Char<C>>, TypeList<DerivedPair<Epsilon, Omega>>, TypeList<>>::type;
 };
 /* d(R|S)/dx = dR/dx U dS/dx */
 template <typename R, typename S, uint8_t C>
@@ -2151,43 +1999,16 @@ struct ParseCharGroup {
   };
 
   struct impl_neg {
-    using ASCIIVisibleAlphabet = TypeList<
-      CodePoint<'\t'>, CodePoint<'\n'>, CodePoint<'\v'>, CodePoint<'\f'>, CodePoint<'\r'>, CodePoint<' '>,
-      CodePoint<'!'>, CodePoint<'"'>, CodePoint<'#'>, CodePoint<'$'>, CodePoint<'%'>, CodePoint<'&'>, CodePoint<'\''>,
-      CodePoint<'('>, CodePoint<')'>, CodePoint<'*'>, CodePoint<'+'>, CodePoint<','>, CodePoint<'-'>, CodePoint<'.'>,
-      CodePoint<'/'>, CodePoint<'0'>, CodePoint<'1'>, CodePoint<'2'>, CodePoint<'3'>, CodePoint<'4'>, CodePoint<'5'>,
-      CodePoint<'6'>, CodePoint<'7'>, CodePoint<'8'>, CodePoint<'9'>, CodePoint<':'>, CodePoint<';'>, CodePoint<'<'>,
-      CodePoint<'='>, CodePoint<'>'>, CodePoint<'?'>, CodePoint<'@'>, CodePoint<'A'>, CodePoint<'B'>, CodePoint<'C'>,
-      CodePoint<'D'>, CodePoint<'E'>, CodePoint<'F'>, CodePoint<'G'>, CodePoint<'H'>, CodePoint<'I'>, CodePoint<'J'>,
-      CodePoint<'K'>, CodePoint<'L'>, CodePoint<'M'>, CodePoint<'N'>, CodePoint<'O'>, CodePoint<'P'>, CodePoint<'Q'>,
-      CodePoint<'R'>, CodePoint<'S'>, CodePoint<'T'>, CodePoint<'U'>, CodePoint<'V'>, CodePoint<'W'>, CodePoint<'X'>,
-      CodePoint<'Y'>, CodePoint<'Z'>, CodePoint<'['>, CodePoint<'\\'>, CodePoint<']'>, CodePoint<'^'>, CodePoint<'_'>,
-      CodePoint<'`'>, CodePoint<'a'>, CodePoint<'b'>, CodePoint<'c'>, CodePoint<'d'>, CodePoint<'e'>, CodePoint<'f'>,
-      CodePoint<'g'>, CodePoint<'h'>, CodePoint<'i'>, CodePoint<'j'>, CodePoint<'k'>, CodePoint<'l'>, CodePoint<'m'>,
-      CodePoint<'n'>, CodePoint<'o'>, CodePoint<'p'>, CodePoint<'q'>, CodePoint<'r'>, CodePoint<'s'>, CodePoint<'t'>,
-      CodePoint<'u'>, CodePoint<'v'>, CodePoint<'w'>, CodePoint<'x'>, CodePoint<'y'>, CodePoint<'z'>, CodePoint<'{'>,
-      CodePoint<'|'>, CodePoint<'}'>, CodePoint<'~'>
-    >;
-    template <typename List, typename Alphabet = ASCIIVisibleAlphabet>
-    struct CodePointListNegation;
-    template <typename List, typename Head, typename... Tails>
-    struct CodePointListNegation<List, TypeList<Head, Tails...>> {
-      using type = typename std::conditional<
-        List::template Contains<Head>,
-        typename CodePointListNegation<List, TypeList<Tails...>>::type,
-        typename PushFront<typename CodePointListNegation<List, TypeList<Tails...>>::type, Head>::type
-      >::type;
-    };
-    template <typename List>
-    struct CodePointListNegation<List, TypeList<>> {
-      using type = TypeList<>;
-    };
-
     using CharSet = ParseCharSet<Pattern, Pos + 2>;
     static_assert(CharSet::next <= Pattern.length, "ParseCharGroup: char set parsing overflow");
     static_assert(CharSet::next < Pattern.length && Pattern[CharSet::next] == ']',
       "ParseCharGroup: ']' not closed");
-    using type = typename BuildOrTree<typename CodePointListNegation<typename CharSet::type>::type>::type;
+    template <typename CodePoint> 
+    struct CodePointToChar{
+      static_assert(CodePoint::value <= 0x7F, "negation char class do not support non-ASCII so far");
+      using type = Char<static_cast<uint8_t>(CodePoint::value)>;
+    };
+    using type = Except<typename Map<CodePointToChar, typename CharSet::type>::type>;
     static constexpr size_t next = CharSet::next + 1;
   };
 
@@ -2547,75 +2368,29 @@ template<uint8_t C>
 struct Derivative<Wildcard1, C> {
   using type = typename std::conditional<0x80 <= C && C <= 0xBF, Epsilon, EmptySet>::type;
 };
-template<typename List1, typename List2, typename List3, typename List4, uint8_t C>
-struct Derivative<In<List1, List2, List3, List4>, C> {
-  using type = typename std::conditional<List1::template Contains<Char<C>>,
+template <typename CharList, uint8_t C>
+struct Derivative<Except<CharList>, C> {
+  using type = typename std::conditional<
+    0x00 <= C && C <= 0x7F,
+    std::conditional_t<
+      CharList::template Contains<Char<C>>,
+      EmptySet,
+      Epsilon
+    >,
     typename std::conditional<
-      0x00 <= C && C <= 0x7F,
-      Epsilon,
+      0xC2 <= C && C <= 0xDF,
+      Wildcard1,
       typename std::conditional<
-        0xC2 <= C && C <= 0xDF,
-        In1<List4>,
+        0xE0 <= C && C <= 0xEF,
+        Wildcard2,
         typename std::conditional<
-          0xE0 <= C && C <= 0xEF,
-          In2<List3, List4>,
-          typename std::conditional<
-            0xF0 <= C && C <= 0xF4,
-            In3<List2, List3, List4>,
-            EmptySet
-          >::type
+          0xF0 <= C && C <= 0xF4,
+          Wildcard3,
+          EmptySet
         >::type
       >::type
-    >::type,
-    EmptySet
+    >::type
   >::type;
-};
-template<typename List2, typename List3, typename List4, uint8_t C>
-struct Derivative<In3<List2, List3, List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List2::template Contains<Char<C>>, In2<List3, List4>, EmptySet>::type;
-};
-template<typename List3, typename List4, uint8_t C>
-struct Derivative<In2<List3, List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List3::template Contains<Char<C>>, In1<List4>, EmptySet>::type;
-};
-template<typename List4, uint8_t C>
-struct Derivative<In1<List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List4::template Contains<Char<C>>, Epsilon, EmptySet>::type;
-};
-template<typename List1, typename List2, typename List3, typename List4, uint8_t C>
-struct Derivative<Except<List1, List2, List3, List4>, C> {
-  using type = typename std::conditional<!List1::template Contains<Char<C>>,
-    typename std::conditional<
-      0x00 <= C && C <= 0x7F,
-      Epsilon,
-      typename std::conditional<
-        0xC2 <= C && C <= 0xDF,
-        Except1<List4>,
-        typename std::conditional<
-          0xE0 <= C && C <= 0xEF,
-          Except2<List3, List4>,
-          typename std::conditional<
-            0xF0 <= C && C <= 0xF4,
-            Except3<List2, List3, List4>,
-            EmptySet
-          >::type
-        >::type
-      >::type
-    >::type,
-    EmptySet
-  >::type;
-};
-template<typename List2, typename List3, typename List4, uint8_t C>
-struct Derivative<Except3<List2, List3, List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List2::template Contains<Char<C>>, Except2<List3, List4>, EmptySet>::type;
-};
-template<typename List3, typename List4, uint8_t C>
-struct Derivative<Except2<List3, List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List3::template Contains<Char<C>>, Except1<List4>, EmptySet>::type;
-};
-template<typename List4, uint8_t C>
-struct Derivative<Except1<List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List4::template Contains<Char<C>>, Epsilon, EmptySet>::type;
 };
 /* d(R|S)/dc = dR/dc | dS/dc */
 template<typename R, typename S, uint8_t C>
@@ -2643,66 +2418,8 @@ struct Derivative<Closure<R>, C> {
 
 /* === DFA builder === */
 template<typename R>
-struct RemoveAllAction;
-template<>
-struct RemoveAllAction<EmptySet> {
-  using type = EmptySet;
-};
-template<>
-struct RemoveAllAction<Epsilon> {
-  using type = Epsilon;
-};
-template<uint8_t C>
-struct RemoveAllAction<Char<C>> {
-  using type = Char<C>;
-};
-template<>
-struct RemoveAllAction<Wildcard> {
-  using type = Wildcard;
-};
-template<>
-struct RemoveAllAction<Wildcard3> {
-  using type = Wildcard3;
-};
-template<>
-struct RemoveAllAction<Wildcard2> {
-  using type = Wildcard2;
-};
-template<>
-struct RemoveAllAction<Wildcard1> {
-  using type = Wildcard1;
-};
-template<typename List1, typename List2, typename List3, typename List4>
-struct RemoveAllAction<In<List1, List2, List3, List4>> {
-  using type = In<List1, List2, List3, List4>;
-};
-template<typename List2, typename List3, typename List4>
-struct RemoveAllAction<In3<List2, List3, List4>> {
-  using type = In3<List2, List3, List4>;
-};
-template<typename List3, typename List4>
-struct RemoveAllAction<In2<List3, List4>> {
-  using type = In2<List3, List4>;
-};
-template<typename List4>
-struct RemoveAllAction<In1<List4>> {
-  using type = In1<List4>;
-};
-template<typename List1, typename List2, typename List3, typename List4>
-struct RemoveAllAction<Except<List1, List2, List3, List4>> {
-  using type = Except<List1, List2, List3, List4>;
-};
-template<typename List2, typename List3, typename List4>
-struct RemoveAllAction<Except3<List2, List3, List4>> {
-  using type = Except3<List2, List3, List4>;
-};
-template<typename List3, typename List4>
-struct RemoveAllAction<Except2<List3, List4>> {
-  using type = Except2<List3, List4>;
-};
-template<typename List4>
-struct RemoveAllAction<Except1<List4>> {
-  using type = Except1<List4>;
+struct RemoveAllAction {
+  using type = R;
 };
 template<size_t I>
 struct RemoveAllAction<SetSlot<I>> {

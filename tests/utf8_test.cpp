@@ -43,6 +43,11 @@ void utf8_test() {
   test_match_and_log<u8"[一-上]">((char const*)u8"上", true);
   test_match_and_log<u8"[一-上]">((char const*)u8"丁", true);
   test_match_and_log<u8"[一-上]">((char const*)u8"字", false);
+  test_match_and_log<"[^abc]">("a", false);
+  test_match_and_log<"[^abc]">("d", true);
+  test_match_and_log<"[^abc]">((char const*)u8"é", true);
+  test_match_and_log<"[^abc]">((char const*)u8"字", true);
+  test_match_and_log<"[^abc]">((char const*)u8"😀", true);
   // test_match_and_log<u8"[^一-上]">((char const*)u8"一", false);
   // test_match_and_log<u8"[^一-上]">((char const*)u8"上", false);
   // test_match_and_log<u8"[^一-上]">((char const*)u8"丁", false);

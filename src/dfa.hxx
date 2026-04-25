@@ -68,75 +68,29 @@ template<uint8_t C>
 struct Derivative<Wildcard1, C> {
   using type = typename std::conditional<0x80 <= C && C <= 0xBF, Epsilon, EmptySet>::type;
 };
-template<typename List1, typename List2, typename List3, typename List4, uint8_t C>
-struct Derivative<In<List1, List2, List3, List4>, C> {
-  using type = typename std::conditional<List1::template Contains<Char<C>>,
+template <typename CharList, uint8_t C>
+struct Derivative<Except<CharList>, C> {
+  using type = typename std::conditional<
+    0x00 <= C && C <= 0x7F,
+    std::conditional_t<
+      CharList::template Contains<Char<C>>,
+      EmptySet,
+      Epsilon
+    >,
     typename std::conditional<
-      0x00 <= C && C <= 0x7F,
-      Epsilon,
+      0xC2 <= C && C <= 0xDF,
+      Wildcard1,
       typename std::conditional<
-        0xC2 <= C && C <= 0xDF,
-        In1<List4>,
+        0xE0 <= C && C <= 0xEF,
+        Wildcard2,
         typename std::conditional<
-          0xE0 <= C && C <= 0xEF,
-          In2<List3, List4>,
-          typename std::conditional<
-            0xF0 <= C && C <= 0xF4,
-            In3<List2, List3, List4>,
-            EmptySet
-          >::type
+          0xF0 <= C && C <= 0xF4,
+          Wildcard3,
+          EmptySet
         >::type
       >::type
-    >::type,
-    EmptySet
+    >::type
   >::type;
-};
-template<typename List2, typename List3, typename List4, uint8_t C>
-struct Derivative<In3<List2, List3, List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List2::template Contains<Char<C>>, In2<List3, List4>, EmptySet>::type;
-};
-template<typename List3, typename List4, uint8_t C>
-struct Derivative<In2<List3, List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List3::template Contains<Char<C>>, In1<List4>, EmptySet>::type;
-};
-template<typename List4, uint8_t C>
-struct Derivative<In1<List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List4::template Contains<Char<C>>, Epsilon, EmptySet>::type;
-};
-template<typename List1, typename List2, typename List3, typename List4, uint8_t C>
-struct Derivative<Except<List1, List2, List3, List4>, C> {
-  using type = typename std::conditional<!List1::template Contains<Char<C>>,
-    typename std::conditional<
-      0x00 <= C && C <= 0x7F,
-      Epsilon,
-      typename std::conditional<
-        0xC2 <= C && C <= 0xDF,
-        Except1<List4>,
-        typename std::conditional<
-          0xE0 <= C && C <= 0xEF,
-          Except2<List3, List4>,
-          typename std::conditional<
-            0xF0 <= C && C <= 0xF4,
-            Except3<List2, List3, List4>,
-            EmptySet
-          >::type
-        >::type
-      >::type
-    >::type,
-    EmptySet
-  >::type;
-};
-template<typename List2, typename List3, typename List4, uint8_t C>
-struct Derivative<Except3<List2, List3, List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List2::template Contains<Char<C>>, Except2<List3, List4>, EmptySet>::type;
-};
-template<typename List3, typename List4, uint8_t C>
-struct Derivative<Except2<List3, List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List3::template Contains<Char<C>>, Except1<List4>, EmptySet>::type;
-};
-template<typename List4, uint8_t C>
-struct Derivative<Except1<List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List4::template Contains<Char<C>>, Epsilon, EmptySet>::type;
 };
 /* d(R|S)/dc = dR/dc | dS/dc */
 template<typename R, typename S, uint8_t C>
@@ -164,66 +118,8 @@ struct Derivative<Closure<R>, C> {
 
 /* === DFA builder === */
 template<typename R>
-struct RemoveAllAction;
-template<>
-struct RemoveAllAction<EmptySet> {
-  using type = EmptySet;
-};
-template<>
-struct RemoveAllAction<Epsilon> {
-  using type = Epsilon;
-};
-template<uint8_t C>
-struct RemoveAllAction<Char<C>> {
-  using type = Char<C>;
-};
-template<>
-struct RemoveAllAction<Wildcard> {
-  using type = Wildcard;
-};
-template<>
-struct RemoveAllAction<Wildcard3> {
-  using type = Wildcard3;
-};
-template<>
-struct RemoveAllAction<Wildcard2> {
-  using type = Wildcard2;
-};
-template<>
-struct RemoveAllAction<Wildcard1> {
-  using type = Wildcard1;
-};
-template<typename List1, typename List2, typename List3, typename List4>
-struct RemoveAllAction<In<List1, List2, List3, List4>> {
-  using type = In<List1, List2, List3, List4>;
-};
-template<typename List2, typename List3, typename List4>
-struct RemoveAllAction<In3<List2, List3, List4>> {
-  using type = In3<List2, List3, List4>;
-};
-template<typename List3, typename List4>
-struct RemoveAllAction<In2<List3, List4>> {
-  using type = In2<List3, List4>;
-};
-template<typename List4>
-struct RemoveAllAction<In1<List4>> {
-  using type = In1<List4>;
-};
-template<typename List1, typename List2, typename List3, typename List4>
-struct RemoveAllAction<Except<List1, List2, List3, List4>> {
-  using type = Except<List1, List2, List3, List4>;
-};
-template<typename List2, typename List3, typename List4>
-struct RemoveAllAction<Except3<List2, List3, List4>> {
-  using type = Except3<List2, List3, List4>;
-};
-template<typename List3, typename List4>
-struct RemoveAllAction<Except2<List3, List4>> {
-  using type = Except2<List3, List4>;
-};
-template<typename List4>
-struct RemoveAllAction<Except1<List4>> {
-  using type = Except1<List4>;
+struct RemoveAllAction {
+  using type = R;
 };
 template<size_t I>
 struct RemoveAllAction<SetSlot<I>> {

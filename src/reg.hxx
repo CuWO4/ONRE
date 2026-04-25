@@ -19,22 +19,8 @@ struct Wildcard {};
 struct Wildcard3 {};
 struct Wildcard2 {};
 struct Wildcard1 {};
-template<typename List1, typename List2, typename List3, typename List4>
-struct In {};
-template<typename List2, typename List3, typename List4>
-struct In3 {};
-template<typename List3, typename List4>
-struct In2 {};
-template<typename List4>
-struct In1 {};
-template<typename List1, typename List2, typename List3, typename List4>
+template<typename CharList>
 struct Except {};
-template<typename List2, typename List3, typename List4>
-struct Except3 {};
-template<typename List3, typename List4>
-struct Except2 {};
-template<typename List4>
-struct Except1 {};
 template<std::size_t I>
 struct SetSlot {
   static constexpr std::size_t i = I;
@@ -54,37 +40,9 @@ struct Closure {
 
 /* === nullable testing, testing whether epsilon in L(R) === */
 template<typename R>
-struct Nullable {};
-template<>
-struct Nullable<EmptySet> : std::false_type {};
+struct Nullable : std::false_type {};
 template<>
 struct Nullable<Epsilon> : std::true_type {};
-template<uint8_t C>
-struct Nullable<Char<C>> : std::false_type {};
-template<>
-struct Nullable<Wildcard> : std::false_type {};
-template<>
-struct Nullable<Wildcard3> : std::false_type {};
-template<>
-struct Nullable<Wildcard2> : std::false_type {};
-template<>
-struct Nullable<Wildcard1> : std::false_type {};
-template<typename... Lists>
-struct Nullable<In<Lists...>> : std::false_type {};
-template<typename... Lists>
-struct Nullable<In3<Lists...>> : std::false_type {};
-template<typename... Lists>
-struct Nullable<In2<Lists...>> : std::false_type {};
-template<typename... Lists>
-struct Nullable<In1<Lists...>> : std::false_type {};
-template<typename... Lists>
-struct Nullable<Except<Lists...>> : std::false_type {};
-template<typename... Lists>
-struct Nullable<Except3<Lists...>> : std::false_type {};
-template<typename... Lists>
-struct Nullable<Except2<Lists...>> : std::false_type {};
-template<typename... Lists>
-struct Nullable<Except1<Lists...>> : std::false_type {};
 template<size_t I>
 struct Nullable<SetSlot<I>> : std::true_type {};
 template<typename L, typename R>
@@ -162,37 +120,12 @@ template<typename Acc>
 struct First<Wildcard1, Acc> {
   using type = typename JoinUnique<Acc, Utf8ContinuationByteAlphabet>::type;
 };
-template<typename List1, typename... Lists, typename Acc>
-struct First<In<List1, Lists...>, Acc> {
-  using type = typename JoinUnique<Acc, List1>::type;
-};
-template<typename List2, typename... Lists, typename Acc>
-struct First<In3<List2, Lists...>, Acc> {
-  using type = typename JoinUnique<Acc, List2>::type;
-};
-template<typename List3, typename... Lists, typename Acc>
-struct First<In2<List3, Lists...>, Acc> {
-  using type = typename JoinUnique<Acc, List3>::type;
-};
-template<typename List4, typename Acc>
-struct First<In1<List4>, Acc> {
-  using type = typename JoinUnique<Acc, List4>::type;
-};
-template<typename List1, typename... Lists, typename Acc>
-struct First<Except<List1, Lists...>, Acc> {
-  using type = typename JoinUnique<Acc, typename CharListNegation<List1, Utf8FirstByteAlphabet>::type>::type;
-};
-template<typename List2, typename... Lists, typename Acc>
-struct First<Except3<List2, Lists...>, Acc> {
-  using type = typename JoinUnique<Acc, typename CharListNegation<List2, Utf8ContinuationByteAlphabet>::type>::type;
-};
-template<typename List3, typename... Lists, typename Acc>
-struct First<Except2<List3, Lists...>, Acc> {
-  using type = typename JoinUnique<Acc, typename CharListNegation<List3, Utf8ContinuationByteAlphabet>::type>::type;
-};
-template<typename List4, typename Acc>
-struct First<Except1<List4>, Acc> {
-  using type = typename JoinUnique<Acc, typename CharListNegation<List4, Utf8ContinuationByteAlphabet>::type>::type;
+template <typename CharList, typename Acc>
+struct First<Except<CharList>, Acc> {
+  using type = typename JoinUnique<
+    Acc,
+    typename CharListNegation<CharList, Utf8FirstByteAlphabet>::type
+  >::type;
 };
 template <size_t I, typename Acc>
 struct First<SetSlot<I>, Acc> {

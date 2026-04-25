@@ -48,66 +48,12 @@ struct Product<List1, TypeList<>, Acc> {
 };
 
 template<typename RE>
-struct v;
-template<>
-struct v<EmptySet> {
+struct v {
   using type = TypeList<>;
 };
 template<>
 struct v<Epsilon> {
   using type = TypeList<Omega>;
-};
-template<uint8_t C>
-struct v<Char<C>> {
-  using type = TypeList<>;
-};
-template<>
-struct v<Wildcard> {
-  using type = TypeList<>;
-};
-template<>
-struct v<Wildcard3> {
-  using type = TypeList<>;
-};
-template<>
-struct v<Wildcard2> {
-  using type = TypeList<>;
-};
-template<>
-struct v<Wildcard1> {
-  using type = TypeList<>;
-};
-template<typename List1, typename List2, typename List3, typename List4>
-struct v<In<List1, List2, List3, List4>> {
-  using type = TypeList<>;
-};
-template<typename List2, typename List3, typename List4>
-struct v<In3<List2, List3, List4>> {
-  using type = TypeList<>;
-};
-template<typename List3, typename List4>
-struct v<In2<List3, List4>> {
-  using type = TypeList<>;
-};
-template<typename List4>
-struct v<In1<List4>> {
-  using type = TypeList<>;
-};
-template<typename List1, typename List2, typename List3, typename List4>
-struct v<Except<List1, List2, List3, List4>> {
-  using type = TypeList<>;
-};
-template<typename List2, typename List3, typename List4>
-struct v<Except3<List2, List3, List4>> {
-  using type = TypeList<>;
-};
-template<typename List3, typename List4>
-struct v<Except2<List3, List4>> {
-  using type = TypeList<>;
-};
-template<typename List4>
-struct v<Except1<List4>> {
-  using type = TypeList<>;
 };
 template<size_t I>
 struct v<SetSlot<I>> {
@@ -209,77 +155,29 @@ struct Derivative<Wildcard1, C> {
     TypeList<>
   >;
 };
-template<typename List1, typename List2, typename List3, typename List4, uint8_t C>
-struct Derivative<In<List1, List2, List3, List4>, C> {
+template <typename CharList, uint8_t C>
+struct Derivative<Except<CharList>, C> {
   using type = typename std::conditional<
-    List1::template Contains<Char<C>>,
+    0x00 <= C && C <= 0x7F,
+    std::conditional_t<
+      CharList::template Contains<Char<C>>,
+      TypeList<>,
+      TypeList<DerivedPair<Epsilon, Omega>>
+    >,
     typename std::conditional<
-      0x00 <= C && C <= 0x7F,
-      TypeList<DerivedPair<Epsilon, Omega>>,
+      0xC2 <= C && C <= 0xDF,
+      TypeList<DerivedPair<Wildcard1, Omega>>,
       typename std::conditional<
-        0xC2 <= C && C <= 0xDF,
-        TypeList<DerivedPair<In1<List4>, Omega>>,
+        0xE0 <= C && C <= 0xEF,
+        TypeList<DerivedPair<Wildcard2, Omega>>,
         typename std::conditional<
-          0xE0 <= C && C <= 0xEF,
-          TypeList<DerivedPair<In2<List3, List4>, Omega>>,
-          typename std::conditional<
-            0xF0 <= C && C <= 0xF4,
-            TypeList<DerivedPair<In3<List2, List3, List4>, Omega>>,
-            TypeList<>
-          >::type
+          0xF0 <= C && C <= 0xF4,
+          TypeList<DerivedPair<Wildcard3, Omega>>,
+          TypeList<>
         >::type
       >::type
-    >::type,
-    TypeList<>
+    >::type
   >::type;
-};
-template<typename List2, typename List3, typename List4, uint8_t C>
-struct Derivative<In3<List2, List3, List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List2::template Contains<Char<C>>, TypeList<DerivedPair<In2<List3, List4>, Omega>>, TypeList<>>::type;
-};
-template<typename List3, typename List4, uint8_t C>
-struct Derivative<In2<List3, List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List3::template Contains<Char<C>>, TypeList<DerivedPair<In1<List4>, Omega>>, TypeList<>>::type;
-};
-template<typename List4, uint8_t C>
-struct Derivative<In1<List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && List4::template Contains<Char<C>>, TypeList<DerivedPair<Epsilon, Omega>>, TypeList<>>::type;
-};
-template<typename List1, typename List2, typename List3, typename List4, uint8_t C>
-struct Derivative<Except<List1, List2, List3, List4>, C> {
-  using type = typename std::conditional<
-    !List1::template Contains<Char<C>>,
-    typename std::conditional<
-      0x00 <= C && C <= 0x7F,
-      TypeList<DerivedPair<Epsilon, Omega>>,
-      typename std::conditional<
-        0xC2 <= C && C <= 0xDF,
-        TypeList<DerivedPair<Except1<List4>, Omega>>,
-        typename std::conditional<
-          0xE0 <= C && C <= 0xEF,
-          TypeList<DerivedPair<Except2<List3, List4>, Omega>>,
-          typename std::conditional<
-            0xF0 <= C && C <= 0xF4,
-            TypeList<DerivedPair<Except3<List2, List3, List4>, Omega>>,
-            TypeList<>
-          >::type
-        >::type
-      >::type
-    >::type,
-    TypeList<>
-  >::type;
-};
-template<typename List2, typename List3, typename List4, uint8_t C>
-struct Derivative<Except3<List2, List3, List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List2::template Contains<Char<C>>, TypeList<DerivedPair<Except2<List3, List4>, Omega>>, TypeList<>>::type;
-};
-template<typename List3, typename List4, uint8_t C>
-struct Derivative<Except2<List3, List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List3::template Contains<Char<C>>, TypeList<DerivedPair<Except1<List4>, Omega>>, TypeList<>>::type;
-};
-template<typename List4, uint8_t C>
-struct Derivative<Except1<List4>, C> {
-  using type = typename std::conditional<0x80 <= C && C <= 0xBF && !List4::template Contains<Char<C>>, TypeList<DerivedPair<Epsilon, Omega>>, TypeList<>>::type;
 };
 /* d(R|S)/dx = dR/dx U dS/dx */
 template <typename R, typename S, uint8_t C>

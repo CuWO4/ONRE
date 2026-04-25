@@ -12,4 +12,5 @@ void replace_basic_test() {
   test_replace_and_log<"(.)(.)">("$2$1", "xy", "yx");
   test_replace_and_log<"hello">("$0!", "hello", "hello!");
   test_replace_and_log<"(ab)(ab)(ab)">("$3|$2|$1", "ababab", "ab|ab|ab");
+  test_replace_and_log<"(ab)*c">("$1", "ababc", "ab");
 }

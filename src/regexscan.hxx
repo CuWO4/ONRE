@@ -525,43 +525,16 @@ struct ParseCharGroup {
   };
 
   struct impl_neg {
-    using ASCIIVisibleAlphabet = TypeList<
-      CodePoint<'\t'>, CodePoint<'\n'>, CodePoint<'\v'>, CodePoint<'\f'>, CodePoint<'\r'>, CodePoint<' '>,
-      CodePoint<'!'>, CodePoint<'"'>, CodePoint<'#'>, CodePoint<'$'>, CodePoint<'%'>, CodePoint<'&'>, CodePoint<'\''>,
-      CodePoint<'('>, CodePoint<')'>, CodePoint<'*'>, CodePoint<'+'>, CodePoint<','>, CodePoint<'-'>, CodePoint<'.'>,
-      CodePoint<'/'>, CodePoint<'0'>, CodePoint<'1'>, CodePoint<'2'>, CodePoint<'3'>, CodePoint<'4'>, CodePoint<'5'>,
-      CodePoint<'6'>, CodePoint<'7'>, CodePoint<'8'>, CodePoint<'9'>, CodePoint<':'>, CodePoint<';'>, CodePoint<'<'>,
-      CodePoint<'='>, CodePoint<'>'>, CodePoint<'?'>, CodePoint<'@'>, CodePoint<'A'>, CodePoint<'B'>, CodePoint<'C'>,
-      CodePoint<'D'>, CodePoint<'E'>, CodePoint<'F'>, CodePoint<'G'>, CodePoint<'H'>, CodePoint<'I'>, CodePoint<'J'>,
-      CodePoint<'K'>, CodePoint<'L'>, CodePoint<'M'>, CodePoint<'N'>, CodePoint<'O'>, CodePoint<'P'>, CodePoint<'Q'>,
-      CodePoint<'R'>, CodePoint<'S'>, CodePoint<'T'>, CodePoint<'U'>, CodePoint<'V'>, CodePoint<'W'>, CodePoint<'X'>,
-      CodePoint<'Y'>, CodePoint<'Z'>, CodePoint<'['>, CodePoint<'\\'>, CodePoint<']'>, CodePoint<'^'>, CodePoint<'_'>,
-      CodePoint<'`'>, CodePoint<'a'>, CodePoint<'b'>, CodePoint<'c'>, CodePoint<'d'>, CodePoint<'e'>, CodePoint<'f'>,
-      CodePoint<'g'>, CodePoint<'h'>, CodePoint<'i'>, CodePoint<'j'>, CodePoint<'k'>, CodePoint<'l'>, CodePoint<'m'>,
-      CodePoint<'n'>, CodePoint<'o'>, CodePoint<'p'>, CodePoint<'q'>, CodePoint<'r'>, CodePoint<'s'>, CodePoint<'t'>,
-      CodePoint<'u'>, CodePoint<'v'>, CodePoint<'w'>, CodePoint<'x'>, CodePoint<'y'>, CodePoint<'z'>, CodePoint<'{'>,
-      CodePoint<'|'>, CodePoint<'}'>, CodePoint<'~'>
-    >;
-    template <typename List, typename Alphabet = ASCIIVisibleAlphabet>
-    struct CodePointListNegation;
-    template <typename List, typename Head, typename... Tails>
-    struct CodePointListNegation<List, TypeList<Head, Tails...>> {
-      using type = typename std::conditional<
-        List::template Contains<Head>,
-        typename CodePointListNegation<List, TypeList<Tails...>>::type,
-        typename PushFront<typename CodePointListNegation<List, TypeList<Tails...>>::type, Head>::type
-      >::type;
-    };
-    template <typename List>
-    struct CodePointListNegation<List, TypeList<>> {
-      using type = TypeList<>;
-    };
-
     using CharSet = ParseCharSet<Pattern, Pos + 2>;
     static_assert(CharSet::next <= Pattern.length, "ParseCharGroup: char set parsing overflow");
     static_assert(CharSet::next < Pattern.length && Pattern[CharSet::next] == ']',
       "ParseCharGroup: ']' not closed");
-    using type = typename BuildOrTree<typename CodePointListNegation<typename CharSet::type>::type>::type;
+    template <typename CodePoint> 
+    struct CodePointToChar{
+      static_assert(CodePoint::value <= 0x7F, "negation char class do not support non-ASCII so far");
+      using type = Char<static_cast<uint8_t>(CodePoint::value)>;
+    };
+    using type = Except<typename Map<CodePointToChar, typename CharSet::type>::type>;
     static constexpr size_t next = CharSet::next + 1;
   };
 
