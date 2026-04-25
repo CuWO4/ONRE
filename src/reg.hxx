@@ -145,11 +145,11 @@ struct First<Concat<R, S>, Acc> {
   struct impl_r_non_nullable {
     using type = typename First<R, Acc>::type;
   };
-  using type = typename std::conditional_t<
+  using type = typename std::conditional<
     Nullable<R>::value,
     impl_r_nullable,
     impl_r_non_nullable
-  >::type;
+  >::type::type;
 };
 template <typename R, typename Acc>
 struct First<Closure<R>, Acc> {

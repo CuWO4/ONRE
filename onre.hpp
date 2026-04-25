@@ -22,7 +22,7 @@ struct TypeList {
   static constexpr bool Contains = (std::is_same_v<T, Ts> || ...);
 
   template<size_t Idx>
-  using At = std::tuple_element_t<Idx, std::tuple<Ts...>>;
+  using At = typename std::tuple_element<Idx, std::tuple<Ts...>>::type;
 
   template<typename T>
   static constexpr std::size_t IndexOf = []{
@@ -87,11 +87,11 @@ template<typename List, typename T>
 struct PushBackUnique;
 template<typename... Ts, typename T>
 struct PushBackUnique<TypeList<Ts...>, T> {
-  using type = std::conditional_t<
+  using type = typename std::conditional<
     TypeList<Ts...>::template Contains<T>,
     TypeList<Ts...>,
     TypeList<Ts..., T>
-  >;
+  >::type;
 };
 
 template<typename List1, typename List2>
@@ -110,11 +110,11 @@ template <typename List>
 struct Unique;
 template <typename Head, typename... Tails>
 struct Unique<TypeList<Head, Tails...>> {
-  using type = std::conditional_t<
+  using type = typename std::conditional<
     TypeList<Tails...>::template Contains<Head>, 
     typename Unique<TypeList<Tails...>>::type,
     typename PushFront<typename Unique<TypeList<Tails...>>::type, Head>::type
-  >;
+  >::type;
 };
 template<>
 struct Unique<TypeList<>> {
@@ -132,11 +132,11 @@ template<template<typename> typename IsKeep, typename List, typename Acc>
 struct FilterImpl;
 template<template<typename> typename IsKeep, typename Head, typename... Tails, typename Acc>
 struct FilterImpl<IsKeep, TypeList<Head, Tails...>, Acc> {
-  using type = typename std::conditional_t<
+  using type = typename std::conditional<
     IsKeep<Head>::value,
     FilterImpl<IsKeep, TypeList<Tails...>, typename PushBack<Acc, Head>::type>,
     FilterImpl<IsKeep, TypeList<Tails...>, Acc>
-  >::type;
+  >::type::type;
 };
 template<template<typename> typename IsKeep, typename Acc>
 struct FilterImpl<IsKeep, TypeList<>, Acc> {
@@ -543,11 +543,11 @@ struct First<Concat<R, S>, Acc> {
   struct impl_r_non_nullable {
     using type = typename First<R, Acc>::type;
   };
-  using type = typename std::conditional_t<
+  using type = typename std::conditional<
     Nullable<R>::value,
     impl_r_nullable,
     impl_r_non_nullable
-  >::type;
+  >::type::type;
 };
 template <typename R, typename Acc>
 struct First<Closure<R>, Acc> {
@@ -889,11 +889,11 @@ struct Derivative<SetSlot<I>, C> {
 /* dy/dx = x == y ? {(e, o)} : 0 */
 template <uint8_t y, uint8_t C>
 struct Derivative<Char<y>, C> {
-  using type = std::conditional_t<
+  using type = typename std::conditional<
     y == C,
     TypeList<DerivedPair<Epsilon, Omega>>,
     TypeList<>
-  >;
+  >::type;
 };
 template <uint8_t C>
 struct Derivative<Wildcard, C> {
@@ -926,37 +926,37 @@ struct Derivative<Wildcard, C> {
 };
 template <uint8_t C>
 struct Derivative<Wildcard3, C> {
-  using type = std::conditional_t<
+  using type = typename std::conditional<
     0x80 <= C && C <= 0xBF,
     TypeList<DerivedPair<Wildcard2, Omega>>,
     TypeList<>
-  >;
+  >::type;
 };
 template <uint8_t C>
 struct Derivative<Wildcard2, C> {
-  using type = std::conditional_t<
+  using type = typename std::conditional<
     0x80 <= C && C <= 0xBF,
     TypeList<DerivedPair<Wildcard1, Omega>>,
     TypeList<>
-  >;
+  >::type;
 };
 template <uint8_t C>
 struct Derivative<Wildcard1, C> {
-  using type = std::conditional_t<
+  using type = typename std::conditional<
     0x80 <= C && C <= 0xBF,
     TypeList<DerivedPair<Epsilon, Omega>>,
     TypeList<>
-  >;
+  >::type;
 };
 template <typename CharList, uint8_t C>
 struct Derivative<Except<CharList>, C> {
   using type = typename std::conditional<
     0x00 <= C && C <= 0x7F,
-    std::conditional_t<
+    typename std::conditional<
       CharList::template Contains<Char<C>>,
       TypeList<>,
       TypeList<DerivedPair<Epsilon, Omega>>
-    >,
+    >::type,
     typename std::conditional<
       0xC2 <= C && C <= 0xDF,
       TypeList<DerivedPair<Wildcard1, Omega>>,
@@ -1076,7 +1076,7 @@ struct DerivNewStates<Acc, S, TypeList<Char<C>, Tails...>> {
   };
 
   using Der = typename Derivative<typename S::re, C>::type;
-  using type = typename std::conditional_t<
+  using type = typename std::conditional<
     std::is_same_v<Der, TypeList<>>,
     std::type_identity<Acc>,
     DerivNewStates<
@@ -1084,7 +1084,7 @@ struct DerivNewStates<Acc, S, TypeList<Char<C>, Tails...>> {
       S,
       TypeList<Tails...>
     >
-  >::type;
+  >::type::type;
 };
 
 template<
@@ -1116,11 +1116,11 @@ struct PushNewStates<SA, EA, TBP, StartState, TypeList<HeadTuple, TailPairs...>>
   using Action = typename HeadTuple::action;
   static constexpr bool IsStateNew = !SA::template Contains<ToState>;
   using NextStateAcc = typename PushBackUnique<SA, ToState>::type;
-  using NextToBeProcessList = typename std::conditional_t<
+  using NextToBeProcessList = typename std::conditional<
     IsStateNew,
     PushBack<TBP, ToState>,
     std::type_identity<TBP>
-  >::type;
+  >::type::type;
   using NextEdgeAcc = typename PushBack<
     EA,
     Edge<
@@ -1413,11 +1413,11 @@ struct BuildAcceptActionTable<MaxAcceptActionLength, TypeList<States...>> {
     size_t CurShortestLen
   >
   struct LongestAction<TypeList<HeadAction, TailActions...>, CurLongestAction, CurShortestLen> {
-    using type = typename std::conditional_t<
+    using type = typename std::conditional<
       (HeadAction::length > CurShortestLen),
       LongestAction<TypeList<TailActions...>, HeadAction, HeadAction::length>,
       LongestAction<TypeList<TailActions...>, CurLongestAction, CurShortestLen>
-    >::type;
+    >::type::type;
   };
 };
 
@@ -1465,17 +1465,17 @@ struct MutualGroups {
         Acc, Pattern, Idx + 1, NrSeenGroup, OpeningGroupsIdx, ClosedGroups
       >::type;
     };
-    using type = typename std::conditional_t<
+    using type = typename std::conditional<
       Pattern[Idx] == '(',
       Open,
-      std::conditional_t<Pattern[Idx] == ')', Close, Other>
-    >::type;
+      typename std::conditional<Pattern[Idx] == ')', Close, Other>::type
+    >::type::type;
   };
-  using type = typename std::conditional_t<
+  using type = typename std::conditional<
     Idx >= Pattern.length,
     std::type_identity<Acc>,
     Impl
-  >::type;
+  >::type::type;
 };
 
 } /* namespace tnfa */
@@ -1633,11 +1633,11 @@ struct ParseDecimal {
     static constexpr int64_t value = Acc;
     static constexpr size_t next = Pos;
   };
-  using chosen = std::conditional_t<
+  using chosen = typename std::conditional<
     Pos < Pattern.length && Pattern[Pos] >= '0' && Pattern[Pos] <= '9',
     is_digit_impl,
     not_digit_impl
-  >;
+  >::type;
   static constexpr int64_t value = chosen::value;
   static constexpr size_t next = chosen::next;
 };
@@ -1660,7 +1660,7 @@ struct ParseHexN {
     static constexpr int64_t value = Acc;
     static constexpr size_t next = Pos;
   };
-  using chosen = std::conditional_t<
+  using chosen = typename std::conditional<
     (N > 0) && Pos < Pattern.length && (
       (Pattern[Pos] >= '0' && Pattern[Pos] <= '9')
       || (Pattern[Pos] >= 'a' && Pattern[Pos] <= 'f')
@@ -1668,7 +1668,7 @@ struct ParseHexN {
     ),
     is_digit_impl,
     not_digit_impl
-  >;
+  >::type;
   static constexpr int64_t value = chosen::value;
   static constexpr size_t next = chosen::next;
 };
@@ -1834,11 +1834,11 @@ struct ParseHexBraced {
     static constexpr size_t next = next_parse::next;
   };
 
-  using chosen = std::conditional_t<
+  using chosen = typename std::conditional<
     Pattern[Pos] == '}',
     impl_end,
     impl_digit
-  >;
+  >::type;
   static constexpr uint32_t value = chosen::value;
   static constexpr size_t next = chosen::next;
   static_assert(value <= 0x10FFFF, "ParseEscape: Unicode code point overflow");
@@ -1882,7 +1882,7 @@ struct ParseCHAR {
   };
 
   static constexpr bool is_escape = Pattern[Pos] == '\\';
-  using chosen = std::conditional_t<is_escape, impl_escape, impl_simple>;
+  using chosen = typename std::conditional<is_escape, impl_escape, impl_simple>::type;
   using type = typename chosen::type;
   static constexpr size_t next = chosen::next;
 };
@@ -1951,11 +1951,11 @@ struct ParseCharSetAtom {
   static constexpr bool has_hyphen = !is_escape
     && ParseUtf8CodePoint<Pattern, Pos>::next < Pattern.length
     && Pattern[ParseUtf8CodePoint<Pattern, Pos>::next] == '-';
-  using chosen = std::conditional_t<
+  using chosen = typename std::conditional<
     is_escape,
     impl_escape,
-    std::conditional_t<has_hyphen, impl_seq, impl_char>
-  >;
+    typename std::conditional<has_hyphen, impl_seq, impl_char>::type
+  >::type;
   using type = typename chosen::type;
   static constexpr size_t next = chosen::next;
 };
@@ -1981,7 +1981,7 @@ struct ParseCharSet {
 
   static constexpr bool run_on = CharSetAtom::next < Pattern.length
     && is_in_class_char(Pattern[CharSetAtom::next]);
-  using chosen = std::conditional_t<run_on, impl_run_on, impl_stop>;
+  using chosen = typename std::conditional<run_on, impl_run_on, impl_stop>::type;
   using type = typename chosen::type;
   static constexpr size_t next = chosen::next;
 };
@@ -2013,7 +2013,7 @@ struct ParseCharGroup {
   };
 
   static constexpr bool is_neg = Pos + 1 < Pattern.length && Pattern[Pos + 1] == '^';
-  using chosen = std::conditional_t<is_neg, impl_neg, impl_pos>;
+  using chosen = typename std::conditional<is_neg, impl_neg, impl_pos>::type;
   using type = typename chosen::type;
   static constexpr size_t next = chosen::next;
 };
@@ -2054,14 +2054,14 @@ struct ParseAtom {
       static_assert(Regex::next <= Pattern.length, "ParseAtom: regex parse overflow");
       static_assert(Regex::next < Pattern.length && Pattern[Regex::next] == ')',
         "ParseAtom impl_paren: missing closing ')' in pattern");
-      using type = std::conditional_t<
+      using type = typename std::conditional<
         is_non_capturing,
         typename Regex::type,
         Concat<
           SetSlot<2 * CapIdx>,
           Concat<typename Regex::type, SetSlot<2 * CapIdx + 1>>
         >
-      >;
+      >::type;
       static constexpr size_t next = Regex::next + 1;
       static constexpr size_t next_cap_idx = Regex::next_cap_idx;
     };
@@ -2103,19 +2103,19 @@ struct ParseAtom {
     static constexpr size_t next_cap_idx = CapIdx;
   };
 
-  using chosen = std::conditional_t<
+  using chosen = typename std::conditional<
     Pattern[Pos] == '(',
     impl_paren,
-    std::conditional_t<
+    typename std::conditional<
       Pattern[Pos] == '[',
       impl_square,
-      std::conditional_t<
+      typename std::conditional<
         Pattern[Pos] == '.',
         impl_full_match,
         impl_char
-      >
-    >
-  >;
+      >::type
+    >::type
+  >::type;
   using type = typename chosen::type;
   static constexpr size_t next = chosen::next;
   static constexpr size_t next_cap_idx = chosen::next_cap_idx;
@@ -2136,7 +2136,7 @@ struct BuildQuantifier<AtomType, 0, Max> {
       Concat<AtomType, typename BuildQuantifier<AtomType, 0, Max - 1>::type>
     >;
   };
-  using type = typename std::conditional_t<Max < 0, inf, non_inf>::type;
+  using type = typename std::conditional<Max < 0, inf, non_inf>::type::type;
 };
 template<typename AtomType>
 struct BuildQuantifier<AtomType, 0, 0> {
@@ -2201,7 +2201,7 @@ struct ParseFactor {
       static constexpr size_t next = ParseMax::next + 1;
     };
 
-    using chosen = std::conditional_t<Pattern[ParseMin::next] == '}', single_num, multiple_num>;
+    using chosen = typename std::conditional<Pattern[ParseMin::next] == '}', single_num, multiple_num>::type;
     static constexpr int64_t Max = chosen::Max;
 
     static_assert(Max < 0 || Min <= Max, "ParseFactor: invalid quantifier");
@@ -2215,23 +2215,23 @@ struct ParseFactor {
   static constexpr bool has_question = (Atom::next < Pattern.length && Pattern[Atom::next] == '?');
   static constexpr bool has_curly = (Atom::next < Pattern.length && Pattern[Atom::next] == '{');
 
-  using chosen = std::conditional_t<
+  using chosen = typename std::conditional<
     has_star,
     star,
-    std::conditional_t<
+    typename std::conditional<
       has_plus,
       plus,
-      std::conditional_t<
+      typename std::conditional<
         has_question,
         question,
-        std::conditional_t<
+        typename std::conditional<
           has_curly,
           curly,
           Atom
-        >
-      >
-    >
-  >;
+        >::type
+      >::type
+    >::type
+  >::type;
   using type = typename chosen::type;
   static constexpr size_t next = chosen::next;
   static constexpr size_t next_cap_idx = Atom::next_cap_idx;
@@ -2257,11 +2257,11 @@ struct ParseTerm {
     static constexpr size_t next_cap_idx = Term::next_cap_idx;
   };
 
-  using chosen = std::conditional_t<
+  using chosen = typename std::conditional<
     (Pos >= Pattern.length) || (Pattern[Pos] == '|') || (Pattern[Pos] == ')'),
     impl_empty,
     impl_nonempty
-  >;
+  >::type;
   using type = typename chosen::type;
   static constexpr size_t next = chosen::next;
   static constexpr size_t next_cap_idx = chosen::next_cap_idx;
@@ -2288,7 +2288,7 @@ struct ParseRegex {
   };
 
   static constexpr bool has_bar = (Term::next < Pattern.length && Pattern[Term::next] == '|');
-  using chosen = std::conditional_t<has_bar, impl_bar, impl_no_bar>;
+  using chosen = typename std::conditional<has_bar, impl_bar, impl_no_bar>::type;
   using type = typename chosen::type;
   static constexpr size_t next = chosen::next;
   static constexpr size_t next_cap_idx = chosen::next_cap_idx;
@@ -2329,7 +2329,7 @@ struct Derivative<Epsilon, C> {
 /* dx/dc = x == c ? e : 0 */
 template<uint8_t X, uint8_t C>
 struct Derivative<Char<X>, C> {
-  using type = std::conditional_t<X == C, Epsilon, EmptySet>;
+  using type = typename std::conditional<X == C, Epsilon, EmptySet>::type;
 };
 template<uint8_t C>
 struct Derivative<Wildcard, C> {
@@ -2372,11 +2372,11 @@ template <typename CharList, uint8_t C>
 struct Derivative<Except<CharList>, C> {
   using type = typename std::conditional<
     0x00 <= C && C <= 0x7F,
-    std::conditional_t<
+    typename std::conditional<
       CharList::template Contains<Char<C>>,
       EmptySet,
       Epsilon
-    >,
+    >::type,
     typename std::conditional<
       0xC2 <= C && C <= 0xDF,
       Wildcard1,
@@ -2403,11 +2403,11 @@ struct Derivative<Or<R, S>, C> {
 template<typename L, typename R, uint8_t C>
 struct Derivative<Concat<L, R>, C> {
   using Part1 = Concat<typename Derivative<L, C>::type, R>;
-  using Part2 = std::conditional_t<
+  using Part2 = typename std::conditional<
     Nullable<L>::value,
     typename Derivative<R, C>::type,
     EmptySet
-  >;
+  >::type;
   using type = typename Simplify<Or<Part1, Part2>>::type;
 };
 /* d(R*)/dc = dR/dc R* */
@@ -2472,7 +2472,7 @@ struct DerivNewStates<Acc, S, TypeList<>> {
 template<typename Acc, typename S, uint8_t C, typename... Tails>
 struct DerivNewStates<Acc, S, TypeList<Char<C>, Tails...>> {
   using Der = typename Derivative<typename S::re, C>::type;
-  using type = typename std::conditional_t<
+  using type = typename std::conditional<
     std::is_same_v<Der, EmptySet>,
     std::type_identity<Acc>,
     DerivNewStates<
@@ -2480,7 +2480,7 @@ struct DerivNewStates<Acc, S, TypeList<Char<C>, Tails...>> {
       S,
       TypeList<Tails...>
     >
-  >::type;
+  >::type::type;
 };
 
 template<
@@ -2511,11 +2511,11 @@ struct PushNewStates<SA, EA, TBP, StartState, TypeList<HeadPair, TailPairs...>> 
   static constexpr uint8_t C = HeadPair::c;
   static constexpr bool IsStateNew = !SA::template Contains<ToState>;
   using NextStateAcc = typename PushBackUnique<SA, ToState>::type;
-  using NextToBeProcessList = typename std::conditional_t<
+  using NextToBeProcessList = typename std::conditional<
     IsStateNew,
     PushBack<TBP, ToState>,
     std::type_identity<TBP>
-  >::type;
+  >::type::type;
   using NextEdgeAcc = typename PushBack<
     EA,
     Edge<

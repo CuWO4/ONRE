@@ -96,11 +96,11 @@ struct Derivative<SetSlot<I>, C> {
 /* dy/dx = x == y ? {(e, o)} : 0 */
 template <uint8_t y, uint8_t C>
 struct Derivative<Char<y>, C> {
-  using type = std::conditional_t<
+  using type = typename std::conditional<
     y == C,
     TypeList<DerivedPair<Epsilon, Omega>>,
     TypeList<>
-  >;
+  >::type;
 };
 template <uint8_t C>
 struct Derivative<Wildcard, C> {
@@ -133,37 +133,37 @@ struct Derivative<Wildcard, C> {
 };
 template <uint8_t C>
 struct Derivative<Wildcard3, C> {
-  using type = std::conditional_t<
+  using type = typename std::conditional<
     0x80 <= C && C <= 0xBF,
     TypeList<DerivedPair<Wildcard2, Omega>>,
     TypeList<>
-  >;
+  >::type;
 };
 template <uint8_t C>
 struct Derivative<Wildcard2, C> {
-  using type = std::conditional_t<
+  using type = typename std::conditional<
     0x80 <= C && C <= 0xBF,
     TypeList<DerivedPair<Wildcard1, Omega>>,
     TypeList<>
-  >;
+  >::type;
 };
 template <uint8_t C>
 struct Derivative<Wildcard1, C> {
-  using type = std::conditional_t<
+  using type = typename std::conditional<
     0x80 <= C && C <= 0xBF,
     TypeList<DerivedPair<Epsilon, Omega>>,
     TypeList<>
-  >;
+  >::type;
 };
 template <typename CharList, uint8_t C>
 struct Derivative<Except<CharList>, C> {
   using type = typename std::conditional<
     0x00 <= C && C <= 0x7F,
-    std::conditional_t<
+    typename std::conditional<
       CharList::template Contains<Char<C>>,
       TypeList<>,
       TypeList<DerivedPair<Epsilon, Omega>>
-    >,
+    >::type,
     typename std::conditional<
       0xC2 <= C && C <= 0xDF,
       TypeList<DerivedPair<Wildcard1, Omega>>,
@@ -283,7 +283,7 @@ struct DerivNewStates<Acc, S, TypeList<Char<C>, Tails...>> {
   };
 
   using Der = typename Derivative<typename S::re, C>::type;
-  using type = typename std::conditional_t<
+  using type = typename std::conditional<
     std::is_same_v<Der, TypeList<>>,
     std::type_identity<Acc>,
     DerivNewStates<
@@ -291,7 +291,7 @@ struct DerivNewStates<Acc, S, TypeList<Char<C>, Tails...>> {
       S,
       TypeList<Tails...>
     >
-  >::type;
+  >::type::type;
 };
 
 template<
@@ -323,11 +323,11 @@ struct PushNewStates<SA, EA, TBP, StartState, TypeList<HeadTuple, TailPairs...>>
   using Action = typename HeadTuple::action;
   static constexpr bool IsStateNew = !SA::template Contains<ToState>;
   using NextStateAcc = typename PushBackUnique<SA, ToState>::type;
-  using NextToBeProcessList = typename std::conditional_t<
+  using NextToBeProcessList = typename std::conditional<
     IsStateNew,
     PushBack<TBP, ToState>,
     std::type_identity<TBP>
-  >::type;
+  >::type::type;
   using NextEdgeAcc = typename PushBack<
     EA,
     Edge<
@@ -620,11 +620,11 @@ struct BuildAcceptActionTable<MaxAcceptActionLength, TypeList<States...>> {
     size_t CurShortestLen
   >
   struct LongestAction<TypeList<HeadAction, TailActions...>, CurLongestAction, CurShortestLen> {
-    using type = typename std::conditional_t<
+    using type = typename std::conditional<
       (HeadAction::length > CurShortestLen),
       LongestAction<TypeList<TailActions...>, HeadAction, HeadAction::length>,
       LongestAction<TypeList<TailActions...>, CurLongestAction, CurShortestLen>
-    >::type;
+    >::type::type;
   };
 };
 
@@ -672,17 +672,17 @@ struct MutualGroups {
         Acc, Pattern, Idx + 1, NrSeenGroup, OpeningGroupsIdx, ClosedGroups
       >::type;
     };
-    using type = typename std::conditional_t<
+    using type = typename std::conditional<
       Pattern[Idx] == '(',
       Open,
-      std::conditional_t<Pattern[Idx] == ')', Close, Other>
-    >::type;
+      typename std::conditional<Pattern[Idx] == ')', Close, Other>::type
+    >::type::type;
   };
-  using type = typename std::conditional_t<
+  using type = typename std::conditional<
     Idx >= Pattern.length,
     std::type_identity<Acc>,
     Impl
-  >::type;
+  >::type::type;
 };
 
 } /* namespace tnfa */

@@ -29,7 +29,7 @@ struct Derivative<Epsilon, C> {
 /* dx/dc = x == c ? e : 0 */
 template<uint8_t X, uint8_t C>
 struct Derivative<Char<X>, C> {
-  using type = std::conditional_t<X == C, Epsilon, EmptySet>;
+  using type = typename std::conditional<X == C, Epsilon, EmptySet>::type;
 };
 template<uint8_t C>
 struct Derivative<Wildcard, C> {
@@ -72,11 +72,11 @@ template <typename CharList, uint8_t C>
 struct Derivative<Except<CharList>, C> {
   using type = typename std::conditional<
     0x00 <= C && C <= 0x7F,
-    std::conditional_t<
+    typename std::conditional<
       CharList::template Contains<Char<C>>,
       EmptySet,
       Epsilon
-    >,
+    >::type,
     typename std::conditional<
       0xC2 <= C && C <= 0xDF,
       Wildcard1,
@@ -103,11 +103,11 @@ struct Derivative<Or<R, S>, C> {
 template<typename L, typename R, uint8_t C>
 struct Derivative<Concat<L, R>, C> {
   using Part1 = Concat<typename Derivative<L, C>::type, R>;
-  using Part2 = std::conditional_t<
+  using Part2 = typename std::conditional<
     Nullable<L>::value,
     typename Derivative<R, C>::type,
     EmptySet
-  >;
+  >::type;
   using type = typename Simplify<Or<Part1, Part2>>::type;
 };
 /* d(R*)/dc = dR/dc R* */
@@ -172,7 +172,7 @@ struct DerivNewStates<Acc, S, TypeList<>> {
 template<typename Acc, typename S, uint8_t C, typename... Tails>
 struct DerivNewStates<Acc, S, TypeList<Char<C>, Tails...>> {
   using Der = typename Derivative<typename S::re, C>::type;
-  using type = typename std::conditional_t<
+  using type = typename std::conditional<
     std::is_same_v<Der, EmptySet>,
     std::type_identity<Acc>,
     DerivNewStates<
@@ -180,7 +180,7 @@ struct DerivNewStates<Acc, S, TypeList<Char<C>, Tails...>> {
       S,
       TypeList<Tails...>
     >
-  >::type;
+  >::type::type;
 };
 
 template<
@@ -211,11 +211,11 @@ struct PushNewStates<SA, EA, TBP, StartState, TypeList<HeadPair, TailPairs...>> 
   static constexpr uint8_t C = HeadPair::c;
   static constexpr bool IsStateNew = !SA::template Contains<ToState>;
   using NextStateAcc = typename PushBackUnique<SA, ToState>::type;
-  using NextToBeProcessList = typename std::conditional_t<
+  using NextToBeProcessList = typename std::conditional<
     IsStateNew,
     PushBack<TBP, ToState>,
     std::type_identity<TBP>
-  >::type;
+  >::type::type;
   using NextEdgeAcc = typename PushBack<
     EA,
     Edge<

@@ -14,7 +14,7 @@ struct TypeList {
   static constexpr bool Contains = (std::is_same_v<T, Ts> || ...);
 
   template<size_t Idx>
-  using At = std::tuple_element_t<Idx, std::tuple<Ts...>>;
+  using At = typename std::tuple_element<Idx, std::tuple<Ts...>>::type;
 
   template<typename T>
   static constexpr std::size_t IndexOf = []{
@@ -79,11 +79,11 @@ template<typename List, typename T>
 struct PushBackUnique;
 template<typename... Ts, typename T>
 struct PushBackUnique<TypeList<Ts...>, T> {
-  using type = std::conditional_t<
+  using type = typename std::conditional<
     TypeList<Ts...>::template Contains<T>,
     TypeList<Ts...>,
     TypeList<Ts..., T>
-  >;
+  >::type;
 };
 
 template<typename List1, typename List2>
@@ -102,11 +102,11 @@ template <typename List>
 struct Unique;
 template <typename Head, typename... Tails>
 struct Unique<TypeList<Head, Tails...>> {
-  using type = std::conditional_t<
+  using type = typename std::conditional<
     TypeList<Tails...>::template Contains<Head>, 
     typename Unique<TypeList<Tails...>>::type,
     typename PushFront<typename Unique<TypeList<Tails...>>::type, Head>::type
-  >;
+  >::type;
 };
 template<>
 struct Unique<TypeList<>> {
@@ -124,11 +124,11 @@ template<template<typename> typename IsKeep, typename List, typename Acc>
 struct FilterImpl;
 template<template<typename> typename IsKeep, typename Head, typename... Tails, typename Acc>
 struct FilterImpl<IsKeep, TypeList<Head, Tails...>, Acc> {
-  using type = typename std::conditional_t<
+  using type = typename std::conditional<
     IsKeep<Head>::value,
     FilterImpl<IsKeep, TypeList<Tails...>, typename PushBack<Acc, Head>::type>,
     FilterImpl<IsKeep, TypeList<Tails...>, Acc>
-  >::type;
+  >::type::type;
 };
 template<template<typename> typename IsKeep, typename Acc>
 struct FilterImpl<IsKeep, TypeList<>, Acc> {
