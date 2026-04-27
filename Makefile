@@ -58,9 +58,53 @@ DEPS := $(patsubst %.$(EXT),$(TMPDIR)/%.d,$(SRCS))
 SRC_HDRS := $(wildcard src/*.hxx)
 
 .PHONY : all build test gdb clean ftime-trace
-all: build $(TARGET)
+all: $(TARGET)
 
-build : $(GENERATED_HEADER)
+define GENERATE_HEADER # arg1: target path; arg2: whether need `#line` tag
+	set -eu; \
+	{ \
+		for hdr in $$(find $(SRCDIR) -maxdepth 1 -name '*.hxx' | sort); do \
+			name=$${hdr#$(SRCDIR)/}; \
+			printf '__onre_root__ %s\n' "$$name"; \
+			awk ' \
+				/^\/\/ === snippet begin ===$$/ {exit} \
+				/^#include "[^"]+"/ { \
+					dep = $$0; \
+					sub(/^#include "/, "", dep); \
+					sub(/"$$/, "", dep); \
+					print dep " " "'"$$name"'"; \
+				}' "$$hdr"; \
+		done; \
+	} | tsort | while IFS= read -r hdr; do \
+		[ "$$hdr" = "__onre_root__" ] && continue; \
+		awk ' \
+			BEGIN {emit=0; started=0} \
+			/^\/\/ === snippet begin ===$$/ {line=NR+1; emit=1; next} \
+			/^\/\/ === snippet end ===$$/ {emit=0; next} \
+			emit { \
+				if ($2 && !started) { \
+					print "#line " line " \"'"$(SRCDIR)/$$hdr"'\""; \
+					started=1; \
+				} \
+				print; \
+			} \
+			END { if ($2) { print "#line 1 \"$1\""; } } \
+		' "$(SRCDIR)/$$hdr"; \
+	done | { \
+		printf '%s\n%s\n\n' '#ifndef ONRE_REGEX_HPP__' '#define ONRE_REGEX_HPP__'; \
+		cat; \
+		printf '\n%s\n' '#endif /* #ifndef ONRE_REGEX_HPP__ */'; \
+	} > "$1"
+endef
+
+CXXFLAGS += -I$(TMPDIR)/include
+
+build :
+	$(info BUILD   $(GENERATED_HEADER))
+	@$(call GENERATE_HEADER,$(GENERATED_HEADER),0)
+	@$(call MKDIR_P,$(TMPDIR)/include)
+	@$(call GENERATE_HEADER,$(TMPDIR)/include/$(GENERATED_HEADER),1)
+
 
 test : build $(TARGET)
 	$(info RUN     $(TARGET) $(RUNARGS))
@@ -91,25 +135,8 @@ $(TMPDIR)/%.o : %.$(EXT)
 	$(info CXX     $<)
 	@$(CXX) -c $(CXXFLAGS) -o $@ $<
 
-# make sure changes in the generated umbrella header recompile objects #
-$(OBJS): $(GENERATED_HEADER)
-
-$(GENERATED_HEADER) : $(SRC_HDRS)
-	@set -eu; \
-	{ \
-		for hdr in $$(find $(SRCDIR) -maxdepth 1 -name '*.hxx' | sort); do \
-			name=$${hdr#$(SRCDIR)/}; \
-			printf '__onre_root__ %s\n' "$$name"; \
-			awk -v src="$$name" '/^\/\/ === snippet begin ===$$/{exit} /^#include "[^"]+"/{dep=$$0; sub(/^#include "/, "", dep); sub(/"$$/, "", dep); print dep " " src}' "$$hdr"; \
-		done; \
-	} | tsort | while IFS= read -r hdr; do \
-		[ "$$hdr" = "__onre_root__" ] && continue; \
-		awk 'BEGIN{emit=0} /^\/\/ === snippet begin ===$$/{emit=1; next} /^\/\/ === snippet end ===$$/{emit=0; next} emit{print}' "$(SRCDIR)/$$hdr"; \
-	done | { \
-		printf '%s\n%s\n\n' '#ifndef ONRE_REGEX_HPP__' '#define ONRE_REGEX_HPP__'; \
-		cat; \
-		printf '\n%s\n' '#endif /* #ifndef ONRE_REGEX_HPP__ */'; \
-	} > "$@"
+# build must run before any compilation, but object freshness is driven by the .hxx inputs #
+$(OBJS): build $(SRC_HDRS)
 
 # files dependecies #
 -include $(DEPS)
