@@ -4,17 +4,23 @@ RUNARGS ?=
 
 EXT := cpp
 CXX := clang++
-CXXFLAGS := -Wall -std=c++20 -ftemplate-depth=65536 -fbracket-depth=65536 -fconstexpr-steps=4294967295 -fconstexpr-depth=65536
+CXXFLAGS := -Wall -std=c++20
 LDFLAGS :=
 LDLIBS :=
+
+ifeq ($(CXX),clang++)
+	CXXFLAGS += -ftemplate-depth=65536 -fbracket-depth=65536 -fconstexpr-steps=4294967295 -fconstexpr-depth=65536
+else # g++
+	CXXFLAGS += -ftemplate-depth=65536 -fconstexpr-depth=65536
+endif
 
 ifeq ($(MAKECMDGOALS),gdb)
 	CXXFLAGS += -O0 -g
 	LDFLAGS += -g
-	MODE_DIR := gdb_build
+	MODE_DIR := $(CXX)-gdb_build
 else
 	CXXFLAGS += -O2
-	MODE_DIR := release_build
+	MODE_DIR := $(CXX)-release_build
 endif
 
 ifeq ($(OS),Windows_NT)
@@ -57,7 +63,13 @@ OBJS := $(patsubst %.$(EXT),$(TMPDIR)/%.o,$(SRCS))
 DEPS := $(patsubst %.$(EXT),$(TMPDIR)/%.d,$(SRCS))
 SRC_HDRS := $(wildcard src/*.hxx)
 
-.PHONY : all build test gdb clean ftime-trace
+ifeq ($(CXX),clang++)
+	CXX_INFO = CLANG++ $<
+else
+	CXX_INFO = G++     $<
+endif
+
+.PHONY : all build test test-impl test-clang test-gcc gdb clean ftime-trace
 all: $(TARGET)
 
 define GENERATE_HEADER # arg1: target path; arg2: whether need `#line` tag
@@ -105,10 +117,17 @@ build :
 	@$(call MKDIR_P,$(TMPDIR)/include)
 	@$(call GENERATE_HEADER,$(TMPDIR)/include/$(GENERATED_HEADER),1)
 
+test : test-clang test-gcc
 
-test : build $(TARGET)
+test-impl : $(TARGET)
 	$(info RUN     $(TARGET) $(RUNARGS))
 	@./$(TARGET) $(RUNARGS)
+
+test-clang :
+	@time $(MAKE) test-impl CXX=clang++
+
+test-gcc :
+	@time $(MAKE) test-impl CXX=g++
 
 gdb : build $(TARGET)
 	$(info GDB     $(TARGET) $(RUNARGS))
@@ -132,7 +151,7 @@ $(TARGET) : $(OBJS)
 # compile #
 $(TMPDIR)/%.o : %.$(EXT)
 	@$(call MKDIR_P,$(dir $@))
-	$(info CXX     $<)
+	$(info $(CXX_INFO))
 	@$(CXX) -c $(CXXFLAGS) -o $@ $<
 
 # build must run before any compilation, but object freshness is driven by the .hxx inputs #

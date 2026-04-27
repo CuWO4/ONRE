@@ -1326,7 +1326,7 @@ struct BuildTransActionTable<NrStates, MaxTransActionLength, TypeList<Edges...>>
         char_table.fill(false);
 
     /* use the shortest action among edges sharing same from, ch and to */
-    auto existing_len_of = []<size_t L>(const std::array<int32_t, L>& list) constexpr {
+    [[maybe_unused]] auto existing_len_of = []<size_t L>(const std::array<int32_t, L>& list) constexpr {
       size_t i = 0;
       while (i < L && list[i] != -1) ++i;
       return i;
