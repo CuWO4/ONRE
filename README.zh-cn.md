@@ -404,8 +404,10 @@ if result_slots = null
 ## 🧪 测试
 
 ```sh
-make test -j20
+make test -j$(nproc)
 ```
+
+会同时使用 clang++ 和 g++ 进行测试.
 
 ## 🏗️ 单头构建
 
@@ -427,7 +429,7 @@ make test -j20
 
 版本 >= 12
 
-`--std=c++20` 或更高 (如果支持). 已经测试过, 但复杂模式编译速度太慢, 基本不适合正常使用.
+`--std=c++20` 或更高 (如果支持), 另加 `-ftemplate-depth=65536 -fconstexpr-depth=65536`. 尽管能通过测试, 但复杂模式编译速度可能慢于 clang++.
 
 ## 😭 已知问题
 

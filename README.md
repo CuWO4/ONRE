@@ -421,8 +421,10 @@ However, we can approximate it through heuristic indicators and algorithms to fa
 ## 🧪 Tests
 
 ```sh
-make test -j20
+make test -j$(nproc)
 ```
+
+would use both clang++ and g++ for testing.
 
 ## 🏗️ Header-Only Build
 
@@ -444,7 +446,7 @@ Version >= 12
 
 Version >= 12
 
-`--std=c++20` or higher (if supported). It has been tested, but complex patterns compile so slowly that it is not practical for normal use.
+`--std=c++20` or higher (if supported), plus `-ftemplate-depth=65536 -fconstexpr-depth=65536`. It has been tested, but complex patterns compile maybe slower compared with clang++.
 
 ## 😭 Known issues
 
