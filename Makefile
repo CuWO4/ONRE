@@ -10,6 +10,8 @@ LDLIBS :=
 
 ifeq ($(CXX),clang++)
 	CXXFLAGS += -ftemplate-depth=65536 -fbracket-depth=65536 -fconstexpr-steps=4294967295 -fconstexpr-depth=65536
+	CXXFLAGS += -stdlib=libc++
+	LDFLAGS += -stdlib=libc++
 else # g++
 	CXXFLAGS += -ftemplate-depth=65536 -fconstexpr-depth=65536
 endif
