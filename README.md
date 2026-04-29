@@ -60,6 +60,18 @@ pattern: (a|ab)+b      pattern_len: 8   replace_rule: OK       str: aaaaaaa....a
 pattern: (a*)b         pattern_len: 5   replace_rule: $1B      str: aaaaaaa....aaaaaab  str_len: 10001   time: 61us
 ```
 
+```bash
+clang++
+431/431 tests passed
+match     count: 306    mean:     9.32us          stddev:   35.21us         slowest5% avg:  157.38us
+replace   count: 125    mean:     136.05us        stddev:   660.67us        slowest5% avg:  1942.00us
+
+g++
+431/431 tests passed
+match     count: 306    mean:     10.39us         stddev:   39.50us         slowest5% avg:  176.56us
+replace   count: 125    mean:     71.00us         stddev:   238.10us        slowest5% avg:  864.86us
+```
+
 For very long strings, catastrophic backtracking cases, very long patterns, and very complex patterns the engine still reliably achieves O(n) performance; the same test cases on backtracking engines almost always blow up (for example the famous [Cloudflare incident](https://www.reddit.com/r/sysadmin/comments/c8eymj/cloudflare_outage_caused_by_deploying_bad_regular/)).
 
 Compiling all of these (many more than shown; see `tests/`) complex patterns is controllable and acceptable:
