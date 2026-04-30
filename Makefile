@@ -120,16 +120,14 @@ build :
 	@$(call GENERATE_HEADER,$(TMPDIR)/include/$(GENERATED_HEADER),1)
 
 test : test-clang test-gcc
+	@echo 'TEST    CLANG++'
+	@time $(MAKE) test-impl CXX=clang++
+	@echo 'TEST    G++'
+	@time $(MAKE) test-impl CXX=g++
 
 test-impl : $(TARGET)
 	$(info RUN     $(TARGET) $(RUNARGS))
 	@./$(TARGET) $(RUNARGS)
-
-test-clang :
-	@time $(MAKE) test-impl CXX=clang++
-
-test-gcc :
-	@time $(MAKE) test-impl CXX=g++
 
 gdb : build $(TARGET)
 	$(info GDB     $(TARGET) $(RUNARGS))
