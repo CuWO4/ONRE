@@ -1,4 +1,4 @@
-#include "onre.hpp"
+#include "test_head.h"
 
 void dummy() {
 	(void)onre::debug::DumpRE<onre::impl::EmptySet>::to_string();

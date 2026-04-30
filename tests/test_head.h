@@ -1,7 +1,8 @@
 #ifndef TEST_HEAD_H_
 #define TEST_HEAD_H_
 
-#include "onre.hpp"
+#include ONRE_HPP_FILE
+
 #include <algorithm>
 #include <cmath>
 #include <iostream>
