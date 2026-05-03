@@ -10,12 +10,12 @@ namespace onre {
 
 /* === interface === */
 template<impl::FixedString Pattern>
-inline bool match(std::string_view str) noexcept;
+inline bool match(std::string_view str);
 template<impl::FixedString Pattern>
-inline std::string replace(std::string_view rule, std::string_view str) noexcept;
+inline std::string replace(std::string_view rule, std::string_view str);
 
 template<impl::FixedString Pattern>
-inline bool match(std::string_view str) noexcept {
+inline bool match(std::string_view str) {
   using Re = typename impl::RegexScan<Pattern>::type;
   using NoActionRe = typename impl::dfa::RemoveAllAction<Re>::type;
   using DFAStatesList = impl::dfa::AllStatesList<NoActionRe>;
@@ -35,7 +35,7 @@ inline bool match(std::string_view str) noexcept {
 }
 
 template<impl::FixedString Pattern>
-inline std::string replace(std::string_view replace_rule, std::string_view str) noexcept {
+inline std::string replace(std::string_view replace_rule, std::string_view str) {
   using Re = typename impl::RegexScan<Pattern>::type;
   using StateList = impl::tnfa::AllStatesList<Re>;
   using EdgeList  = impl::tnfa::AllEdgesList<Re>;

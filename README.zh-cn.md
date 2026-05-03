@@ -107,10 +107,10 @@ UTF-8 字符类和范围是按码点工作的, 反向字符类也同样支持 UT
 
 ```cpp
 template<onre::impl::FixedString Pattern>
-inline bool onre::match(std::string_view str) noexcept;
+inline bool onre::match(std::string_view str);
 
 template<onre::impl::FixedString Pattern>
-std::string onre::replace(std::string_view replace_rule, std::string_view str) noexcept;
+std::string onre::replace(std::string_view replace_rule, std::string_view str);
 ```
 
 `onre::match` 会返回 `str` 是否可以被 `Pattern` 匹配; 若 `str` 可以被 `Pattern` 匹配, `onre::replace` 会返回按照 `replace_rule` 进行替换后得到的串. 其中 `replace_rule` 的规则是 `$N` 表示第 $N$ 个捕获组 (按照捕获组左括号位置排序, 从 1 开始); `$0` 表示串本身; `$$` 表示 `$`.

@@ -107,10 +107,10 @@ Prototype:
 
 ```cpp
 template<onre::impl::FixedString Pattern>
-inline bool onre::match(std::string_view str) noexcept;
+inline bool onre::match(std::string_view str);
 
 template<onre::impl::FixedString Pattern>
-std::string onre::replace(std::string_view replace_rule, std::string_view str) noexcept;
+std::string onre::replace(std::string_view replace_rule, std::string_view str);
 ```
 
 `onre::match` will return whether `str` can be matched by `Pattern`; `onre::replace` will return the string obtained after performing replacements according to `replace_rule` if `str` can be matched by `Pattern`. The rule for `replace_rule` is: `$N` denotes the $N$-th capture group (ordered by the position of the left parenthesis, starting from 1); `$0` denotes the string itself; `$$` denotes `$`.
