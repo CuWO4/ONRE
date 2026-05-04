@@ -1,3 +1,5 @@
+# 本仓库已转入私有仓库, 并添加大量颠覆性功能, 待稳定后会重新发布. 该库仅为历史版本.
+
 [![en](https://img.shields.io/badge/lang-en-green)](README.md)
 [![zh-cn](https://img.shields.io/badge/lang-%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-green)](README.zh-cn.md)
 
