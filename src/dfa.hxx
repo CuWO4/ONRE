@@ -1,5 +1,5 @@
-#ifndef DFA_HXX__
-#define DFA_HXX__
+#ifndef DFA_HXX_xC8ZmzgF_
+#define DFA_HXX_xC8ZmzgF_
 
 #include "reg.hxx"
 #include "typelist.hxx"

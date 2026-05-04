@@ -1,5 +1,5 @@
-#ifndef ALPHABET_HXX__
-#define ALPHABET_HXX__
+#ifndef ALPHABET_HXX_xC8ZmzgF_
+#define ALPHABET_HXX_xC8ZmzgF_
 
 #include "typelist.hxx"
 

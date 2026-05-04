@@ -1,5 +1,5 @@
-#ifndef ONRE_REGEX_HPP__
-#define ONRE_REGEX_HPP__
+#ifndef ONRE_REGEX_HPP_xC8ZmzgF_
+#define ONRE_REGEX_HPP_xC8ZmzgF_
 
 #include <algorithm>
 #include <array>
@@ -12,7 +12,7 @@
 #include <type_traits>
 #include <vector>
 
-[[maybe_unused]] static inline void dummy__check_global__a2c7038f() {
+[[maybe_unused]] static inline void dummy_check_global_xC8ZmzgF_() {
   constexpr auto count_double_colon = [](const char* str) {
     unsigned cnt = 0;
     for (char const* p = str; *p && *(p+1); p++)
@@ -2682,42 +2682,42 @@ inline std::string replace(std::string_view replace_rule, std::string_view str) 
 
   // use macro to force inline, while some compilers (especially older versions)
   // don't perform well with lambda inlining optimizations.
-  #define open_time__onre__(line, group_idx) \
+  #define open_time_onre_xC8ZmzgF_(line, group_idx) \
     ((line)[(group_idx) << 1])
-  #define close_time__onre__(line, group_idx) \
+  #define close_time_onre_xC8ZmzgF_(line, group_idx) \
     ((line)[(group_idx) << 1 | 1])
-  #define is_opened__onre__(line, group_idx) \
-    (open_time__onre__((line), (group_idx)) >= 0)
-  #define is_closed__onre__(line, group_idx) \
-    (close_time__onre__((line), (group_idx)) >= 0)
-  #define group_len__onre__(line, group_idx) \
-    (close_time__onre__((line), (group_idx)) - open_time__onre__((line), (group_idx)))
-  #define is_digit__onre__(ch) ('0' <= (ch) && (ch) <= '9')
+  #define is_opened_onre_xC8ZmzgF_(line, group_idx) \
+    (open_time_onre_xC8ZmzgF_((line), (group_idx)) >= 0)
+  #define is_closed_onre_xC8ZmzgF_(line, group_idx) \
+    (close_time_onre_xC8ZmzgF_((line), (group_idx)) >= 0)
+  #define group_len_onre_xC8ZmzgF_(line, group_idx) \
+    (close_time_onre_xC8ZmzgF_((line), (group_idx)) - open_time_onre_xC8ZmzgF_((line), (group_idx)))
+  #define is_digit_onre_xC8ZmzgF_(ch) ('0' <= (ch) && (ch) <= '9')
 
   // heuristically choose a slot configuration to try to get longest match
   static auto need_change = [](const SlotLine& old_line, const SlotLine& new_line) {
     for (size_t k = 0; k < nr_capture_group; k++) {
-      if (!is_opened__onre__(old_line, k) && !is_opened__onre__(new_line, k)) continue;
-      if (is_opened__onre__(old_line, k) && !is_opened__onre__(new_line, k)) return false;
-      if (!is_opened__onre__(old_line, k) && is_opened__onre__(new_line, k)) return true;
-      if (!is_closed__onre__(old_line, k) && !is_closed__onre__(new_line, k)) {
-        if (open_time__onre__(old_line, k) < open_time__onre__(new_line, k)) return false;
-        if (open_time__onre__(old_line, k) > open_time__onre__(new_line, k)) return true;
+      if (!is_opened_onre_xC8ZmzgF_(old_line, k) && !is_opened_onre_xC8ZmzgF_(new_line, k)) continue;
+      if (is_opened_onre_xC8ZmzgF_(old_line, k) && !is_opened_onre_xC8ZmzgF_(new_line, k)) return false;
+      if (!is_opened_onre_xC8ZmzgF_(old_line, k) && is_opened_onre_xC8ZmzgF_(new_line, k)) return true;
+      if (!is_closed_onre_xC8ZmzgF_(old_line, k) && !is_closed_onre_xC8ZmzgF_(new_line, k)) {
+        if (open_time_onre_xC8ZmzgF_(old_line, k) < open_time_onre_xC8ZmzgF_(new_line, k)) return false;
+        if (open_time_onre_xC8ZmzgF_(old_line, k) > open_time_onre_xC8ZmzgF_(new_line, k)) return true;
         continue;
       }
-      if (!is_closed__onre__(old_line, k) && is_closed__onre__(new_line, k)) return false;
-      if (is_closed__onre__(old_line, k) && !is_closed__onre__(new_line, k)) return true;
-      if (group_len__onre__(old_line, k) > group_len__onre__(new_line, k)) return false;
-      if (group_len__onre__(old_line, k) < group_len__onre__(new_line, k)) return true;
-      if (open_time__onre__(old_line, k) > open_time__onre__(new_line, k)) return false;
-      if (open_time__onre__(old_line, k) < open_time__onre__(new_line, k)) return true;
+      if (!is_closed_onre_xC8ZmzgF_(old_line, k) && is_closed_onre_xC8ZmzgF_(new_line, k)) return false;
+      if (is_closed_onre_xC8ZmzgF_(old_line, k) && !is_closed_onre_xC8ZmzgF_(new_line, k)) return true;
+      if (group_len_onre_xC8ZmzgF_(old_line, k) > group_len_onre_xC8ZmzgF_(new_line, k)) return false;
+      if (group_len_onre_xC8ZmzgF_(old_line, k) < group_len_onre_xC8ZmzgF_(new_line, k)) return true;
+      if (open_time_onre_xC8ZmzgF_(old_line, k) > open_time_onre_xC8ZmzgF_(new_line, k)) return false;
+      if (open_time_onre_xC8ZmzgF_(old_line, k) < open_time_onre_xC8ZmzgF_(new_line, k)) return true;
     }
     return false;
   };
 
   // use macro to explicitly express NRVO, significantly improve performance on
   // some compilers.
-  #define apply_action__onre__(old_line, actions, p, new_line) \
+  #define apply_action_onre_xC8ZmzgF_(old_line, actions, p, new_line) \
     do { \
       (new_line) = (old_line); \
       for (const auto& action : (actions)) { \
@@ -2762,7 +2762,7 @@ inline std::string replace(std::string_view replace_rule, std::string_view str) 
         if (nxt_state < 0) break;
 
         if (!(*nxt_is_state_active)[nxt_state]) {
-          apply_action__onre__(
+          apply_action_onre_xC8ZmzgF_(
             (*cur_slot_file)[state],
             trans_action_table[state][static_cast<size_t>(uch)][nxt_state],
             static_cast<int32_t>(idx),
@@ -2773,7 +2773,7 @@ inline std::string replace(std::string_view replace_rule, std::string_view str) 
           continue;
         }
 
-        apply_action__onre__(
+        apply_action_onre_xC8ZmzgF_(
           (*cur_slot_file)[state],
           trans_action_table[state][static_cast<size_t>(uch)][nxt_state],
           static_cast<int32_t>(idx),
@@ -2795,11 +2795,11 @@ inline std::string replace(std::string_view replace_rule, std::string_view str) 
   for (size_t state : *cur_active_states) {
     if (!accept_table[state]) continue;
     if (!is_final_line_inited) {
-      apply_action__onre__((*cur_slot_file)[state], accept_action_table[state], str.size(), final_line);
+      apply_action_onre_xC8ZmzgF_((*cur_slot_file)[state], accept_action_table[state], str.size(), final_line);
       is_final_line_inited = true;
       continue;
     }
-    apply_action__onre__((*cur_slot_file)[state], accept_action_table[state], str.size(), slot_line_buf);
+    apply_action_onre_xC8ZmzgF_((*cur_slot_file)[state], accept_action_table[state], str.size(), slot_line_buf);
     if (need_change(final_line, slot_line_buf)) final_line = slot_line_buf;
   }
 
@@ -2819,15 +2819,15 @@ inline std::string replace(std::string_view replace_rule, std::string_view str) 
     if (idx >= replace_rule.size()) break;
     if (++idx >= replace_rule.size()) return "";
     if (replace_rule[idx] == '$') result.append("$");
-    else if (is_digit__onre__(replace_rule[idx])) {
+    else if (is_digit_onre_xC8ZmzgF_(replace_rule[idx])) {
       size_t group_idx = replace_rule[idx] - '0';
-      while (idx + 1 < replace_rule.size() && is_digit__onre__(replace_rule[idx + 1])) {
+      while (idx + 1 < replace_rule.size() && is_digit_onre_xC8ZmzgF_(replace_rule[idx + 1])) {
         idx++;
         group_idx = 10 * group_idx + replace_rule[idx] - '0';
       }
       if (group_idx >= nr_capture_group) return "";
-      int32_t l = open_time__onre__(final_line, group_idx),
-              r = close_time__onre__(final_line, group_idx);
+      int32_t l = open_time_onre_xC8ZmzgF_(final_line, group_idx),
+              r = close_time_onre_xC8ZmzgF_(final_line, group_idx);
       if (l < 0 || r < 0) continue;
 
       if (r < l) continue;
@@ -2838,13 +2838,13 @@ inline std::string replace(std::string_view replace_rule, std::string_view str) 
 
   return result;
 
-  #undef open_time__onre__
-  #undef close_time__onre__
-  #undef is_opened__onre__
-  #undef is_closed__onre__
-  #undef group_len__onre__
-  #undef is_digit__onre__
-  #undef apply_action__onre__
+  #undef open_time_onre_xC8ZmzgF_
+  #undef close_time_onre_xC8ZmzgF_
+  #undef is_opened_onre_xC8ZmzgF_
+  #undef is_closed_onre_xC8ZmzgF_
+  #undef group_len_onre_xC8ZmzgF_
+  #undef is_digit_onre_xC8ZmzgF_
+  #undef apply_action_onre_xC8ZmzgF_
 }
 
 } /* namespace onre */
@@ -3130,4 +3130,4 @@ struct DumpTNFAEdges<impl::TypeList<>, idx> {
 } /* namespace onre */
 
 
-#endif /* #ifndef ONRE_REGEX_HPP__ */
+#endif /* #ifndef ONRE_REGEX_HPP_xC8ZmzgF_ */

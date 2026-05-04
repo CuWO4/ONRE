@@ -1,5 +1,5 @@
-#ifndef SIMPLIFY_HXX__
-#define SIMPLIFY_HXX__
+#ifndef SIMPLIFY_HXX_xC8ZmzgF_
+#define SIMPLIFY_HXX_xC8ZmzgF_
 
 #include "reg.hxx"
 

@@ -1,5 +1,5 @@
-#ifndef ACTION_HXX__
-#define ACTION_HXX__
+#ifndef ACTION_HXX_xC8ZmzgF_
+#define ACTION_HXX_xC8ZmzgF_
 
 #include "head.hxx"
 

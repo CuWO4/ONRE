@@ -1,5 +1,5 @@
-#ifndef REGEXSCAN_HXX__
-#define REGEXSCAN_HXX__
+#ifndef REGEXSCAN_HXX_xC8ZmzgF_
+#define REGEXSCAN_HXX_xC8ZmzgF_
 
 #include "typelist.hxx"
 #include "fixedstring.hxx"

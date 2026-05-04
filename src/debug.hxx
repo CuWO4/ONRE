@@ -1,5 +1,5 @@
-#ifndef ONRE_DEBUG_HXX__
-#define ONRE_DEBUG_HXX__
+#ifndef ONRE_DEBUG_HXX_xC8ZmzgF_
+#define ONRE_DEBUG_HXX_xC8ZmzgF_
 
 #include "head.hxx"
 #include "fixedstring.hxx"
@@ -290,4 +290,4 @@ struct DumpTNFAEdges<impl::TypeList<>, idx> {
 
 // === snippet end ===
 
-#endif /* !ONRE_DEBUG_HXX__ */
+#endif /* !ONRE_DEBUG_HXX_xC8ZmzgF_ */

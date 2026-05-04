@@ -1,5 +1,5 @@
-#ifndef TYPELIST_HXX__
-#define TYPELIST_HXX__
+#ifndef TYPELIST_HXX_xC8ZmzgF_
+#define TYPELIST_HXX_xC8ZmzgF_
 
 #include "head.hxx"
 

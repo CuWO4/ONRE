@@ -36,9 +36,9 @@ define GENERATE_HEADER # arg1: target path; arg2: whether need `#line` tag
 			END { if ($2) { print "#line 1 \"$1\""; } } \
 		' "$(SRCDIR)/$$hdr"; \
 	done | { \
-		printf '%s\n%s\n\n' '#ifndef ONRE_REGEX_HPP__' '#define ONRE_REGEX_HPP__'; \
+		printf '%s\n%s\n\n' '#ifndef ONRE_REGEX_HPP_xC8ZmzgF_' '#define ONRE_REGEX_HPP_xC8ZmzgF_'; \
 		cat; \
-		printf '\n%s\n' '#endif /* #ifndef ONRE_REGEX_HPP__ */'; \
+		printf '\n%s\n' '#endif /* #ifndef ONRE_REGEX_HPP_xC8ZmzgF_ */'; \
 	} > "$1"
 endef
 

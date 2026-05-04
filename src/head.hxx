@@ -1,5 +1,5 @@
-#ifndef HEAD_HXX__
-#define HEAD_HXX__
+#ifndef HEAD_HXX_xC8ZmzgF_
+#define HEAD_HXX_xC8ZmzgF_
 
 // === snippet begin ===
 #include <algorithm>
@@ -13,7 +13,7 @@
 #include <type_traits>
 #include <vector>
 
-[[maybe_unused]] static inline void dummy__check_global__a2c7038f() {
+[[maybe_unused]] static inline void dummy_check_global_xC8ZmzgF_() {
   constexpr auto count_double_colon = [](const char* str) {
     unsigned cnt = 0;
     for (char const* p = str; *p && *(p+1); p++)

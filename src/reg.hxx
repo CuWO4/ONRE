@@ -1,5 +1,5 @@
-#ifndef REG_HXX__
-#define REG_HXX__
+#ifndef REG_HXX_xC8ZmzgF_
+#define REG_HXX_xC8ZmzgF_
 
 #include "head.hxx"
 #include "alphabet.hxx"

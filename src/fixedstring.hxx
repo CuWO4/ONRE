@@ -1,5 +1,5 @@
-#ifndef FIXEDSTRING_HXX__
-#define FIXEDSTRING_HXX__
+#ifndef FIXEDSTRING_HXX_xC8ZmzgF_
+#define FIXEDSTRING_HXX_xC8ZmzgF_
 
 #include "head.hxx"
 
